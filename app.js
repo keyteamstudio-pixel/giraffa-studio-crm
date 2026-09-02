@@ -5,14 +5,15 @@
 var cfg = window.GS_CONFIG || {};
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "" };
-var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [] };
+var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [] };
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
 var EXP = {}, VISTA = "tabella", FSTATO = "", FSAL = "", DRAG = null;
 var PAL = [], PALR = [], PALI = 0;
+var WEEK = 0, NOTEDIT = false, NOTET = null, TICK = null;
 
 /* ---------------- helpers ---------------- */
 function el(s) { return document.querySelector(s); }
@@ -184,6 +185,52 @@ function heatOre(list) {
   }
   return '<div class="heat">' + cols.join("") + '</div><div class="heatleg"><span class="faint">meno</span><i class="hc l0"></i><i class="hc l1"></i><i class="hc l2"></i><i class="hc l3"></i><i class="hc l4"></i><span class="faint">più</span></div>';
 }
+/* ---------------- note in stile documento ---------------- */
+function inline(s) {
+  return s.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/(https?:\/\/[^\s&lt;]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+}
+function md(t) {
+  var out = [], lista = false, ci = 0;
+  (t || "").split("\n").forEach(function (raw) {
+    var l = esc(raw);
+    var ck = l.match(/^- \[( |x|X)\] (.*)$/);
+    if (ck) {
+      if (lista) { out.push("</ul>"); lista = false; }
+      var on = ck[1] !== " ";
+      out.push('<div class="mdck"><button class="ck' + (on ? " on" : "") + '" data-ck="' + (ci++) + '"></button><span' + (on ? ' class="done"' : "") + ">" + inline(ck[2]) + "</span></div>");
+      return;
+    }
+    var li = l.match(/^[-*] (.*)$/);
+    if (li) { if (!lista) { out.push("<ul>"); lista = true; } out.push("<li>" + inline(li[1]) + "</li>"); return; }
+    if (lista) { out.push("</ul>"); lista = false; }
+    var hh = l.match(/^(#{1,3}) (.*)$/);
+    if (hh) { out.push('<div class="mdh h' + hh[1].length + '">' + inline(hh[2]) + "</div>"); return; }
+    if (!l.trim()) { out.push('<div class="mdsp"></div>'); return; }
+    out.push("<p>" + inline(l) + "</p>");
+  });
+  if (lista) out.push("</ul>");
+  return '<div class="md">' + out.join("") + "</div>";
+}
+function toggleCk(testo, idx) {
+  var i = -1;
+  return (testo || "").split("\n").map(function (l) {
+    if (/^- \[( |x|X)\] /.test(l)) {
+      i++;
+      if (i === idx) return /^- \[ \]/.test(l) ? l.replace(/^- \[ \]/, "- [x]") : l.replace(/^- \[[xX]\]/, "- [ ]");
+    }
+    return l;
+  }).join("\n");
+}
+
+/* ---------------- tempo ---------------- */
+function lunedi(off) { var d = new Date(); d.setHours(0, 0, 0, 0); var wd = (d.getDay() + 6) % 7; return new Date(d.getTime() - (wd - (off || 0) * 7) * 86400000); }
+function timerMio() { return D.tmr.filter(function (t) { return t.pro_id === me.pro_id; })[0]; }
+function durata(iso0) {
+  var s = Math.max(0, Math.floor((Date.now() - new Date(iso0).getTime()) / 1000));
+  var h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return (h ? h + "h " : "") + (m < 10 ? "0" : "") + m + "m";
+}
 function prossimo(k) {
   var out = [];
   var ap = apprOf(k.id).filter(function (a) { return a.stato === "In attesa"; })[0];
@@ -302,7 +349,16 @@ function buildNav() {
     var c = n.c ? n.c() : null;
     h += '<button data-go="' + n.k + '" class="' + (cur === n.k ? "on" : "") + '">' + n.t + (c ? '<span class="cnt">' + c + "</span>" : "") + "</button>";
   });
+  var tm = timerMio();
+  if (tm) {
+    h = '<button class="timerchip" data-tstop="1"><span class="pulse"></span><span class="tc"><b>' + esc(nameOf(D.com, tm.commessa_id, "titolo")) + '</b><span id="timerlbl">' + durata(tm.iniziato) + "</span></span><span class=\"stopi\">■</span></button>" + h;
+  }
   el("#nav").innerHTML = h;
+  clearInterval(TICK);
+  if (tm) TICK = setInterval(function () {
+    var t2 = timerMio(); if (!t2) { clearInterval(TICK); return; }
+    Array.prototype.forEach.call(document.querySelectorAll("#timerlbl"), function (n) { n.textContent = durata(t2.iniziato); });
+  }, 15000);
   el("#mename").textContent = me.nome;
   el("#meemail").innerHTML = esc(me.email) + '<br><span class="badge" style="margin-top:6px">' + esc(RUOLO_ET[me.ruolo] || "—") + "</span>";
 }
@@ -504,7 +560,7 @@ function vCommessa() {
   var c = calc(k), ore = oreOf(k.id), tk = taskOf(k.id), mv = movOf(k.id), fs = fasiOf(k.id), mt = matOf(k.id), pg = pagOf(k.id), ap = apprOf(k.id);
   var oreT = sum(ore, function (o) { return o.ore; }), av = avanzamento(k.id);
   var incassato = sum(pg.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; });
-  var t = tab || "fasi";
+  var t = tab || "note";
 
   var b = budget(k), sal = salute(k), vr = variOf(k.id);
 
@@ -512,6 +568,9 @@ function vCommessa() {
     '<button class="btn sm ghost" data-go="commesse">← Commesse</button>' +
     '<button class="btn sm ghost" data-edit="com:' + k.id + '">Modifica</button>' +
     '<button class="btn sm ghost" data-preventivo="' + k.id + '">Preventivo</button>' +
+    (isPR() ? "" : (timerMio() && timerMio().commessa_id === k.id
+      ? '<button class="btn sm stop" data-tstop="1">■ Ferma <span id="timerlbl">' + durata(timerMio().iniziato) + "</span></button>"
+      : '<button class="btn sm ghost" data-tstart="' + k.id + '">▶ Avvia timer</button>')) +
     '<button class="btn sm" data-portale="' + k.id + '">Anteprima cliente</button></div></div>';
 
   h += '<div class="grid g4">' +
@@ -538,8 +597,26 @@ function vCommessa() {
   h += '<div class="grid g32" style="margin-top:18px"><div>';
   var TABS = [["fasi", "Fasi (" + fs.length + ")"], ["servizi", "Servizi (" + righeOf(k.id).length + ")"], ["attivita", "Attività (" + tk.filter(function (z) { return z.stato !== "Fatto"; }).length + ")"], ["materiali", "Materiali (" + mt.length + ")"], ["pagamenti", "Pagamenti (" + pg.length + ")"], ["approvazioni", "Approvazioni (" + ap.filter(function (a) { return a.stato === "In attesa"; }).length + ")"], ["varianti", "Varianti (" + vr.length + ")"], ["log", "Diario"]];
   if (!isPR()) TABS.splice(3, 0, ["ore", "Ore (" + num(oreT, 1) + ")"]);
+  TABS.unshift(["note", "Note"], ["discussione", "Discussione (" + D.comm.filter(function (x) { return x.commessa_id === k.id; }).length + ")"]);
   h += '<div class="card"><div class="tabs">' + TABS.map(function (x) { return '<button data-tab="' + x[0] + '" class="' + (t === x[0] ? "on" : "") + '">' + x[1] + "</button>"; }).join("") + "</div>";
 
+  if (t === "note") {
+    h += '<div class="cardhead"><h2>Note della commessa</h2><div style="display:flex;gap:8px;align-items:center"><span class="faint" id="notestat"></span><button class="btn sm ghost" data-notedit="' + (NOTEDIT ? "0" : "1") + '">' + (NOTEDIT ? "Anteprima" : "Scrivi") + "</button></div></div>";
+    if (NOTEDIT) {
+      h += '<textarea id="notedoc" class="doc" placeholder="# Titolo&#10;Scrivi qui il brief, gli appunti, le decisioni.&#10;- elenco&#10;- [ ] cosa da fare">' + esc(k.note_doc || "") + "</textarea>" +
+        '<p class="faint" style="margin-top:10px"># titolo · - elenco · - [ ] da fare · **grassetto** · i link diventano cliccabili. Si salva da solo.</p>';
+    } else {
+      h += (k.note_doc && k.note_doc.trim()) ? md(k.note_doc) : vuoto("Ancora nessuna nota: qui dentro tieni brief, decisioni e cose da ricordare.", '<button class="lnk" data-notedit="1">Inizia a scrivere</button>');
+    }
+  }
+  if (t === "discussione") {
+    var cm = D.comm.filter(function (x) { return x.commessa_id === k.id; }).sort(function (a, b) { return a.created_at < b.created_at ? -1 : 1; });
+    h += '<div class="cardhead"><h2>Discussione</h2><span class="faint">visibile solo a chi lavora sulla commessa</span></div>';
+    h += cm.length ? '<div class="chat">' + cm.map(function (c) {
+      return '<div class="msg"><div>' + avatar(c.pro_id, 32) + '</div><div class="mbody"><div class="mhead"><b>' + esc(nameOf(D.pros, c.pro_id)) + '</b><span class="faint">' + dt(c.created_at) + "</span>" + (c.pro_id === me.pro_id ? ' <button class="lnk" data-del="comm:' + c.id + '">elimina</button>' : "") + "</div>" + md(c.testo) + "</div></div>";
+    }).join("") + "</div>" : vuoto("Nessun messaggio. Scrivi il primo qui sotto.");
+    h += '<form data-chat="' + k.id + '" class="chatbox"><textarea name="testo" placeholder="Scrivi un messaggio al team…" required></textarea><button class="btn sm" type="submit">Invia</button></form>';
+  }
   if (t === "fasi") {
     h += '<div class="cardhead"><h2>Fasi del lavoro</h2><button class="btn sm ghost" data-new="fasi" data-ctx="' + k.id + '">+ Nuova fase</button></div>';
     h += fs.length ? '<table><thead><tr><th>Fase</th><th>Stato</th><th>Periodo</th><th style="width:150px">Avanzamento</th><th>Cliente</th><th></th></tr></thead><tbody>' + fs.map(function (f) {
@@ -555,14 +632,20 @@ function vCommessa() {
         return "<tr><td>" + esc(s.nome) + '<div class="faint">' + esc(s.cat || "") + "</div></td><td>" + esc(nameOf(D.pros, r.assegnato_id || s.pro_id)) + '</td><td class="num">' + (r.qty || 1) + '</td><td class="num">' + num(r.ore_stimate, 0) + " / " + num(oreR, 1) + "</td>" + (vediCosti() ? '<td class="num">' + eur((s.costo || 0) * (r.qty || 1)) + "</td>" : "") + '<td class="num">' + eur((s.prezzo || 0) * (r.qty || 1)) + '</td><td><span class="badge">' + esc(r.stato || "Da iniziare") + '</span></td><td class="num"><button class="lnk" data-riga-edit="' + r.id + '">Modifica</button></td></tr>';
       }).join("") + "</tbody></table>" : vuoto("Nessun servizio.", '<button class="lnk" data-riga="' + k.id + '">Aggiungi il primo</button>');
   }
-  if (t === "attivita") h += '<div class="cardhead"><h2>Attività</h2><button class="btn sm ghost" data-new="task" data-ctx="' + k.id + '">+ Nuova attività</button></div>' + kanban(tk);
+  if (t === "attivita") {
+    h += '<div class="cardhead"><h2>Attività</h2><button class="btn sm ghost" data-new="task" data-ctx="' + k.id + '">Apri in dettaglio</button></div>';
+    var radici = tk.filter(function (x) { return !x.padre_id; });
+    h += '<div class="checklist">' + radici.map(function (x) { return riga(x, tk); }).join("") +
+      '<form class="qadd" data-qadd="' + k.id + '"><button class="ck" type="button" disabled></button><input name="titolo" placeholder="Aggiungi un\'attività e premi invio" autocomplete="off"></form></div>';
+  }
   if (t === "ore") h += '<div class="cardhead"><h2>Ore registrate</h2><button class="btn sm ghost" data-new="ore" data-ctx="' + k.id + '">+ Registra ore</button></div>' + tblOre(ore);
   if (t === "materiali") {
     h += '<div class="cardhead"><h2>Materiali della commessa</h2><button class="btn sm ghost" data-new="mat" data-ctx="' + k.id + '">+ Aggiungi materiale</button></div>';
-    h += '<p class="faint" style="margin-bottom:12px">Tutto quello che serve per lavorare: brief, cartelle, bozze, consegne. Spunta "visibile al cliente" per condividerlo nel suo portale.</p>';
+    h += '<div class="drop" id="drop" data-kid="' + k.id + '"><b>Trascina qui i file</b><span class="faint">oppure <label class="lnk">scegli dal computer<input type="file" id="fileinp" multiple style="display:none"></label> · o aggiungi un link con il pulsante qui sopra</span></div>';
     h += mt.length ? '<table><thead><tr><th>Materiale</th><th>Tipo</th><th>Fase</th><th>Visibilità</th><th>Data</th><th></th></tr></thead><tbody>' + mt.slice().sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; }).map(function (m) {
-      return "<tr><td>" + (m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome)) + (m.note ? '<div class="faint">' + esc(m.note) + "</div>" : "") + '</td><td><span class="badge">' + esc(m.tipo || "—") + "</span></td><td>" + esc(m.fase_id ? nameOf(D.fasi, m.fase_id) : "—") + "</td><td>" + (m.visibile_cliente ? '<span class="badge b-blue">cliente</span>' : '<span class="faint">solo studio</span>') + '</td><td class="faint">' + dshort(m.created_at) + '</td><td class="num"><button class="lnk" data-edit="mat:' + m.id + '">Modifica</button></td></tr>';
-    }).join("") + "</tbody></table>" : vuoto("Nessun materiale.", '<button class="lnk" data-new="mat" data-ctx="' + k.id + '">Aggiungi il primo</button>');
+      var nome = m.path ? '<button class="lnk" data-file="' + m.id + '">' + esc(m.nome) + "</button>" + (m.dim ? ' <span class="faint">' + (m.dim > 1048576 ? (m.dim / 1048576).toFixed(1) + " MB" : Math.round(m.dim / 1024) + " KB") + "</span>" : "") : m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome);
+      return "<tr><td>" + nome + (m.note ? '<div class="faint">' + esc(m.note) + "</div>" : "") + '</td><td><span class="badge">' + esc(m.tipo || "—") + "</span></td><td>" + esc(m.fase_id ? nameOf(D.fasi, m.fase_id) : "—") + '</td><td><button class="lnk" data-vis="' + m.id + '">' + (m.visibile_cliente ? '<span class="badge b-blue">cliente</span>' : '<span class="badge">solo studio</span>') + '</button></td><td class="faint">' + dshort(m.created_at) + '</td><td class="num"><button class="lnk" data-edit="mat:' + m.id + '">Modifica</button></td></tr>';
+    }).join("") + "</tbody></table>" : "";
   }
   if (t === "pagamenti") {
     h += '<div class="cardhead"><h2>Scadenzario pagamenti</h2><button class="btn sm ghost" data-new="pag" data-ctx="' + k.id + '">+ Nuova scadenza</button></div>';
@@ -630,6 +713,19 @@ function vCommessa() {
   return h + "</div></div></div>";
 }
 /* ---------------- attività ---------------- */
+function riga(x, tutte, liv) {
+  var figli = tutte.filter(function (y) { return y.padre_id === x.id; });
+  var fatto = x.stato === "Fatto";
+  var late = x.scadenza && x.scadenza < today() && !fatto;
+  var h = '<div class="cri" style="padding-left:' + ((liv || 0) * 26) + 'px">' +
+    '<button class="ck' + (fatto ? " on" : "") + '" data-tck="' + x.id + '"></button>' +
+    '<span class="ctxt' + (fatto ? " done" : "") + '" data-open-task="' + x.id + '">' + esc(x.titolo) + "</span>" +
+    '<span class="cmeta">' + (x.scadenza ? '<span class="badge ' + (late ? "b-red" : "") + '">' + dshort(x.scadenza) + "</span>" : "") +
+    (x.assegnato_id ? avatar(x.assegnato_id, 22) : "") +
+    '<button class="lnk mini" data-sub="' + x.id + '">+ sotto</button></span></div>';
+  h += figli.map(function (f) { return riga(f, tutte, (liv || 0) + 1); }).join("");
+  return h;
+}
 function kanban(list) {
   var h = '<div class="kanban">';
   TASK_STATI.forEach(function (s) {
@@ -680,6 +776,36 @@ function vOre() {
     kpi(num(sum(fatt, function (o) { return o.ore; }), 1) + " h", "Fatturabili", totMese ? Math.round(sum(fatt, function (o) { return o.ore; }) / totMese * 100) + "% del totale" : "—") +
     kpi(eur(sum(fatt, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); })), "Valore del mese", "alle tariffe orarie") +
     kpi(num(sum(list, function (o) { return o.ore; }), 1) + " h", "Totale storico", list.length + " registrazioni") + "</div>";
+  var lun = lunedi(WEEK), gg = [], nomi = [];
+  for (var gi = 0; gi < 7; gi++) {
+    var dd = new Date(lun.getTime() + gi * 86400000);
+    gg.push(iso(dd));
+    nomi.push(dd.toLocaleDateString("it-IT", { weekday: "short" }).replace(".", "") + " " + dd.getDate());
+  }
+  var mieOre = D.ore.filter(function (o) { return o.pro_id === me.pro_id; });
+  var righeTs = D.com.filter(function (k) {
+    return ["Preventivo", "Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1 || mieOre.some(function (o) { return o.commessa_id === k.id && gg.indexOf(o.data) > -1; });
+  });
+  function cella(kid, g) { return sum(mieOre.filter(function (o) { return o.commessa_id === kid && o.data === g; }), function (o) { return o.ore; }); }
+  var titSett = lun.toLocaleDateString("it-IT", { day: "numeric", month: "short" }) + " → " + new Date(lun.getTime() + 6 * 86400000).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+
+  h += '<div class="card" style="margin-top:18px"><div class="cardhead"><h2>La mia settimana</h2><div class="wknav"><button class="btn sm ghost" data-wk="-1">‹</button><span class="faint">' + titSett + '</span><button class="btn sm ghost" data-wk="1">›</button>' + (WEEK ? '<button class="btn sm ghost" data-wk="0">Oggi</button>' : "") + "</div></div>";
+  h += '<p class="faint" style="margin-bottom:12px">Scrivi le ore direttamente nelle caselle: si salvano da sole.</p>';
+  h += '<div class="tswrap"><table class="ts"><thead><tr><th>Commessa</th>' + nomi.map(function (n, i) { return '<th class="num' + (gg[i] === today() ? " oggi" : "") + '">' + n + "</th>"; }).join("") + '<th class="num">Tot</th></tr></thead><tbody>';
+  righeTs.forEach(function (k) {
+    var tot = 0;
+    h += "<tr><td>" + esc(k.titolo) + '<div class="faint">' + esc(nameOf(D.cli, k.cliente_id)) + "</div></td>";
+    gg.forEach(function (g) {
+      var v = cella(k.id, g); tot += v;
+      h += '<td class="num"><input class="tsc' + (g === today() ? " oggi" : "") + '" inputmode="decimal" data-ts="' + k.id + "|" + g + '" value="' + (v ? num(v, 1) : "") + '" placeholder="·"></td>';
+    });
+    h += '<td class="num tsr" data-tsrow="' + k.id + '">' + (tot ? num(tot, 1) : "—") + "</td></tr>";
+  });
+  h += '</tbody><tfoot><tr><td><b>Totale</b></td>' + gg.map(function (g) {
+    var t2 = sum(mieOre.filter(function (o) { return o.data === g; }), function (o) { return o.ore; });
+    return '<td class="num" data-tscol="' + g + '"><b>' + (t2 ? num(t2, 1) : "—") + "</b></td>";
+  }).join("") + '<td class="num" id="tstot"><b>' + num(sum(mieOre.filter(function (o) { return gg.indexOf(o.data) > -1; }), function (o) { return o.ore; }), 1) + "</b></td></tr></tfoot></table></div></div>";
+
   h += '<div class="grid g32" style="margin-top:18px"><div class="card"><div class="cardhead"><h2>Ritmo delle ultime 12 settimane</h2><span class="faint">ogni quadratino è un giorno</span></div>' + heatOre(list) + "</div>";
   h += '<div class="card"><div class="cardhead"><h2>Andamento</h2><span class="faint">8 settimane</span></div>' + spark(settimane(list, 8)) + "</div></div>";
 
@@ -1412,7 +1538,112 @@ document.addEventListener("click", async function (e) {
     await reload(["vari", "ev"]); toast("Variante approvata: budget aggiornato"); render(); return;
   }
   if (d.duplica) { await duplica(d.duplica); return; }
+  if (d.notedit) { NOTEDIT = d.notedit === "1"; render(); return; }
+  if (d.ck !== undefined) {
+    var kk = by(D.com, current); if (!kk) return;
+    var nuovo = toggleCk(kk.note_doc, +d.ck);
+    kk.note_doc = nuovo;
+    var rc = await sb.from("commesse").update({ note_doc: nuovo }).eq("id", kk.id);
+    if (rc.error) { toast(rc.error.message, true); return; }
+    render(); return;
+  }
+  if (d.tck) {
+    var tt = by(D.task, d.tck); if (!tt) return;
+    var st2 = tt.stato === "Fatto" ? "Da fare" : "Fatto";
+    var rt = await sb.from("task").update({ stato: st2 }).eq("id", tt.id);
+    if (rt.error) { toast(rt.error.message, true); return; }
+    if (st2 === "Fatto" && tt.commessa_id) await logEv(tt.commessa_id, "Attività completata: " + tt.titolo);
+    await reload(["task", "ev"]); render(); return;
+  }
+  if (d.sub) {
+    var padre = by(D.task, d.sub); if (!padre) return;
+    var tit = prompt("Sotto-attività di “" + padre.titolo + "”");
+    if (!tit) return;
+    var rs2 = await sb.from("task").insert({ titolo: tit, padre_id: padre.id, commessa_id: padre.commessa_id, assegnato_id: me.pro_id, stato: "Da fare", priorita: "Media" });
+    if (rs2.error) { toast(rs2.error.message, true); return; }
+    await reload(["task"]); render(); return;
+  }
+  if (d.file) {
+    var mf = by(D.mat, d.file); if (!mf || !mf.path) return;
+    var sg = await sb.storage.from("materiali").createSignedUrl(mf.path, 120);
+    if (sg.error) { toast(sg.error.message, true); return; }
+    window.open(sg.data.signedUrl, "_blank"); return;
+  }
+  if (d.vis) {
+    var mv2 = by(D.mat, d.vis); if (!mv2) return;
+    var rv = await sb.from("materiali").update({ visibile_cliente: !mv2.visibile_cliente }).eq("id", mv2.id);
+    if (rv.error) { toast(rv.error.message, true); return; }
+    await reload(["mat"]); toast(!mv2.visibile_cliente ? "Ora è visibile al cliente" : "Ora è solo interno"); render(); return;
+  }
+  if (d.wk !== undefined) { WEEK = d.wk === "0" ? 0 : WEEK + (+d.wk); render(); return; }
+  if (d.tstart) {
+    if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
+    var r5 = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: d.tstart, iniziato: new Date().toISOString() });
+    if (r5.error) { toast(r5.error.message, true); return; }
+    await reload(["tmr"]); toast("Timer avviato"); render(); return;
+  }
+  if (d.tstop) { await stopTimer(); return; }
 });
+
+async function stopTimer() {
+  var tm = timerMio(); if (!tm) return;
+  var ore = Math.round((Date.now() - new Date(tm.iniziato).getTime()) / 360000) / 10;
+  await sb.from("timer").delete().eq("pro_id", me.pro_id);
+  if (ore >= 0.1) {
+    var p = by(D.pros, me.pro_id);
+    var r = await sb.from("ore").insert({ pro_id: me.pro_id, commessa_id: tm.commessa_id, data: today(), ore: ore, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: "Sessione di lavoro" });
+    if (r.error) { toast(r.error.message, true); }
+    else toast("Registrate " + num(ore, 1) + " h");
+  } else toast("Sessione troppo breve, non registrata");
+  await reload(["tmr", "ore"]); render();
+}
+async function salvaTs(kid, data, val) {
+  var righe = D.ore.filter(function (o) { return o.pro_id === me.pro_id && o.commessa_id === kid && o.data === data; });
+  var v = Math.round((parseFloat(String(val).replace(",", ".")) || 0) * 10) / 10;
+  if (v <= 0) { if (righe.length) await sb.from("ore").delete().in("id", righe.map(function (x) { return x.id; })); }
+  else if (righe.length) {
+    await sb.from("ore").update({ ore: v }).eq("id", righe[0].id);
+    if (righe.length > 1) await sb.from("ore").delete().in("id", righe.slice(1).map(function (x) { return x.id; }));
+  } else {
+    var p = by(D.pros, me.pro_id);
+    var r = await sb.from("ore").insert({ pro_id: me.pro_id, commessa_id: kid, data: data, ore: v, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: "Timesheet" });
+    if (r.error) { toast(r.error.message, true); return; }
+  }
+  await reload(["ore"]);
+  totaliTs();
+}
+function totaliTs() {
+  var mie = D.ore.filter(function (o) { return o.pro_id === me.pro_id; });
+  var tot = 0;
+  Array.prototype.forEach.call(document.querySelectorAll("[data-tsrow]"), function (n) {
+    var kid = n.dataset.tsrow, t = 0;
+    Array.prototype.forEach.call(document.querySelectorAll('[data-ts^="' + kid + '|"]'), function (i) {
+      t += parseFloat(String(i.value).replace(",", ".")) || 0;
+    });
+    n.textContent = t ? num(t, 1) : "—";
+  });
+  Array.prototype.forEach.call(document.querySelectorAll("[data-tscol]"), function (n) {
+    var g = n.dataset.tscol;
+    var t = sum(mie.filter(function (o) { return o.data === g; }), function (o) { return o.ore; });
+    n.innerHTML = "<b>" + (t ? num(t, 1) : "—") + "</b>";
+    tot += t;
+  });
+  var g = el("#tstot"); if (g) g.innerHTML = "<b>" + num(tot, 1) + "</b>";
+}
+async function uploadFile(files, kid) {
+  toast("Carico " + files.length + " file…");
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i];
+    var path = kid + "/" + Date.now() + "-" + f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    var up = await sb.storage.from("materiali").upload(path, f);
+    if (up.error) { toast(up.error.message, true); continue; }
+    var est = (f.name.split(".").pop() || "").toLowerCase();
+    var tipo = ["jpg", "jpeg", "png", "gif", "webp", "heic"].indexOf(est) > -1 ? "Immagine" : ["pdf"].indexOf(est) > -1 ? "Documento" : ["mp4", "mov"].indexOf(est) > -1 ? "Video" : "File";
+    await sb.from("materiali").insert({ commessa_id: kid, nome: f.name, path: path, dim: f.size, tipo: tipo, visibile_cliente: false, caricato_da: me.pro_id });
+  }
+  await logEv(kid, "Caricati file nei materiali");
+  await reload(["mat", "ev"]); toast("File caricati"); render();
+}
 
 document.addEventListener("submit", async function (e) {
   var f = e.target;
@@ -1425,6 +1656,25 @@ document.addEventListener("submit", async function (e) {
     var r = rid ? await sb.from("righe").update(obj).eq("id", rid) : await sb.from("righe").insert(obj);
     if (r.error) { toast(r.error.message, true); return; }
     await reload(["righe"]); closeModal(); toast("Servizio salvato"); render(); return;
+  }
+  if (f.dataset.qadd) {
+    e.preventDefault();
+    var tit = f.titolo.value.trim(); if (!tit) return;
+    var rq = await sb.from("task").insert({ titolo: tit, commessa_id: f.dataset.qadd, assegnato_id: me.pro_id, stato: "Da fare", priorita: "Media" });
+    if (rq.error) { toast(rq.error.message, true); return; }
+    f.titolo.value = "";
+    await reload(["task"]); render();
+    var inp = document.querySelector(".qadd input"); if (inp) inp.focus();
+    return;
+  }
+  if (f.dataset.chat) {
+    e.preventDefault();
+    var tx = f.testo.value.trim(); if (!tx) return;
+    var rch = await sb.from("commenti").insert({ commessa_id: f.dataset.chat, pro_id: me.pro_id, testo: tx });
+    if (rch.error) { toast(rch.error.message, true); return; }
+    f.testo.value = "";
+    await reload(["comm"]); render();
+    return;
   }
   if (f.dataset.form === "settings") {
     e.preventDefault();
@@ -1449,6 +1699,44 @@ document.addEventListener("change", function (e) {
 document.addEventListener("input", function (e) {
   if (e.target.id === "search") { search = e.target.value; render(); }
   if (e.target.id === "palq") renderPal(e.target.value);
+  if (e.target.id === "notedoc") {
+    var val = e.target.value, kid = current, st = el("#notestat");
+    if (st) st.textContent = "scrivo…";
+    clearTimeout(NOTET);
+    NOTET = setTimeout(async function () {
+      var r = await sb.from("commesse").update({ note_doc: val }).eq("id", kid);
+      var k2 = by(D.com, kid); if (k2) k2.note_doc = val;
+      var s2 = el("#notestat"); if (s2) s2.textContent = r.error ? "errore" : "salvato";
+      setTimeout(function () { var s3 = el("#notestat"); if (s3) s3.textContent = ""; }, 2200);
+    }, 800);
+  }
+});
+
+document.addEventListener("change", async function (e) {
+  if (e.target.classList && e.target.classList.contains("tsc")) {
+    var p = e.target.dataset.ts.split("|");
+    await salvaTs(p[0], p[1], e.target.value);
+    return;
+  }
+  if (e.target.id === "fileinp" && e.target.files && e.target.files.length) {
+    var dz = el("#drop");
+    await uploadFile(e.target.files, dz ? dz.dataset.kid : current);
+  }
+});
+
+document.addEventListener("dragover", function (e) {
+  var z = e.target.closest && e.target.closest("#drop");
+  if (z) { e.preventDefault(); z.classList.add("over"); }
+});
+document.addEventListener("dragleave", function (e) {
+  var z = e.target.closest && e.target.closest("#drop");
+  if (z) z.classList.remove("over");
+});
+document.addEventListener("drop", async function (e) {
+  var z = e.target.closest && e.target.closest("#drop");
+  if (!z) return;
+  e.preventDefault(); z.classList.remove("over");
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) await uploadFile(e.dataTransfer.files, z.dataset.kid);
 });
 
 document.addEventListener("keydown", function (e) {
