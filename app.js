@@ -11,6 +11,8 @@ var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commes
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
+var EXP = {}, VISTA = "tabella", FSTATO = "", FSAL = "", DRAG = null;
+var PAL = [], PALR = [], PALI = 0;
 
 /* ---------------- helpers ---------------- */
 function el(s) { return document.querySelector(s); }
@@ -120,6 +122,79 @@ function gantt(k) {
 async function logEv(kid, testo) {
   if (!kid) return;
   await sb.from("eventi").insert({ commessa_id: kid, pro_id: me.pro_id, testo: testo });
+}
+
+/* ---------------- atomi visivi ---------------- */
+var AVC = ["#d2552e", "#3a6ea8", "#3f7d55", "#a8761b", "#7d5ba6", "#b8455a", "#2f8f8f"];
+function avatar(id, size) {
+  var p = by(D.pros, id), n = p ? p.nome : "—", s = size || 26;
+  var ini = n.split(" ").filter(Boolean).slice(0, 2).map(function (x) { return x[0]; }).join("").toUpperCase();
+  var hh = 0; for (var i = 0; i < n.length; i++) hh = (hh * 31 + n.charCodeAt(i)) % 9973;
+  return '<span class="av" title="' + esc(n) + '" style="background:' + AVC[hh % AVC.length] + ";width:" + s + "px;height:" + s + "px;font-size:" + Math.round(s * 0.38) + 'px">' + esc(ini) + "</span>";
+}
+function avatars(ids, size) {
+  if (!ids.length) return '<span class="faint">—</span>';
+  return '<span class="avs">' + ids.slice(0, 4).map(function (id) { return avatar(id, size || 24); }).join("") +
+    (ids.length > 4 ? '<span class="av more" style="width:' + (size || 24) + "px;height:" + (size || 24) + 'px">+' + (ids.length - 4) + "</span>" : "") + "</span>";
+}
+function ring(p, size) {
+  var s = size || 78, r = (s - 9) / 2, C = 2 * Math.PI * r, v = Math.max(0, Math.min(100, +p || 0));
+  var col = v >= 100 ? "var(--green)" : v >= 50 ? "var(--terra)" : v > 0 ? "var(--amber)" : "var(--sand)";
+  return '<svg class="ring" width="' + s + '" height="' + s + '" viewBox="0 0 ' + s + " " + s + '">' +
+    '<circle cx="' + s / 2 + '" cy="' + s / 2 + '" r="' + r + '" fill="none" stroke="var(--sand)" stroke-width="7"/>' +
+    '<circle cx="' + s / 2 + '" cy="' + s / 2 + '" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="7" stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - v / 100)).toFixed(1) + '" transform="rotate(-90 ' + s / 2 + " " + s / 2 + ')"/>' +
+    '<text x="50%" y="50%" text-anchor="middle" dy=".35em" class="ringtxt" style="font-size:' + Math.round(s * 0.26) + 'px">' + Math.round(v) + "%</text></svg>";
+}
+var SPK = 0;
+function spark(vals) {
+  var w = 240, h = 52, id = "sg" + (++SPK);
+  var mx = Math.max.apply(null, vals.concat([1]));
+  var step = vals.length > 1 ? w / (vals.length - 1) : w;
+  var pts = vals.map(function (v, i) { return (i * step).toFixed(1) + "," + (h - (v / mx) * (h - 8) - 4).toFixed(1); });
+  return '<svg class="spark" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none"><defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--terra)" stop-opacity=".25"/><stop offset="100%" stop-color="var(--terra)" stop-opacity="0"/></linearGradient></defs>' +
+    '<polygon points="0,' + h + " " + pts.join(" ") + " " + w + "," + h + '" fill="url(#' + id + ')"/>' +
+    '<polyline points="' + pts.join(" ") + '" fill="none" stroke="var(--terra)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+function settimane(list, n) {
+  var out = [], oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+  for (var w = n - 1; w >= 0; w--) {
+    var b = new Date(oggi.getTime() - w * 7 * 86400000), a = new Date(b.getTime() - 6 * 86400000);
+    var ai = iso(a), bi = iso(b);
+    out.push(sum(list.filter(function (o) { return o.data >= ai && o.data <= bi; }), function (o) { return o.ore; }));
+  }
+  return out;
+}
+function heatOre(list) {
+  var map = {};
+  list.forEach(function (o) { map[o.data] = (map[o.data] || 0) + (+o.ore || 0); });
+  var oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+  var start = new Date(oggi.getTime() - 83 * 86400000);
+  start = new Date(start.getTime() - ((start.getDay() + 6) % 7) * 86400000);
+  var cols = [], mesi = [];
+  for (var w = 0; w < 12; w++) {
+    var cells = [];
+    for (var i = 0; i < 7; i++) {
+      var d = new Date(start.getTime() + (w * 7 + i) * 86400000), k = iso(d), v = map[k] || 0;
+      var l = v === 0 ? 0 : v < 2 ? 1 : v < 4 ? 2 : v < 7 ? 3 : 4;
+      cells.push('<i class="hc l' + l + '" title="' + dt(k) + " · " + num(v, 1) + ' h"></i>');
+    }
+    var m = new Date(start.getTime() + w * 7 * 86400000).toLocaleDateString("it-IT", { month: "short" });
+    mesi.push('<span>' + (w === 0 || m !== mesi._l ? m : "") + "</span>"); mesi._l = m;
+    cols.push('<div class="hcol">' + cells.join("") + "</div>");
+  }
+  return '<div class="heat">' + cols.join("") + '</div><div class="heatleg"><span class="faint">meno</span><i class="hc l0"></i><i class="hc l1"></i><i class="hc l2"></i><i class="hc l3"></i><i class="hc l4"></i><span class="faint">più</span></div>';
+}
+function prossimo(k) {
+  var out = [];
+  var ap = apprOf(k.id).filter(function (a) { return a.stato === "In attesa"; })[0];
+  if (ap) out.push({ i: "attesa", t: "In attesa: " + ap.tipo, d: "richiesta il " + dt(ap.richiesta_il) });
+  var f = fasiOf(k.id).filter(function (x) { return x.stato !== "Completata"; })[0];
+  if (f) out.push({ i: "fase", t: "Fase in corso: " + f.nome, d: (f.avanzamento || 0) + "% · entro il " + dt(f.fine) });
+  var p = pagOf(k.id).filter(function (x) { return x.stato !== "Incassato"; }).sort(function (a, b) { return (a.scadenza || "") < (b.scadenza || "") ? -1 : 1; })[0];
+  if (p) out.push({ i: "pag", t: p.nome + " · " + eur(p.importo), d: "scade il " + dt(p.scadenza) });
+  var t = taskOf(k.id).filter(function (x) { return x.stato !== "Fatto" && x.scadenza; }).sort(function (a, b) { return a.scadenza < b.scadenza ? -1 : 1; })[0];
+  if (t) out.push({ i: "task", t: t.titolo, d: "entro il " + dt(t.scadenza) });
+  return out;
 }
 
 function calc(k) {
@@ -248,6 +323,28 @@ function row2(a, b) { return '<tr><td class="muted" style="width:44%">' + a + "<
 function vuoto(txt, azione) { return '<div class="empty">' + esc(txt) + (azione ? " " + azione : "") + "</div>"; }
 
 /* ---------------- dashboard interna ---------------- */
+function focusItems(com, tk) {
+  var f = [];
+  D.appr.filter(function (a) { return a.stato === "In attesa" && can(a.commessa_id); }).forEach(function (a) {
+    var g = days(today(), a.richiesta_il);
+    f.push({ p: g > 7 ? 1 : 3, c: g > 7 ? "b-red" : "b-amber", t: "Il cliente non ha ancora risposto su “" + a.tipo + "”", s: nameOf(D.com, a.commessa_id, "titolo") + " · da " + g + " giorni", k: a.commessa_id, tab: "approvazioni" });
+  });
+  D.pag.filter(function (p) { return p.stato !== "Incassato" && p.scadenza && p.scadenza < today() && can(p.commessa_id); }).forEach(function (p) {
+    f.push({ p: 0, c: "b-red", t: "Pagamento scaduto: " + eur(p.importo), s: nameOf(D.com, p.commessa_id, "titolo") + " · " + p.nome + " · scaduto il " + dt(p.scadenza), k: p.commessa_id, tab: "pagamenti" });
+  });
+  tk.filter(function (t) { return t.stato !== "Fatto" && t.scadenza && t.scadenza <= today(); }).forEach(function (t) {
+    f.push({ p: t.scadenza < today() ? 1 : 2, c: t.scadenza < today() ? "b-red" : "b-amber", t: t.titolo, s: (t.commessa_id ? nameOf(D.com, t.commessa_id, "titolo") + " · " : "") + (t.scadenza < today() ? "scaduta il " : "scade ") + dt(t.scadenza), task: t.id });
+  });
+  com.filter(function (k) { return salute(k).c === "b-red"; }).forEach(function (k) {
+    f.push({ p: 2, c: "b-red", t: "Commessa a rischio: " + k.titolo, s: salute(k).d, k: k.id, tab: "fasi" });
+  });
+  var d = new Date(), dow = d.getDay();
+  if (dow > 0 && dow < 6 && !fore().some(function (o) { return o.data === today(); })) {
+    f.push({ p: 4, c: "", t: "Non hai ancora registrato le ore di oggi", s: "bastano trenta secondi", act: "ore" });
+  }
+  return f.sort(function (a, b) { return a.p - b.p; }).slice(0, 5);
+}
+function can(kid) { return !!by(D.com, kid); }
 function vDash() {
   var com = fcom(), cli = fcli(), ore = fore(), tk = ftask(), mov = fmov();
   var aperte = com.filter(function (k) { return ["Preventivo", "Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1; });
@@ -259,49 +356,49 @@ function vDash() {
   var pagAperti = D.pag.filter(function (p) { return p.stato === "Da incassare"; });
   var scaduti = pagAperti.filter(function (p) { return p.scadenza && p.scadenza < today(); });
 
-  var h = head("Ciao " + (me.nome || "").split(" ")[0], isPR() ? "Le tue segnalazioni e le commesse che segui" : "Quello che devi tenere d'occhio oggi",
-    '<button class="btn sm" data-new="com">+ Nuova commessa</button>' + (isPR() ? "" : '<button class="btn sm ghost" data-new="ore">+ Registra ore</button>'));
+  var attive = com.filter(function (k) { return ["Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1; });
+  var avgAv = attive.length ? Math.round(sum(attive, function (k) { return avanzamento(k.id) || 0; }) / attive.length) : 0;
+  var wk = settimane(ore, 8), foc = focusItems(com, tk);
+  var oggi = new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
 
-  if (isPR()) {
-    var prov = sum(com, function (k) { return calc(k).prov; });
-    var provOk = sum(com.filter(function (k) { return ["In corso", "Consegna", "Chiusa"].indexOf(k.stato) > -1; }), function (k) { return calc(k).prov; });
-    h += '<div class="grid g4">' +
-      kpi(String(com.length), "Le mie commesse", aperte.length + " in corso o da chiudere") +
-      kpi(eur(pipeline), "Valore seguito", "prezzo al cliente") +
-      kpi(eur(prov), "Provvigioni potenziali", "sul totale delle commesse") +
-      kpi(eur(provOk), "Provvigioni maturate", "su commesse partite") + "</div>";
-  } else {
-    var rischio = com.filter(function (k) { return salute(k).c === "b-red"; });
-    h += '<div class="grid g4">' +
-      kpi(eur(pipeline), "Pipeline aperta", aperte.length + " commesse attive") +
-      kpi(eur(sum(com, function (k) { return calc(k).mio; })), "Il mio compenso", "sulle righe assegnate a me") +
-      kpi(num(sum(oreMese, function (o) { return o.ore; }), 1) + " h", "Ore questo mese", ore.length + " registrazioni totali") +
-      kpi(String(rischio.length), "Commesse a rischio", tk.filter(function (t) { return t.stato !== "Fatto"; }).length + " attività aperte") + "</div>";
-  }
+  var h = '<div class="top"><h1>Ciao ' + esc((me.nome || "").split(" ")[0]) + '<span class="sub">' + esc(oggi.charAt(0).toUpperCase() + oggi.slice(1)) + '</span></h1><div class="tools">' +
+    '<button class="btn sm ghost" data-pal="1">⌘K  Cerca</button>' +
+    '<button class="btn sm" data-new="com">+ Nuova commessa</button>' + (isPR() ? "" : '<button class="btn sm ghost" data-new="ore">+ Registra ore</button>') +
+    perspSel() + "</div></div>";
 
-  h += '<div class="grid g32" style="margin-top:16px">';
-  h += '<div class="card"><div class="cardhead"><h2>Commesse in corso</h2><button class="btn sm ghost" data-go="commesse">Vedi tutte</button></div>';
-  h += com.length ? tblCom(com.slice().sort(function (a, b) { return STATI.indexOf(a.stato) - STATI.indexOf(b.stato); }).slice(0, 8)) : vuoto("Nessuna commessa ancora.", '<button class="lnk" data-new="com">Creane una</button>');
+  h += '<div class="grid g32">';
+  h += '<div class="card"><div class="cardhead"><h2>Da guardare adesso</h2>' + (foc.length ? '<span class="badge ' + (foc[0].c || "") + '">' + foc.length + " cose</span>" : '<span class="badge b-green">tutto in ordine</span>') + "</div>";
+  h += foc.length ? foc.map(function (f) {
+    return '<button class="frow" ' + (f.task ? 'data-open-task="' + f.task + '"' : f.act ? 'data-new="' + f.act + '"' : 'data-open-com="' + f.k + '"') + '><span class="fdot ' + (f.c || "b-blue") + '"></span><span class="ftxt"><b>' + esc(f.t) + '</b><span class="faint">' + esc(f.s) + "</span></span><span class=\"fgo\">›</span></button>";
+  }).join("") : '<div class="empty">Nessuna urgenza: puoi lavorare sereno.</div>';
+  h += "</div><div>";
+  h += '<div class="card ringcard">' + ring(avgAv, 104) + '<div><h2>Avanzamento medio</h2><p class="faint" style="margin-top:4px">' + attive.length + " commesse attive<br>" + (isPR() ? eur(sum(com, function (k) { return calc(k).prov; })) + " di provvigioni" : eur(pipeline) + " di pipeline") + "</p></div></div>";
+  h += '<div class="card"><div class="cardhead"><h2>Ore, ultime 8 settimane</h2><span class="faint">' + num(wk[wk.length - 1], 1) + " h questa settimana</span></div>" + spark(wk) + "</div>";
+  h += "</div></div>";
+
+  h += '<div class="grid g32" style="margin-top:18px">';
+  h += '<div class="card"><div class="cardhead"><h2>Le commesse su cui sei</h2><button class="btn sm ghost" data-go="commesse">Vedi tutte</button></div>';
+  h += com.length ? listCom(com.slice().sort(function (a, b) { return STATI.indexOf(a.stato) - STATI.indexOf(b.stato); }).slice(0, 6)) : vuoto("Nessuna commessa ancora.", '<button class="lnk" data-new="com">Creane una</button>');
   h += "</div><div>";
 
-  h += '<div class="card"><div class="cardhead"><h2>Da fare a breve</h2><button class="btn sm ghost" data-go="task">Attività</button></div>';
-  h += urgenti.length ? '<ul class="timeline">' + urgenti.slice(0, 6).map(function (t) {
-    return '<li><button class="lnk" data-open-task="' + t.id + '">' + esc(t.titolo) + '</button><div class="when">' + (t.commessa_id ? esc(nameOf(D.com, t.commessa_id, "titolo")) + " · " : "") + (t.scadenza < today() ? '<span class="badge b-red">scaduta</span> ' : "") + dt(t.scadenza) + "</div></li>";
-  }).join("") + "</ul>" : vuoto("Niente in scadenza. Bene così.");
-  h += "</div>";
-
-  h += '<div class="card"><div class="cardhead"><h2>In attesa del cliente</h2></div>';
-  h += attesa.length ? '<ul class="timeline">' + attesa.slice(0, 6).map(function (a) {
-    return '<li><button class="lnk" data-open-com="' + a.commessa_id + '">' + esc(nameOf(D.com, a.commessa_id, "titolo")) + '</button><div class="when">' + esc(a.tipo) + " · richiesta il " + dt(a.richiesta_il) + "</div></li>";
-  }).join("") + "</ul>" : vuoto("Nessuna approvazione in sospeso.");
-  h += "</div>";
+  var per = {}; STATI.forEach(function (s) { per[s] = com.filter(function (k) { return k.stato === s; }); });
+  var mxp = Math.max.apply(null, STATI.map(function (s) { return sum(per[s], function (k) { return calc(k).tot; }); }).concat([1]));
+  h += '<div class="card"><div class="cardhead"><h2>Pipeline</h2><span class="faint">' + eur(pipeline) + " aperti</span></div><div class=\"funnel\">";
+  STATI.forEach(function (s) {
+    if (!per[s].length) return;
+    var v = sum(per[s], function (k) { return calc(k).tot; });
+    h += '<div class="frow2"><span class="badge ' + (STATO_COL[s] || "") + '">' + s + '</span><span class="ftrack"><i style="width:' + Math.max(4, Math.round(v / mxp * 100)) + '%"></i></span><span class="fnum">' + eur(v) + "</span></div>";
+  });
+  h += "</div></div>";
 
   if (!isPR()) {
-    h += '<div class="card"><div class="cardhead"><h2>Incassi</h2><button class="btn sm ghost" data-go="fatture">Fatture</button></div><table><tbody>' +
-      row2("Da incassare", eur(sum(pagAperti, function (p) { return p.importo; }))) +
-      row2("Scaduto", '<span class="' + (scaduti.length ? "badge b-red" : "") + '">' + eur(sum(scaduti, function (p) { return p.importo; })) + "</span>") +
-      row2("Incassato", eur(sum(D.pag.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; }))) +
-      "</tbody></table></div>";
+    var inc = sum(D.pag.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; });
+    var da = sum(pagAperti, function (p) { return p.importo; });
+    var sc = sum(scaduti, function (p) { return p.importo; });
+    var tot = Math.max(1, inc + da);
+    h += '<div class="card"><div class="cardhead"><h2>Incassi</h2><button class="btn sm ghost" data-go="fatture">Fatture</button></div>' +
+      '<div class="stack"><i class="s1" style="width:' + Math.round(inc / tot * 100) + '%"></i><i class="s2" style="width:' + Math.round((da - sc) / tot * 100) + '%"></i><i class="s3" style="width:' + Math.round(sc / tot * 100) + '%"></i></div>' +
+      '<div class="legend"><span><i class="s1"></i>Incassato ' + eur(inc) + "</span><span><i class=\"s2\"></i>Da incassare " + eur(da - sc) + "</span>" + (sc ? '<span><i class="s3"></i>Scaduto ' + eur(sc) + "</span>" : "") + "</div></div>";
   }
   h += "</div></div>";
   if (STATS) {
@@ -316,33 +413,88 @@ function vDash() {
   return h;
 }
 
+function listCom(list) {
+  return list.map(function (k) {
+    var b = budget(k), sal = salute(k), av = avanzamento(k.id);
+    return '<button class="crow" data-open-com="' + k.id + '">' +
+      '<span class="cring">' + ring(av == null ? 0 : av, 44) + "</span>" +
+      '<span class="cmain"><b>' + esc(k.titolo) + '</b><span class="faint">' + esc(nameOf(D.cli, k.cliente_id)) + " · " + esc(k.stato) + (k.scadenza ? " · consegna " + dshort(k.scadenza) : "") + "</span></span>" +
+      '<span class="cav">' + avatars(proDi(k.id), 24) + "</span>" +
+      '<span class="cval"><b>' + (isPR() ? eur(calc(k).prov) : eur(b.ricavo)) + '</b><span class="badge ' + sal.c + '">' + sal.t + "</span></span></button>";
+  }).join("");
+}
+function boardCom(list) {
+  var h = '<div class="board">';
+  STATI.filter(function (s) { return s !== "Persa" || list.some(function (k) { return k.stato === s; }); }).forEach(function (s) {
+    var items = list.filter(function (k) { return k.stato === s; });
+    if (!items.length) return;
+    h += '<div class="bcol"><h3>' + s + "<span>" + items.length + "</span></h3>";
+    items.forEach(function (k) {
+      var b = budget(k), sal = salute(k), av = avanzamento(k.id) || 0;
+      h += '<div class="bcard" data-open-com="' + k.id + '"><div class="bt">' + esc(k.titolo) + "</div>" +
+        '<div class="faint">' + esc(nameOf(D.cli, k.cliente_id)) + "</div>" +
+        prog(av) +
+        '<div class="bmeta"><span>' + avatars(proDi(k.id), 22) + "</span><b>" + eur(b.ricavo) + "</b></div>" +
+        '<div class="bmeta"><span class="badge ' + sal.c + '">' + sal.t + "</span><span class=\"faint\">" + (k.scadenza ? dshort(k.scadenza) : "—") + "</span></div></div>";
+    });
+    h += "</div>";
+  });
+  return h + "</div>";
+}
 function tblCom(list) {
-  var h = '<table><thead><tr><th>Commessa</th><th>Cliente</th><th>Stato</th><th>Salute</th><th>Avanz.</th><th>Scadenza</th><th class="num">' + (isPR() ? "Provvigione" : "Valore") + "</th><th></th></tr></thead><tbody>";
+  var h = '<table class="rich"><thead><tr><th style="width:26px"></th><th>Commessa</th><th>Cliente</th><th>Team</th><th>Stato</th><th>Salute</th><th style="width:104px">Avanz.</th><th>Consegna</th><th class="num">' + (isPR() ? "Provvigione" : "Valore") + "</th><th></th></tr></thead><tbody>";
   list.forEach(function (k) {
-    var c = calc(k), av = avanzamento(k.id), sal = salute(k), b = budget(k);
-    h += '<tr><td><button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button>" + (condivisa(k) ? ' <span class="chip">condivisa</span>' : "") + "</td>" +
+    var c = calc(k), av = avanzamento(k.id), sal = salute(k), b = budget(k), ap = EXP[k.id];
+    h += '<tr class="' + (ap ? "expon" : "") + '"><td><button class="caret' + (ap ? " on" : "") + '" data-exp="' + k.id + '">›</button></td>' +
+      '<td><button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button>" + (condivisa(k) ? ' <span class="chip">condivisa</span>' : "") + "</td>" +
       "<td>" + esc(nameOf(D.cli, k.cliente_id)) + "</td>" +
+      "<td>" + avatars(proDi(k.id), 24) + "</td>" +
       '<td><span class="badge ' + (STATO_COL[k.stato] || "") + '">' + esc(k.stato) + "</span></td>" +
       '<td><span class="badge ' + sal.c + '">' + sal.t + "</span></td>" +
-      '<td style="min-width:90px">' + (av == null ? '<span class="faint">—</span>' : av + "%" + prog(av)) + "</td>" +
+      "<td>" + (av == null ? '<span class="faint">—</span>' : '<span class="faint">' + av + "%</span>" + prog(av)) + "</td>" +
       "<td>" + (k.scadenza ? (k.scadenza < today() && ["Chiusa", "Persa"].indexOf(k.stato) < 0 ? '<span class="badge b-red">' + dshort(k.scadenza) + "</span>" : dt(k.scadenza)) : "—") + "</td>" +
-      '<td class="num">' + (isPR() ? eur(c.prov) : eur(b.ricavo)) + "</td>" +
+      '<td class="num"><b>' + (isPR() ? eur(c.prov) : eur(b.ricavo)) + "</b></td>" +
       '<td class="num"><button class="lnk" data-duplica="' + k.id + '">Duplica</button></td></tr>';
+    if (ap) {
+      var px = prossimo(k);
+      h += '<tr class="expr"><td></td><td colspan="9"><div class="expgrid">' +
+        '<div><h3>Prossimi passi</h3>' + (px.length ? px.map(function (p) { return '<div class="pstep"><b>' + esc(p.t) + '</b><span class="faint">' + esc(p.d) + "</span></div>"; }).join("") : '<span class="faint">Nulla in programma.</span>') + "</div>" +
+        '<div><h3>Numeri</h3><div class="pstep"><b>' + num(b.oreFatte, 1) + " / " + num(b.oreStim, 0) + ' h</b><span class="faint">ore fatte sul budget</span></div>' +
+        (vediCosti() ? '<div class="pstep"><b>' + eur(b.margReale) + '</b><span class="faint">margine atteso</span></div>' : "") + "</div>" +
+        '<div><h3>Scorciatoie</h3><div class="qbtns"><button class="btn sm ghost" data-open-com="' + k.id + '">Apri</button><button class="btn sm ghost" data-preventivo="' + k.id + '">Preventivo</button><button class="btn sm ghost" data-new="ore" data-ctx="' + k.id + '">Ore</button><button class="btn sm ghost" data-new="task" data-ctx="' + k.id + '">Attività</button></div></div>' +
+        "</div></td></tr>";
+    }
   });
   return h + "</tbody></table>";
 }
 /* ---------------- commesse ---------------- */
 function vCommesse() {
-  var list = fcom();
+  var tutte = fcom();
+  var list = tutte.slice();
   if (search) list = list.filter(function (k) { return (k.titolo + " " + nameOf(D.cli, k.cliente_id)).toLowerCase().indexOf(search.toLowerCase()) > -1; });
-  var h = head("Commesse", list.length + " commesse · " + eur(sum(list, function (k) { return calc(k).tot; })) + " di valore",
-    '<input id="search" placeholder="Cerca…" style="width:170px" value="' + esc(search) + '"><button class="btn sm" data-new="com">+ Nuova commessa</button>');
-  var per = {}; STATI.forEach(function (s) { per[s] = list.filter(function (k) { return k.stato === s; }); });
-  var mx = Math.max.apply(null, STATI.map(function (s) { return sum(per[s], function (k) { return calc(k).tot; }); }).concat([1]));
-  h += '<div class="card"><div class="cardhead"><h2>A che punto siamo</h2></div><div class="bars">';
-  STATI.forEach(function (s) { if (per[s].length) h += bar(s + " (" + per[s].length + ")", sum(per[s], function (k) { return calc(k).tot; }), mx, eur(sum(per[s], function (k) { return calc(k).tot; }))); });
-  h += "</div></div>";
-  h += '<div class="card">' + (list.length ? tblCom(list.slice().sort(function (a, b) { return STATI.indexOf(a.stato) - STATI.indexOf(b.stato); })) : vuoto("Nessuna commessa.", '<button class="lnk" data-new="com">Creane una</button>')) + "</div>";
+  if (FSTATO) list = list.filter(function (k) { return k.stato === FSTATO; });
+  if (FSAL) list = list.filter(function (k) { return salute(k).c === FSAL; });
+  var val = sum(list, function (k) { return budget(k).ricavo; });
+
+  var h = head("Commesse", list.length + " commesse · " + eur(val) + " di valore",
+    '<input id="search" placeholder="Cerca…" style="width:180px" value="' + esc(search) + '"><button class="btn sm" data-new="com">+ Nuova commessa</button>');
+
+  h += '<div class="filters">';
+  h += '<div class="chips"><button class="fc' + (FSTATO ? "" : " on") + '" data-fs="">Tutti gli stati</button>' +
+    STATI.map(function (s) {
+      var n = tutte.filter(function (k) { return k.stato === s; }).length;
+      return n ? '<button class="fc' + (FSTATO === s ? " on" : "") + '" data-fs="' + s + '">' + s + "<span>" + n + "</span></button>" : "";
+    }).join("") + "</div>";
+  h += '<div class="chips"><button class="fc' + (FSAL ? "" : " on") + '" data-fh="">Tutte</button>' +
+    [["b-red", "A rischio"], ["b-amber", "Da tenere d'occhio"], ["b-green", "In linea"]].map(function (x) {
+      var n = tutte.filter(function (k) { return salute(k).c === x[0]; }).length;
+      return n ? '<button class="fc' + (FSAL === x[0] ? " on" : "") + '" data-fh="' + x[0] + '"><i class="dot ' + x[0] + '"></i>' + x[1] + "<span>" + n + "</span></button>" : "";
+    }).join("") + "</div>";
+  h += '<div class="seg"><button class="' + (VISTA === "tabella" ? "on" : "") + '" data-vista="tabella">Tabella</button><button class="' + (VISTA === "board" ? "on" : "") + '" data-vista="board">Board</button></div>';
+  h += "</div>";
+
+  if (!list.length) return h + '<div class="card">' + vuoto("Nessuna commessa con questi filtri.", '<button class="lnk" data-fs="">Azzera i filtri</button>') + "</div>";
+  h += VISTA === "board" ? boardCom(list) : '<div class="card">' + tblCom(list.slice().sort(function (a, b) { return STATI.indexOf(a.stato) - STATI.indexOf(b.stato); })) + "</div>";
   return h;
 }
 
@@ -376,7 +528,14 @@ function vCommessa() {
       "</div></div>";
   }
 
-  h += '<div class="grid g32" style="margin-top:16px"><div>';
+  var px = prossimo(k);
+  if (px.length) {
+    h += '<div class="steps">' + px.map(function (p, i) {
+      return '<div class="step"><span class="sn">' + (i + 1) + "</span><div><b>" + esc(p.t) + '</b><span class="faint">' + esc(p.d) + "</span></div></div>";
+    }).join("") + "</div>";
+  }
+
+  h += '<div class="grid g32" style="margin-top:18px"><div>';
   var TABS = [["fasi", "Fasi (" + fs.length + ")"], ["servizi", "Servizi (" + righeOf(k.id).length + ")"], ["attivita", "Attività (" + tk.filter(function (z) { return z.stato !== "Fatto"; }).length + ")"], ["materiali", "Materiali (" + mt.length + ")"], ["pagamenti", "Pagamenti (" + pg.length + ")"], ["approvazioni", "Approvazioni (" + ap.filter(function (a) { return a.stato === "In attesa"; }).length + ")"], ["varianti", "Varianti (" + vr.length + ")"], ["log", "Diario"]];
   if (!isPR()) TABS.splice(3, 0, ["ore", "Ore (" + num(oreT, 1) + ")"]);
   h += '<div class="card"><div class="tabs">' + TABS.map(function (x) { return '<button data-tab="' + x[0] + '" class="' + (t === x[0] ? "on" : "") + '">' + x[1] + "</button>"; }).join("") + "</div>";
@@ -475,16 +634,17 @@ function kanban(list) {
   var h = '<div class="kanban">';
   TASK_STATI.forEach(function (s) {
     var items = list.filter(function (t) { return t.stato === s; });
-    h += '<div class="kcol"><h3>' + s + "<span>" + items.length + "</span></h3>";
+    h += '<div class="kcol" data-stato="' + s + '"><h3>' + s + "<span>" + items.length + "</span></h3>";
     items.forEach(function (t) {
       var late = t.scadenza && t.scadenza < today() && t.stato !== "Fatto";
-      h += '<div class="tsk" data-open-task="' + t.id + '">' + esc(t.titolo) +
+      h += '<div class="tsk" draggable="true" data-open-task="' + t.id + '">' +
+        '<div class="tsktop">' + esc(t.titolo) + (t.assegnato_id ? avatar(t.assegnato_id, 22) : "") + "</div>" +
         '<div class="meta"><span class="badge ' + (PRIO_COL[t.priorita] || "") + '">' + esc(t.priorita || "Media") + "</span><span>" + (t.scadenza ? (late ? '<span class="badge b-red">' + dshort(t.scadenza) + "</span>" : dshort(t.scadenza)) : "") + "</span></div>" +
-        '<div class="meta"><span>' + esc(t.commessa_id ? nameOf(D.com, t.commessa_id, "titolo") : "—") + "</span><span>" + esc(t.assegnato_id ? nameOf(D.pros, t.assegnato_id).split(" ")[0] : "") + "</span></div></div>";
+        (t.commessa_id ? '<div class="meta"><span class="faint">' + esc(nameOf(D.com, t.commessa_id, "titolo")) + "</span></div>" : "") + "</div>";
     });
-    h += "</div>";
+    h += '<div class="kdrop">rilascia qui</div></div>';
   });
-  return h + "</div>";
+  return h + '</div><p class="faint" style="margin-top:12px">Trascina un\'attività da una colonna all\'altra per cambiarle stato.</p>';
 }
 function vTask() {
   var list = ftask();
@@ -520,6 +680,9 @@ function vOre() {
     kpi(num(sum(fatt, function (o) { return o.ore; }), 1) + " h", "Fatturabili", totMese ? Math.round(sum(fatt, function (o) { return o.ore; }) / totMese * 100) + "% del totale" : "—") +
     kpi(eur(sum(fatt, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); })), "Valore del mese", "alle tariffe orarie") +
     kpi(num(sum(list, function (o) { return o.ore; }), 1) + " h", "Totale storico", list.length + " registrazioni") + "</div>";
+  h += '<div class="grid g32" style="margin-top:18px"><div class="card"><div class="cardhead"><h2>Ritmo delle ultime 12 settimane</h2><span class="faint">ogni quadratino è un giorno</span></div>' + heatOre(list) + "</div>";
+  h += '<div class="card"><div class="cardhead"><h2>Andamento</h2><span class="faint">8 settimane</span></div>' + spark(settimane(list, 8)) + "</div></div>";
+
   var per = {}; list.forEach(function (o) { if (o.commessa_id) per[o.commessa_id] = (per[o.commessa_id] || 0) + (+o.ore || 0); });
   var pk = Object.keys(per).sort(function (a, b) { return per[b] - per[a]; });
   h += '<div class="grid g2" style="margin-top:16px"><div class="card"><div class="cardhead"><h2>Ore per commessa</h2></div>';
@@ -1112,6 +1275,42 @@ function openRiga(kid, rid) {
     '<button type="button" class="btn ghost" data-close>Annulla</button><button class="btn" type="submit">Salva</button></div></form>');
 }
 
+/* ---------------- ricerca rapida ⌘K ---------------- */
+function openPalette() {
+  if (isCliente()) return;
+  PAL = [];
+  D.com.forEach(function (k) { PAL.push({ t: k.titolo, s: "Commessa · " + nameOf(D.cli, k.cliente_id), i: "◧", go: ["commessa", k.id, "fasi"] }); });
+  D.cli.forEach(function (c) { PAL.push({ t: c.nome, s: "Cliente", i: "◐", go: ["cliente", c.id] }); });
+  D.pros.forEach(function (p) { PAL.push({ t: p.nome, s: (p.tipo === "PR" ? "PR" : "Professionista") + (p.ruolo ? " · " + p.ruolo : ""), i: "◍", go: ["pro", p.id] }); });
+  navFor().forEach(function (n) { if (n.k) PAL.push({ t: n.t, s: "Vai a", i: "→", go: [n.k] }); });
+  [["com", "Nuova commessa"], ["ore", "Registra ore"], ["task", "Nuova attività"], ["cli", "Nuovo cliente"], ["mov", "Nuovo movimento"]].forEach(function (a) {
+    PAL.push({ t: a[1], s: "Azione", i: "+", act: a[0] });
+  });
+  modal('<div class="box pal"><input id="palq" placeholder="Cerca una commessa, un cliente, una persona… o un\'azione" autocomplete="off" spellcheck="false"><div id="palres"></div><div class="palfoot"><span><kbd>↑</kbd><kbd>↓</kbd> muoviti</span><span><kbd>↵</kbd> apri</span><span><kbd>esc</kbd> chiudi</span></div></div>');
+  renderPal("");
+  var q = el("#palq"); if (q) q.focus();
+}
+function renderPal(q) {
+  q = (q || "").toLowerCase();
+  PALR = PAL.filter(function (x) { return (x.t + " " + x.s).toLowerCase().indexOf(q) > -1; }).slice(0, 7);
+  PALI = 0;
+  var r = el("#palres"); if (!r) return;
+  r.innerHTML = PALR.length ? PALR.map(function (x, i) {
+    return '<button class="palitem' + (i === 0 ? " on" : "") + '" data-pal-i="' + i + '"><span class="pi">' + x.i + '</span><span class="pt"><b>' + esc(x.t) + '</b><span class="faint">' + esc(x.s) + "</span></span></button>";
+  }).join("") : '<div class="empty" style="padding:16px 4px">Nessun risultato</div>';
+}
+function palMove(d) {
+  if (!PALR.length) return;
+  PALI = (PALI + d + PALR.length) % PALR.length;
+  Array.prototype.forEach.call(document.querySelectorAll(".palitem"), function (n, i) { n.classList.toggle("on", i === PALI); });
+}
+function palGo(i) {
+  var x = PALR[i]; if (!x) return;
+  closeModal();
+  if (x.act) { openForm(x.act); return; }
+  go.apply(null, x.go);
+}
+
 /* ---------------- render ---------------- */
 function render() {
   if (isCliente()) {
@@ -1133,10 +1332,16 @@ function render() {
 
 /* ---------------- eventi ---------------- */
 document.addEventListener("click", async function (e) {
-  var t = e.target.closest("button, [data-open-task], [data-close]");
+  var t = e.target.closest("button, [data-open-task], [data-open-com], [data-close]");
   if (!t) return;
   var d = t.dataset || {};
   if (t.hasAttribute("data-close")) { closeModal(); return; }
+  if (d.palI !== undefined) { palGo(+d.palI); return; }
+  if (d.pal) { openPalette(); return; }
+  if (t.hasAttribute("data-fs")) { FSTATO = d.fs || ""; render(); return; }
+  if (t.hasAttribute("data-fh")) { FSAL = d.fh || ""; render(); return; }
+  if (d.vista) { VISTA = d.vista; render(); return; }
+  if (d.exp) { EXP[d.exp] = !EXP[d.exp]; render(); return; }
   if (d.go) { go(d.go); return; }
   if (d.tab) { tab = d.tab; render(); return; }
   if (d.openCom) { go("commessa", d.openCom, "fasi"); return; }
@@ -1220,6 +1425,57 @@ document.addEventListener("change", function (e) {
 });
 document.addEventListener("input", function (e) {
   if (e.target.id === "search") { search = e.target.value; render(); }
+  if (e.target.id === "palq") renderPal(e.target.value);
+});
+
+document.addEventListener("keydown", function (e) {
+  var pal = el("#palq");
+  if (pal) {
+    if (e.key === "ArrowDown") { e.preventDefault(); palMove(1); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); palMove(-1); return; }
+    if (e.key === "Enter") { e.preventDefault(); palGo(PALI); return; }
+  }
+  if (e.key === "Escape") { closeModal(); return; }
+  if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); openPalette(); return; }
+  var tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return;
+  if (el("#app").classList.contains("hide")) return;
+  if (e.key === "/") { e.preventDefault(); var s = el("#search"); if (s) s.focus(); else openPalette(); return; }
+  if (e.key === "n" && !e.metaKey && !e.ctrlKey && !isCliente()) { e.preventDefault(); openForm("com"); return; }
+  if (e.key === "o" && !e.metaKey && !e.ctrlKey && !isCliente() && !isPR()) { e.preventDefault(); openForm("ore"); return; }
+});
+
+document.addEventListener("dragstart", function (e) {
+  var t = e.target.closest && e.target.closest(".tsk");
+  if (!t) return;
+  DRAG = t.dataset.openTask; t.classList.add("dragging");
+  if (e.dataTransfer) { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", DRAG); } catch (x) {} }
+});
+document.addEventListener("dragend", function (e) {
+  var t = e.target.closest && e.target.closest(".tsk"); if (t) t.classList.remove("dragging");
+  Array.prototype.forEach.call(document.querySelectorAll(".kcol.over"), function (c) { c.classList.remove("over"); });
+});
+document.addEventListener("dragover", function (e) {
+  var c = e.target.closest && e.target.closest(".kcol");
+  if (!c || !DRAG) return;
+  e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  c.classList.add("over");
+});
+document.addEventListener("dragleave", function (e) {
+  var c = e.target.closest && e.target.closest(".kcol");
+  if (c && !c.contains(e.relatedTarget)) c.classList.remove("over");
+});
+document.addEventListener("drop", async function (e) {
+  var c = e.target.closest && e.target.closest(".kcol");
+  if (!c || !DRAG) return;
+  e.preventDefault(); c.classList.remove("over");
+  var id = DRAG, st = c.dataset.stato; DRAG = null;
+  var t = by(D.task, id);
+  if (!t || t.stato === st) return;
+  var r = await sb.from("task").update({ stato: st }).eq("id", id);
+  if (r.error) { toast(r.error.message, true); return; }
+  if (t.commessa_id && st === "Fatto") await logEv(t.commessa_id, "Attività completata: " + t.titolo);
+  await reload(["task", "ev"]); toast("Spostata in “" + st + "”"); render();
 });
 
 /* ---------------- auth ---------------- */
