@@ -28,9 +28,9 @@ function by(arr, id) { for (var i = 0; i < arr.length; i++) if (arr[i].id === id
 function nameOf(arr, id, f) { var o = by(arr, id); return o ? o[f || "nome"] : "—"; }
 function sum(arr, f) { var t = 0; arr.forEach(function (x) { t += (+f(x) || 0); }); return t; }
 function toast(msg, isErr) { var t = document.createElement("div"); t.className = "toast" + (isErr ? " err" : ""); t.textContent = msg; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 3800); }
-function show(id) { ["setup", "login", "app"].forEach(function (x) { el("#" + x).classList.toggle("hide", x !== id); }); }
+function show(id) { ["setup", "login", "app", "splash"].forEach(function (x) { var n = el("#" + x); if (n) n.classList.toggle("hide", x !== id); }); }
 function closeModal() { el("#modal").innerHTML = ""; }
-function go(v, id, t) { view = v; current = id || null; tab = t || ""; search = ""; window.scrollTo(0, 0); render(); }
+function go(v, id, t) { view = v; current = id || null; tab = t || ""; search = ""; document.body.classList.remove("navopen"); window.scrollTo(0, 0); render(); }
 function isAdmin() { return me.ruolo === "admin"; }
 function isPR() { return me.ruolo === "pr"; }
 function isPro() { return me.ruolo === "professionista"; }
@@ -142,7 +142,7 @@ function ring(p, size) {
   var col = v >= 100 ? "var(--green)" : v >= 50 ? "var(--terra)" : v > 0 ? "var(--amber)" : "var(--sand)";
   return '<svg class="ring" width="' + s + '" height="' + s + '" viewBox="0 0 ' + s + " " + s + '">' +
     '<circle cx="' + s / 2 + '" cy="' + s / 2 + '" r="' + r + '" fill="none" stroke="var(--sand)" stroke-width="7"/>' +
-    '<circle cx="' + s / 2 + '" cy="' + s / 2 + '" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="7" stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - v / 100)).toFixed(1) + '" transform="rotate(-90 ' + s / 2 + " " + s / 2 + ')"/>' +
+    '<circle class="pr" style="--full:' + C.toFixed(1) + '" cx="' + s / 2 + '" cy="' + s / 2 + '" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="7" stroke-linecap="round" stroke-dasharray="' + C.toFixed(1) + '" stroke-dashoffset="' + (C * (1 - v / 100)).toFixed(1) + '" transform="rotate(-90 ' + s / 2 + " " + s / 2 + ')"/>' +
     '<text x="50%" y="50%" text-anchor="middle" dy=".35em" class="ringtxt" style="font-size:' + Math.round(s * 0.26) + 'px">' + Math.round(v) + "%</text></svg>";
 }
 var SPK = 0;
@@ -1328,6 +1328,29 @@ function render() {
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
+  countUp();
+}
+
+/* numeri che salgono */
+function countUp() {
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  Array.prototype.forEach.call(document.querySelectorAll(".kpi .v"), function (n) {
+    var txt = n.textContent.trim();
+    var m = txt.match(/^(\D*?)([\d.]+(?:,\d+)?)(\D*)$/);
+    if (!m) return;
+    var pre = m[1], post = m[3];
+    var raw = m[2], dec = raw.indexOf(",") > -1 ? raw.split(",")[1].length : 0;
+    var target = parseFloat(raw.replace(/\./g, "").replace(",", "."));
+    if (!isFinite(target) || target === 0) return;
+    var t0 = performance.now(), dur = 750;
+    function step(t) {
+      var p = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+      n.textContent = pre + (target * e).toLocaleString("it-IT", { minimumFractionDigits: dec, maximumFractionDigits: dec }) + post;
+      if (p < 1) requestAnimationFrame(step);
+    }
+    n.textContent = pre + (0).toLocaleString("it-IT", { minimumFractionDigits: dec, maximumFractionDigits: dec }) + post;
+    requestAnimationFrame(step);
+  });
 }
 
 /* ---------------- eventi ---------------- */
@@ -1497,6 +1520,9 @@ async function init() {
   if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) { show("setup"); return; }
   sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
   el("#logout").addEventListener("click", async function () { await sb.auth.signOut(); location.reload(); });
+  var ham = el("#ham"), scrim = el("#scrim");
+  if (ham) ham.addEventListener("click", function () { document.body.classList.toggle("navopen"); });
+  if (scrim) scrim.addEventListener("click", function () { document.body.classList.remove("navopen"); });
   await start();
 }
 init();
