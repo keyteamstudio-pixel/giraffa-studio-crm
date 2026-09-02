@@ -149,6 +149,16 @@ textarea{min-height:78px;resize:vertical}
 .toast.err{background:var(--red)}
 @keyframes up{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 
+.gantt{margin-top:20px}
+.grow{display:grid;grid-template-columns:150px 1fr;gap:10px;align-items:center;margin-bottom:8px}
+.glab{font-size:.82rem;color:var(--soft)}
+.gtrack{position:relative;height:16px;background:var(--sand);border-radius:99px}
+.gbar{position:absolute;top:0;height:16px;border-radius:99px;background:var(--terra);overflow:hidden;min-width:8px}
+.gbar.ok{background:var(--green)}
+.gbar.soft{background:rgba(26,23,16,.2)}
+.gbar i{display:block;height:100%;background:rgba(255,255,255,.5)}
+@media(max-width:640px){.grow{grid-template-columns:96px 1fr}}
+
 .bars{display:flex;flex-direction:column;gap:10px}
 .barrow{display:grid;grid-template-columns:150px 1fr 84px;gap:10px;align-items:center;font-size:.85rem}
 .barrow .track{height:9px;background:var(--sand);border-radius:99px;overflow:hidden}
@@ -207,6 +217,6 @@ window.GS_CONFIG = {
   SUPABASE_ANON_KEY: "sb_publishable_ckqEpmyfFpsWXnK5J2-o4g_p4c_NJll"
 };
 </script>
-<script src="app.js?v=3"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>
