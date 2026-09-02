@@ -5,12 +5,12 @@
 var cfg = window.GS_CONFIG || {};
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "" };
-var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [] };
+var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [] };
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
-var PORT = [];
+var PORT = [], STATS = null;
 
 /* ---------------- helpers ---------------- */
 function el(s) { return document.querySelector(s); }
@@ -33,7 +33,7 @@ function isAdmin() { return me.ruolo === "admin"; }
 function isPR() { return me.ruolo === "pr"; }
 function isPro() { return me.ruolo === "professionista"; }
 function isCliente() { return me.ruolo === "cliente"; }
-function vediCosti() { return isAdmin(); }
+function vediCosti() { return !isPR(); }
 
 var STATI = ["Bozza", "Preventivo", "Approvata", "In corso", "Consegna", "Chiusa", "Persa"];
 var STATO_COL = { Bozza: "", Preventivo: "b-amber", Approvata: "b-blue", "In corso": "b-terra", Consegna: "b-blue", Chiusa: "b-green", Persa: "b-red" };
@@ -57,6 +57,70 @@ function taskOf(k) { return D.task.filter(function (t) { return t.commessa_id ==
 function movOf(k) { return D.mov.filter(function (m) { return m.commessa_id === k; }); }
 function oreTot(k) { return sum(oreOf(k), function (o) { return o.ore; }); }
 function comOfCliente(c) { return D.com.filter(function (k) { return k.cliente_id === c; }); }
+function variOf(k) { return D.vari.filter(function (v) { return v.commessa_id === k; }); }
+function evOf(k) { return D.ev.filter(function (e) { return e.commessa_id === k; }).sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; }); }
+function proDi(k) {
+  var s = {};
+  var c = by(D.com, k);
+  if (c && c.owner_id) s[c.owner_id] = 1;
+  righeOf(k).forEach(function (r) { var sv = by(D.serv, r.serv_id); var p = r.assegnato_id || (sv && sv.pro_id); if (p) s[p] = 1; });
+  return Object.keys(s);
+}
+function condivisa(k) { return proDi(k.id).length > 1; }
+
+/* budget, consumo e salute della commessa */
+function budget(k) {
+  var c = calc(k);
+  var vApp = variOf(k.id).filter(function (v) { return v.stato === "Approvata"; });
+  var extra = sum(vApp, function (v) { return v.importo; });
+  var ricavo = (+k.budget_importo || c.tot) + extra;
+  var oreStim = sum(righeOf(k.id), function (r) { return r.ore_stimate; }) + sum(vApp, function (v) { return v.ore; });
+  var ore = oreOf(k.id);
+  var oreFatte = sum(ore, function (o) { return o.ore; });
+  var costoReale = sum(ore, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); });
+  var margPian = ricavo - c.cost;
+  var margReale = ricavo - Math.max(c.cost, costoReale);
+  var burnOre = oreStim ? Math.round(oreFatte / oreStim * 100) : null;
+  var burnCosto = ricavo ? Math.round(Math.max(c.cost, costoReale) / ricavo * 100) : 0;
+  return { ricavo: ricavo, extra: extra, oreStim: oreStim, oreFatte: oreFatte, costoPian: c.cost, costoReale: costoReale, margPian: margPian, margReale: margReale, burnOre: burnOre, burnCosto: burnCosto, varianti: vApp.length };
+}
+function salute(k) {
+  if (["Chiusa", "Persa", "Bozza"].indexOf(k.stato) > -1) return { c: "", t: "—", d: "" };
+  var b = budget(k), av = avanzamento(k.id), motivi = [];
+  var rosso = false, giallo = false;
+  if (k.scadenza && k.scadenza < today()) { rosso = true; motivi.push("consegna scaduta"); }
+  if (b.burnOre != null && b.burnOre > 110) { rosso = true; motivi.push("ore oltre la stima"); }
+  if (b.margReale < 0) { rosso = true; motivi.push("margine negativo"); }
+  if (!rosso) {
+    if (b.burnOre != null && b.burnOre > 85) { giallo = true; motivi.push("budget ore quasi esaurito"); }
+    if (k.scadenza && days(k.scadenza, today()) <= 7 && (av == null || av < 70)) { giallo = true; motivi.push("consegna vicina"); }
+    if (apprOf(k.id).some(function (a) { return a.stato === "In attesa" && days(today(), a.richiesta_il) > 7; })) { giallo = true; motivi.push("cliente fermo da oltre una settimana"); }
+  }
+  return rosso ? { c: "b-red", t: "A rischio", d: motivi.join(" · ") } : giallo ? { c: "b-amber", t: "Da tenere d'occhio", d: motivi.join(" · ") } : { c: "b-green", t: "In linea", d: "tutto sotto controllo" };
+}
+function gantt(k) {
+  var fs = fasiOf(k.id); if (!fs.length) return "";
+  var date = [];
+  fs.forEach(function (f) { if (f.inizio) date.push(f.inizio); if (f.fine) date.push(f.fine); });
+  if (k.inizio) date.push(k.inizio); if (k.scadenza) date.push(k.scadenza);
+  if (!date.length) return "";
+  var min = date.slice().sort()[0], max = date.slice().sort()[date.length - 1];
+  var span = Math.max(1, days(max, min));
+  var oggi = Math.round(days(today(), min) / span * 100);
+  var h = '<div class="gantt"><div class="gwrap">';
+  fs.forEach(function (f) {
+    var a = f.inizio || min, b = f.fine || max;
+    var left = Math.max(0, Math.round(days(a, min) / span * 100));
+    var w = Math.max(2, Math.round(days(b, a) / span * 100));
+    h += '<div class="grow"><div class="glab">' + esc(f.nome) + '</div><div class="gtrack"><div class="gbar ' + (f.stato === "Completata" ? "ok" : f.stato === "In corso" ? "" : "soft") + '" style="left:' + left + "%;width:" + Math.min(100 - left, w) + '%"><i style="width:' + (f.avanzamento || 0) + '%"></i></div></div></div>';
+  });
+  h += "</div><div class=\"faint\" style=\"margin-top:8px\">" + dt(min) + " → " + dt(max) + (oggi >= 0 && oggi <= 100 ? " · oggi al " + oggi + "% del percorso" : "") + "</div></div>";
+  return h;
+}
+async function logEv(kid, testo) {
+  if (!kid) return;
+  await sb.from("eventi").insert({ commessa_id: kid, pro_id: me.pro_id, testo: testo });
+}
 
 function calc(k) {
   var imp = 0, cost = 0, mio = 0;
@@ -81,8 +145,14 @@ function isMineCom(k) { return me.pro_id && (k.owner_id === me.pro_id || k.pm_id
 function mio(row, kind) {
   if (persp === "all") return true;
   if (!me.pro_id) return false;
-  if (kind === "com") return isMineCom(row);
-  if (kind === "cli") return row.owner_id === me.pro_id || comOfCliente(row.id).some(isMineCom);
+  if (persp === "shared") {
+    if (kind === "com") return condivisa(row);
+    if (kind === "cli") return comOfCliente(row.id).some(condivisa);
+    if (kind === "ore" || kind === "task") return row.commessa_id && condivisa({ id: row.commessa_id });
+    return true;
+  }
+  if (kind === "com") return !condivisa(row) && isMineCom(row);
+  if (kind === "cli") return row.owner_id === me.pro_id;
   if (kind === "ore") return row.pro_id === me.pro_id;
   if (kind === "task") return row.assegnato_id === me.pro_id;
   if (kind === "mov") return row.pro_id === me.pro_id;
@@ -106,6 +176,8 @@ async function loadAll() {
   res.forEach(function (r, i) { D[keys[i]] = (r.error ? [] : (r.data || [])); });
   var s = await sb.from("settings").select("*").eq("id", 1).maybeSingle();
   if (s.data) SET = s.data;
+  var st = await sb.rpc("studio_stats");
+  STATS = st.data || null;
   var pr = me.pro_id ? by(D.pros, me.pro_id) : null;
   me.nome = pr ? pr.nome : user.email;
 }
@@ -161,10 +233,10 @@ function buildNav() {
 }
 function perspSel() {
   if (isCliente()) return "";
-  return '<span class="faint">Vista</span><select id="persp" style="width:auto"><option value="all"' + (persp === "all" ? " selected" : "") + '>Tutto lo studio</option><option value="me"' + (persp === "me" ? " selected" : "") + ">Solo io</option></select>";
+  return '<span class="faint">Mostra</span><select id="persp" style="width:auto"><option value="all"' + (persp === "all" ? " selected" : "") + '>Tutte le mie</option><option value="me"' + (persp === "me" ? " selected" : "") + '>Solo mie</option><option value="shared"' + (persp === "shared" ? " selected" : "") + ">Condivise</option></select>";
 }
 function head(title, sub, tools) {
-  return '<div class="top"><h1>' + esc(title) + (sub ? '<span class="sub">' + esc(sub) + "</span>" : "") + '</h1><div class="tools">' + (tools || "") + (isAdmin() || isPro() ? perspSel() : "") + "</div></div>";
+  return '<div class="top"><h1>' + esc(title) + (sub ? '<span class="sub">' + esc(sub) + "</span>" : "") + '</h1><div class="tools">' + (tools || "") + perspSel() + "</div></div>";
 }
 function kpi(v, l, d) { return '<div class="kpi"><div class="v">' + v + '</div><div class="l">' + l + "</div>" + (d ? '<div class="d">' + d + "</div>" : "") + "</div>"; }
 function bar(label, val, max, right) {
@@ -199,11 +271,12 @@ function vDash() {
       kpi(eur(prov), "Provvigioni potenziali", "sul totale delle commesse") +
       kpi(eur(provOk), "Provvigioni maturate", "su commesse partite") + "</div>";
   } else {
+    var rischio = com.filter(function (k) { return salute(k).c === "b-red"; });
     h += '<div class="grid g4">' +
       kpi(eur(pipeline), "Pipeline aperta", aperte.length + " commesse attive") +
-      kpi(vediCosti() ? eur(sum(com.filter(function (k) { return k.stato !== "Persa"; }), function (k) { return calc(k).margine; })) : eur(sum(com, function (k) { return calc(k).mio; })), vediCosti() ? "Margine studio" : "Il mio compenso", vediCosti() ? "su commesse non perse" : "sulle commesse assegnate") +
+      kpi(eur(sum(com, function (k) { return calc(k).mio; })), "Il mio compenso", "sulle righe assegnate a me") +
       kpi(num(sum(oreMese, function (o) { return o.ore; }), 1) + " h", "Ore questo mese", ore.length + " registrazioni totali") +
-      kpi(String(tk.filter(function (t) { return t.stato !== "Fatto"; }).length), "Attività aperte", urgenti.length + " in scadenza entro 7 giorni") + "</div>";
+      kpi(String(rischio.length), "Commesse a rischio", tk.filter(function (t) { return t.stato !== "Fatto"; }).length + " attività aperte") + "</div>";
   }
 
   h += '<div class="grid g32" style="margin-top:16px">';
@@ -230,19 +303,31 @@ function vDash() {
       row2("Incassato", eur(sum(D.pag.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; }))) +
       "</tbody></table></div>";
   }
-  return h + "</div></div>";
+  h += "</div></div>";
+  if (STATS) {
+    h += '<div class="card" style="margin-top:16px;background:var(--cream)"><div class="cardhead"><h2>Lo studio in numeri</h2><span class="badge">anonimo</span></div>' +
+      '<div class="grid g4">' +
+      kpi(String(STATS.membri || 0), "Professionisti attivi") +
+      kpi(String(STATS.commesse_attive || 0), "Commesse attive nello studio") +
+      kpi(String(STATS.progetti_condivisi || 0), "Progetti condivisi") +
+      kpi(num(STATS.ore_mese, 1) + " h", "Ore registrate questo mese") +
+      '</div><p class="faint" style="margin-top:12px">Numeri complessivi dello studio, senza nomi e senza importi per persona: nessuno vede quanto fatturano gli altri.</p></div>';
+  }
+  return h;
 }
 
 function tblCom(list) {
-  var h = '<table><thead><tr><th>Commessa</th><th>Cliente</th><th>Stato</th><th>Avanz.</th><th>Scadenza</th><th class="num">' + (isPR() ? "Provvigione" : "Totale") + "</th></tr></thead><tbody>";
+  var h = '<table><thead><tr><th>Commessa</th><th>Cliente</th><th>Stato</th><th>Salute</th><th>Avanz.</th><th>Scadenza</th><th class="num">' + (isPR() ? "Provvigione" : "Valore") + "</th><th></th></tr></thead><tbody>";
   list.forEach(function (k) {
-    var c = calc(k), av = avanzamento(k.id);
-    h += '<tr><td><button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button></td>" +
+    var c = calc(k), av = avanzamento(k.id), sal = salute(k), b = budget(k);
+    h += '<tr><td><button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button>" + (condivisa(k) ? ' <span class="chip">condivisa</span>' : "") + "</td>" +
       "<td>" + esc(nameOf(D.cli, k.cliente_id)) + "</td>" +
       '<td><span class="badge ' + (STATO_COL[k.stato] || "") + '">' + esc(k.stato) + "</span></td>" +
+      '<td><span class="badge ' + sal.c + '">' + sal.t + "</span></td>" +
       '<td style="min-width:90px">' + (av == null ? '<span class="faint">—</span>' : av + "%" + prog(av)) + "</td>" +
       "<td>" + (k.scadenza ? (k.scadenza < today() && ["Chiusa", "Persa"].indexOf(k.stato) < 0 ? '<span class="badge b-red">' + dshort(k.scadenza) + "</span>" : dt(k.scadenza)) : "—") + "</td>" +
-      '<td class="num">' + (isPR() ? eur(c.prov) : eur(c.tot)) + "</td></tr>";
+      '<td class="num">' + (isPR() ? eur(c.prov) : eur(b.ricavo)) + "</td>" +
+      '<td class="num"><button class="lnk" data-duplica="' + k.id + '">Duplica</button></td></tr>';
   });
   return h + "</tbody></table>";
 }
@@ -269,20 +354,30 @@ function vCommessa() {
   var incassato = sum(pg.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; });
   var t = tab || "fasi";
 
-  var h = '<div class="top"><h1>' + esc(k.titolo) + '<span class="sub">' + esc(nameOf(D.cli, k.cliente_id)) + " · " + esc(k.stato) + '</span></h1><div class="tools">' +
+  var b = budget(k), sal = salute(k), vr = variOf(k.id);
+
+  var h = '<div class="top"><h1>' + esc(k.titolo) + '<span class="sub">' + esc(nameOf(D.cli, k.cliente_id)) + " · " + esc(k.stato) + " · " + esc(k.tipo_prezzo || "Fisso") + (condivisa(k) ? " · condivisa con " + (proDi(k.id).length - 1) + " colleghi" : " · solo tua") + '</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-go="commesse">← Commesse</button>' +
     '<button class="btn sm ghost" data-edit="com:' + k.id + '">Modifica</button>' +
     '<button class="btn sm ghost" data-preventivo="' + k.id + '">Preventivo</button>' +
     '<button class="btn sm" data-portale="' + k.id + '">Anteprima cliente</button></div></div>';
 
   h += '<div class="grid g4">' +
-    kpi(eur(c.tot), "Totale cliente", "imponibile " + eur(c.imp) + " + fee " + (k.fee || 0) + "%") +
+    kpi(eur(b.ricavo), "Valore commessa", b.extra ? eur(k.budget_importo || c.tot) + " + " + eur(b.extra) + " di varianti" : "imponibile " + eur(c.imp) + " + fee " + (k.fee || 0) + "%") +
     kpi(av == null ? "—" : av + " %", "Avanzamento", fs.length + " fasi") +
-    kpi(vediCosti() ? eur(c.margine) : isPR() ? eur(c.prov) : eur(c.mio), vediCosti() ? "Margine studio" : isPR() ? "La mia provvigione" : "Il mio compenso", vediCosti() ? "costo professionisti " + eur(c.cost) : isPR() ? (k.provvigione || 0) + "% del totale" : "sulle righe assegnate a me") +
-    kpi(eur(incassato), "Incassato", eur(c.tot - incassato) + " da incassare") + "</div>";
+    kpi('<span class="badge ' + sal.c + '" style="font-size:.9rem;padding:5px 12px">' + sal.t + "</span>", "Salute", sal.d) +
+    kpi(vediCosti() ? eur(b.margReale) : eur(c.prov), vediCosti() ? "Margine atteso" : "La mia provvigione", vediCosti() ? "pianificato " + eur(b.margPian) : (k.provvigione || 0) + "% del totale") + "</div>";
+
+  if (vediCosti()) {
+    var bo = b.burnOre == null ? 0 : b.burnOre, bc = b.burnCosto;
+    h += '<div class="card"><div class="grid g2">' +
+      '<div><div class="cardhead"><h2>Consumo ore</h2><span class="faint">' + num(b.oreFatte, 1) + " / " + num(b.oreStim, 0) + " h stimate</span></div><div class=\"prog\"><i class=\"" + (bo > 100 ? "bad" : bo > 85 ? "warn" : "ok") + '" style="width:' + Math.min(100, bo) + '%"></i></div><p class="faint" style="margin-top:6px">' + bo + "% del budget ore</p></div>" +
+      '<div><div class="cardhead"><h2>Costo sul valore</h2><span class="faint">' + eur(Math.max(b.costoPian, b.costoReale)) + " su " + eur(b.ricavo) + "</span></div><div class=\"prog\"><i class=\"" + (bc > 90 ? "bad" : bc > 70 ? "warn" : "ok") + '" style="width:' + Math.min(100, bc) + '%"></i></div><p class="faint" style="margin-top:6px">' + bc + "% del valore va ai professionisti</p></div>" +
+      "</div></div>";
+  }
 
   h += '<div class="grid g32" style="margin-top:16px"><div>';
-  var TABS = [["fasi", "Fasi (" + fs.length + ")"], ["servizi", "Servizi (" + righeOf(k.id).length + ")"], ["attivita", "Attività (" + tk.filter(function (z) { return z.stato !== "Fatto"; }).length + ")"], ["materiali", "Materiali (" + mt.length + ")"], ["pagamenti", "Pagamenti (" + pg.length + ")"], ["approvazioni", "Approvazioni (" + ap.filter(function (a) { return a.stato === "In attesa"; }).length + ")"]];
+  var TABS = [["fasi", "Fasi (" + fs.length + ")"], ["servizi", "Servizi (" + righeOf(k.id).length + ")"], ["attivita", "Attività (" + tk.filter(function (z) { return z.stato !== "Fatto"; }).length + ")"], ["materiali", "Materiali (" + mt.length + ")"], ["pagamenti", "Pagamenti (" + pg.length + ")"], ["approvazioni", "Approvazioni (" + ap.filter(function (a) { return a.stato === "In attesa"; }).length + ")"], ["varianti", "Varianti (" + vr.length + ")"], ["log", "Diario"]];
   if (!isPR()) TABS.splice(3, 0, ["ore", "Ore (" + num(oreT, 1) + ")"]);
   h += '<div class="card"><div class="tabs">' + TABS.map(function (x) { return '<button data-tab="' + x[0] + '" class="' + (t === x[0] ? "on" : "") + '">' + x[1] + "</button>"; }).join("") + "</div>";
 
@@ -290,7 +385,7 @@ function vCommessa() {
     h += '<div class="cardhead"><h2>Fasi del lavoro</h2><button class="btn sm ghost" data-new="fasi" data-ctx="' + k.id + '">+ Nuova fase</button></div>';
     h += fs.length ? '<table><thead><tr><th>Fase</th><th>Stato</th><th>Periodo</th><th style="width:150px">Avanzamento</th><th>Cliente</th><th></th></tr></thead><tbody>' + fs.map(function (f) {
       return "<tr><td><b>" + esc(f.nome) + "</b>" + (f.note ? '<div class="faint">' + esc(f.note) + "</div>" : "") + '</td><td><span class="badge ' + (FASE_COL[f.stato] || "") + '">' + esc(f.stato) + "</span></td><td>" + dshort(f.inizio) + " → " + dshort(f.fine) + "</td><td>" + (f.avanzamento || 0) + "%" + prog(f.avanzamento) + '</td><td>' + (f.visibile_cliente ? '<span class="badge b-blue">visibile</span>' : '<span class="faint">interna</span>') + '</td><td class="num"><button class="lnk" data-edit="fasi:' + f.id + '">Modifica</button></td></tr>';
-    }).join("") + "</tbody></table>" : vuoto("Nessuna fase: dividi il lavoro in passaggi così il cliente vede l'avanzamento.", '<button class="lnk" data-new="fasi" data-ctx="' + k.id + '">Aggiungi la prima fase</button>');
+    }).join("") + "</tbody></table>" + gantt(k) : vuoto("Nessuna fase: dividi il lavoro in passaggi così il cliente vede l'avanzamento.", '<button class="lnk" data-new="fasi" data-ctx="' + k.id + '">Aggiungi la prima fase</button>');
   }
   if (t === "servizi") {
     h += '<div class="cardhead"><h2>Servizi e assegnazioni</h2><button class="btn sm ghost" data-riga="' + k.id + '">+ Aggiungi servizio</button></div>';
@@ -323,6 +418,20 @@ function vCommessa() {
       return "<tr><td>" + esc(a.tipo) + (a.note ? '<div class="faint">' + esc(a.note) + "</div>" : "") + "</td><td>" + esc(a.fase_id ? nameOf(D.fasi, a.fase_id) : "—") + "</td><td>" + dt(a.richiesta_il) + "</td><td>" + dt(a.risposto_il) + '</td><td><span class="badge ' + (APPR_COL[a.stato] || "") + '">' + esc(a.stato) + "</span></td></tr>";
     }).join("") + "</tbody></table>" : vuoto("Nessuna approvazione richiesta.", '<button class="lnk" data-new="appr" data-ctx="' + k.id + '">Chiedi la prima</button>');
   }
+  if (t === "varianti") {
+    h += '<div class="cardhead"><h2>Varianti e lavori extra</h2><button class="btn sm ghost" data-new="vari" data-ctx="' + k.id + '">+ Nuova variante</button></div>';
+    h += '<p class="faint" style="margin-bottom:12px">Ogni richiesta fuori preventivo si registra qui: quando è approvata entra nel valore della commessa e nel budget ore, così il margine resta vero.</p>';
+    h += vr.length ? '<table><thead><tr><th>Variante</th><th>Data</th><th class="num">Importo</th><th class="num">Ore</th><th>Stato</th><th></th></tr></thead><tbody>' + vr.slice().sort(function (a, b) { return a.data < b.data ? 1 : -1; }).map(function (v) {
+      return "<tr><td><b>" + esc(v.nome) + "</b>" + (v.descrizione ? '<div class="faint">' + esc(v.descrizione) + "</div>" : "") + "</td><td>" + dt(v.data) + '</td><td class="num">' + eur(v.importo) + '</td><td class="num">' + num(v.ore, 0) + '</td><td><span class="badge ' + (v.stato === "Approvata" ? "b-green" : v.stato === "Rifiutata" ? "b-red" : "b-amber") + '">' + esc(v.stato) + '</span></td><td class="num">' + (v.stato === "Proposta" ? '<button class="lnk" data-appr-var="' + v.id + '">Approva</button> ' : "") + '<button class="lnk" data-edit="vari:' + v.id + '">Modifica</button></td></tr>';
+    }).join("") + '</tbody><tfoot><tr><td colspan="2"><b>Approvate</b></td><td class="num"><b>' + eur(b.extra) + '</b></td><td class="num"><b>' + num(sum(vr.filter(function (v) { return v.stato === "Approvata"; }), function (v) { return v.ore; }), 0) + "</b></td><td colspan=\"2\"></td></tr></tfoot></table>" : vuoto("Nessuna variante: il lavoro è ancora quello concordato.", '<button class="lnk" data-new="vari" data-ctx="' + k.id + '">Registra un extra</button>');
+  }
+  if (t === "log") {
+    var evs = evOf(k.id);
+    h += '<div class="cardhead"><h2>Diario della commessa</h2><button class="btn sm ghost" data-new="ev" data-ctx="' + k.id + '">+ Aggiungi nota</button></div>';
+    h += evs.length ? '<ul class="timeline">' + evs.map(function (e) {
+      return "<li>" + esc(e.testo) + '<div class="when">' + dt(e.created_at) + " · " + esc(e.pro_id ? nameOf(D.pros, e.pro_id) : "sistema") + "</div></li>";
+    }).join("") + "</ul>" : vuoto("Nessun evento registrato.");
+  }
   h += "</div></div><div>";
 
   h += '<div class="card"><h3 style="margin-bottom:12px">Scheda</h3><table><tbody>' +
@@ -338,11 +447,16 @@ function vCommessa() {
 
   h += '<div class="card"><h3 style="margin-bottom:12px">Economics</h3><table><tbody>' +
     row2("Imponibile servizi", eur(c.imp)) + row2("Fee coordinamento", eur(c.fee)) +
-    row2("<b>Totale cliente</b>", "<b>" + eur(c.tot) + "</b>") +
-    (vediCosti() ? row2("Costo professionisti", eur(c.cost)) + row2("Margine studio", eur(c.margine) + ' <span class="faint">(' + (c.tot ? Math.round(c.margine / c.tot * 100) : 0) + "%)</span>") : "") +
+    (b.extra ? row2("Varianti approvate", eur(b.extra)) : "") +
+    row2("<b>Valore commessa</b>", "<b>" + eur(b.ricavo) + "</b>") +
+    (vediCosti() ? row2("Costo pianificato", eur(b.costoPian)) + row2("Costo reale (ore)", eur(b.costoReale)) +
+      row2("Margine pianificato", eur(b.margPian) + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margPian / b.ricavo * 100) : 0) + "%)</span>") +
+      row2("<b>Margine atteso</b>", "<b>" + eur(b.margReale) + "</b>" + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margReale / b.ricavo * 100) : 0) + "%)</span>") : "") +
     (k.pr_id ? row2("Provvigione PR", eur(c.prov)) : "") +
-    (isPro() ? row2("Il mio compenso", eur(c.mio)) : "") +
-    row2("Ore stimate / registrate", num(sum(righeOf(k.id), function (r) { return r.ore_stimate; }), 0) + " h / " + num(oreT, 1) + " h") +
+    (me.pro_id ? row2("Il mio compenso", eur(c.mio)) : "") +
+    row2("Ore stimate / fatte", num(b.oreStim, 0) + " h / " + num(b.oreFatte, 1) + " h") +
+    (b.oreFatte ? row2("€/h reale sul valore", eur(b.ricavo / b.oreFatte)) : "") +
+    (k.tipo_prezzo === "Retainer" && k.retainer_mensile ? row2("Retainer mensile", eur(k.retainer_mensile)) : "") +
     "</tbody></table></div>";
 
   h += '<div class="card"><h3 style="margin-bottom:12px">Chi ci lavora</h3>';
@@ -422,7 +536,7 @@ function vOre() {
 
 /* ---------------- carico di lavoro ---------------- */
 function vCarico() {
-  var h = head("Carico di lavoro", "Ore stimate, ore fatte e attività aperte per ogni professionista");
+  var h = head("Carico di lavoro", "Solo le persone che lavorano sulle tue commesse");
   var rows = D.pros.filter(function (p) { return p.tipo !== "PR"; }).map(function (p) {
     var stim = 0;
     D.righe.forEach(function (r) {
@@ -434,7 +548,7 @@ function vCarico() {
     var tk = D.task.filter(function (t) { return t.assegnato_id === p.id && t.stato !== "Fatto"; });
     var scadute = tk.filter(function (t) { return t.scadenza && t.scadenza < today(); });
     return { p: p, stim: stim, fatte: fatte, tk: tk.length, sc: scadute.length, residuo: Math.max(0, stim - fatte) };
-  }).sort(function (a, b) { return b.residuo - a.residuo; });
+  }).filter(function (r) { return r.stim || r.fatte || r.tk; }).sort(function (a, b) { return b.residuo - a.residuo; });
   var mx = Math.max.apply(null, rows.map(function (r) { return r.residuo; }).concat([1]));
   h += '<div class="card"><div class="cardhead"><h2>Ore residue stimate sulle commesse attive</h2></div><div class="bars">' +
     rows.map(function (r) { return bar(r.p.nome, r.residuo, mx, num(r.residuo, 0) + " h"); }).join("") + "</div></div>";
@@ -681,6 +795,14 @@ function vSettings() {
       '<div style="margin-top:12px"><button class="btn sm ghost" data-edit="pros:' + me.pro_id + '">Modifica anagrafica</button></div>';
   } else h += '<p class="muted" style="margin-top:10px">Il tuo utente non è collegato a nessuna scheda del pool. Chiedi alla regia di collegarlo.</p>';
   h += "</div>";
+  h += '<div class="card"><h2>Chi vede cosa</h2><table style="margin-top:12px"><tbody>' +
+    row2("Le tue commesse", "le vedi solo tu e chi ci lavora dentro") +
+    row2("Le commesse degli altri", "non le vedi: nessuno vede quanto fattura un altro") +
+    row2("Le tue fatture", "private, sempre e solo tue") +
+    row2("Listino servizi", "condiviso fra i membri, serve per fare preventivi insieme") +
+    row2("Numeri di studio", "solo aggregati e anonimi") +
+    row2("Clienti", "vedi i tuoi e quelli delle commesse condivise") +
+    '</tbody></table><p class="faint" style="margin-top:10px">Questi limiti sono applicati dal database, non dalla grafica: anche interrogando direttamente il sistema non si esce da quello che ti spetta.</p></div>';
   h += '<div class="card"><h2>Cambia password</h2><form data-form="password" style="margin-top:14px"><div class="field"><label>Nuova password</label><input name="pw" type="password" placeholder="almeno 8 caratteri" autocomplete="new-password" /></div><button class="btn" type="submit">Aggiorna password</button></form><p class="faint" style="margin-top:8px">Utente connesso: ' + esc(me.email) + "</p></div>";
   if (isAdmin()) {
     h += '<div class="card"><h2>Studio</h2><form data-form="settings" style="margin-top:14px"><div class="field"><label>Fee di coordinamento predefinita (%)</label><input name="fee_default" type="number" step="1" value="' + (SET.fee_default || 0) + '" /></div><button class="btn" type="submit">Salva</button></form></div>';
@@ -812,9 +934,22 @@ var FORMS = {
       '<div class="row2">' + selField("owner_id", "Owner (chi ha il rapporto)", opt(D.pros, r.owner_id || me.pro_id)) + selField("pm_id", "Regia / PM", opt(D.pros, r.pm_id)) + "</div>" +
       '<div class="row2">' + selField("pr_id", "PR che ha portato il cliente", opt(PROS_PR(), r.pr_id)) + fld("provvigione", "Provvigione PR (%)", "number", r.provvigione == null ? 0 : r.provvigione) + "</div>" +
       '<div class="row2">' + selField("modello", "Modello di fatturazione", sel(MODELLI, r.modello)) + fld("fee", "Fee coordinamento (%)", "number", r.fee == null ? SET.fee_default : r.fee) + "</div>" +
+      '<div class="row2">' + selField("tipo_prezzo", "Tipo di commessa", sel(["Fisso", "Tempo e materiali", "Retainer"], r.tipo_prezzo || "Fisso")) + fld("budget_importo", "Budget concordato (€)", "number", r.budget_importo) + "</div>" +
+      '<div class="row2">' + fld("retainer_mensile", "Retainer mensile (€, se ricorrente)", "number", r.retainer_mensile) + fld("budget_ore", "Budget ore", "number", r.budget_ore) + "</div>" +
       '<div class="row2">' + fld("inizio", "Inizio", "date", r.inizio) + fld("scadenza", "Consegna prevista", "date", r.scadenza) + "</div>" +
-      '<div class="row2">' + fld("probabilita", "Probabilità (%)", "number", r.probabilita == null ? 50 : r.probabilita) + fld("budget_ore", "Budget ore", "number", r.budget_ore) + "</div>" +
+      fld("probabilita", "Probabilità di chiusura (%)", "number", r.probabilita == null ? 50 : r.probabilita) +
       fld("note", "Note", "textarea", r.note);
+  }},
+  vari: { t: "Variante", tb: "vari", f: function (r) {
+    return fld("nome", "Cosa cambia", "text", r.nome, true) +
+      selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) +
+      '<div class="row2">' + fld("importo", "Importo aggiuntivo (€)", "number", r.importo) + fld("ore", "Ore aggiuntive", "number", r.ore) + "</div>" +
+      '<div class="row2">' + selField("stato", "Stato", sel(["Proposta", "Approvata", "Rifiutata"], r.stato || "Proposta")) + fld("data", "Data", "date", r.data || today()) + "</div>" +
+      fld("descrizione", "Descrizione", "textarea", r.descrizione);
+  }},
+  ev: { t: "Nota di diario", tb: "ev", f: function (r) {
+    return selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) +
+      fld("testo", "Cosa è successo", "textarea", r.testo);
   }},
   cli: { t: "Cliente", tb: "cli", f: function (r) {
     return fld("nome", "Nome", "text", r.nome, true) +
@@ -932,10 +1067,30 @@ async function saveForm(f) {
     else if (i.type === "number") v = +v;
     obj[i.name] = v;
   });
+  if (entity === "ev" && !obj.pro_id) obj.pro_id = me.pro_id;
   var r = id ? await sb.from(TB[F.tb]).update(obj).eq(key, id) : await sb.from(TB[F.tb]).insert(obj);
   if (r.error) { toast(r.error.message, true); return; }
-  await reload([F.tb]);
+  if (obj.commessa_id && entity !== "ev") await logEv(obj.commessa_id, (id ? "Modificato" : "Aggiunto") + ": " + F.t.toLowerCase() + (obj.nome ? " — " + obj.nome : obj.titolo ? " — " + obj.titolo : ""));
+  await reload([F.tb, "ev"]);
   closeModal(); toast(F.t + (id ? " aggiornato" : " creato")); render();
+}
+async function duplica(id) {
+  var k = by(D.com, id); if (!k) return;
+  var titolo = prompt("Titolo della nuova commessa", k.titolo + " (copia)");
+  if (!titolo) return;
+  var nuovo = { titolo: titolo, cliente_id: k.cliente_id, owner_id: me.pro_id || k.owner_id, pm_id: k.pm_id, stato: "Bozza", modello: k.modello, fee: k.fee, tipo_prezzo: k.tipo_prezzo, budget_ore: k.budget_ore, probabilita: 50, note: k.note, inizio: today() };
+  var r = await sb.from("commesse").insert(nuovo).select().single();
+  if (r.error) { toast(r.error.message, true); return; }
+  var nid = r.data.id, base = new Date();
+  var fs = fasiOf(k.id).map(function (f, i) {
+    return { commessa_id: nid, nome: f.nome, ordine: f.ordine || i + 1, stato: "Da iniziare", avanzamento: 0, visibile_cliente: f.visibile_cliente, inizio: iso(new Date(base.getTime() + i * 10 * 86400000)), fine: iso(new Date(base.getTime() + (i + 1) * 10 * 86400000)) };
+  });
+  if (fs.length) await sb.from("fasi").insert(fs);
+  var rg = righeOf(k.id).map(function (x) { return { commessa_id: nid, serv_id: x.serv_id, qty: x.qty, ore_stimate: x.ore_stimate, assegnato_id: x.assegnato_id, stato: "Da iniziare" }; });
+  if (rg.length) await sb.from("righe").insert(rg);
+  await logEv(nid, "Commessa creata dal modello “" + k.titolo + "”");
+  await reload(["com", "fasi", "righe", "ev"]);
+  toast("Commessa duplicata"); go("commessa", nid, "fasi");
 }
 async function delRow(entity, id) {
   var F = FORMS[entity], tbk = F ? F.tb : entity, key = (F && F.key) || "id";
@@ -1015,10 +1170,20 @@ document.addEventListener("click", async function (e) {
     await reload(["mov"]); toast("Segnata come incassata"); render(); return;
   }
   if (d.incassa) {
+    var pgm = by(D.pag, d.incassa);
     var r3 = await sb.from("pagamenti").update({ stato: "Incassato", pagato_il: today() }).eq("id", d.incassa);
     if (r3.error) { toast(r3.error.message, true); return; }
-    await reload(["pag"]); toast("Pagamento incassato"); render(); return;
+    if (pgm) await logEv(pgm.commessa_id, "Incassato: " + pgm.nome + " (" + eur(pgm.importo) + ")");
+    await reload(["pag", "ev"]); toast("Pagamento incassato"); render(); return;
   }
+  if (d.apprVar) {
+    var vv = by(D.vari, d.apprVar);
+    var r4 = await sb.from("varianti").update({ stato: "Approvata", approvata_il: today() }).eq("id", d.apprVar);
+    if (r4.error) { toast(r4.error.message, true); return; }
+    if (vv) await logEv(vv.commessa_id, "Variante approvata: " + vv.nome + " (+" + eur(vv.importo) + ", +" + num(vv.ore, 0) + " h)");
+    await reload(["vari", "ev"]); toast("Variante approvata: budget aggiornato"); render(); return;
+  }
+  if (d.duplica) { await duplica(d.duplica); return; }
 });
 
 document.addEventListener("submit", async function (e) {
