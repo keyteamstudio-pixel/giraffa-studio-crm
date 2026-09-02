@@ -441,8 +441,10 @@ table.rich td{padding:12px}
   h1{font-size:1.6rem}
   h1 .sub{font-size:.86rem}
   .top{gap:14px;margin-bottom:20px;align-items:flex-start}
-  .tools{width:100%}
-  .tools .btn{flex:1;justify-content:center;text-align:center}
+  .tools{width:100%;flex-wrap:nowrap;overflow-x:auto;gap:8px;padding-bottom:2px;-webkit-overflow-scrolling:touch}
+  .tools .btn,.tools input,.tools select{flex:0 0 auto;white-space:nowrap;width:auto}
+  .tools .faint{flex:0 0 auto}
+  .tools .btn[data-pal]{display:none}
   .card{padding:20px 17px;border-radius:18px}
   .g2,.g3,.g4,.g23,.g32,.expgrid,.steps,.board{grid-template-columns:1fr!important}
   .card > table{white-space:nowrap}
