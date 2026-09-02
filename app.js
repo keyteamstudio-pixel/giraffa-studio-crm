@@ -1405,7 +1405,7 @@ function openRiga(kid, rid) {
 function openPalette() {
   if (isCliente()) return;
   PAL = [];
-  D.com.forEach(function (k) { PAL.push({ t: k.titolo, s: "Commessa · " + nameOf(D.cli, k.cliente_id), i: "◧", go: ["commessa", k.id, "fasi"] }); });
+  D.com.forEach(function (k) { PAL.push({ t: k.titolo, s: "Commessa · " + nameOf(D.cli, k.cliente_id), i: "◧", go: ["commessa", k.id, "note"] }); });
   D.cli.forEach(function (c) { PAL.push({ t: c.nome, s: "Cliente", i: "◐", go: ["cliente", c.id] }); });
   D.pros.forEach(function (p) { PAL.push({ t: p.nome, s: (p.tipo === "PR" ? "PR" : "Professionista") + (p.ruolo ? " · " + p.ruolo : ""), i: "◍", go: ["pro", p.id] }); });
   navFor().forEach(function (n) { if (n.k) PAL.push({ t: n.t, s: "Vai a", i: "→", go: [n.k] }); });
@@ -1493,7 +1493,7 @@ document.addEventListener("click", async function (e) {
   if (d.exp) { EXP[d.exp] = !EXP[d.exp]; render(); return; }
   if (d.go) { go(d.go); return; }
   if (d.tab) { tab = d.tab; render(); return; }
-  if (d.openCom) { go("commessa", d.openCom, "fasi"); return; }
+  if (d.openCom) { go("commessa", d.openCom, "note"); return; }
   if (d.openCli) { go("cliente", d.openCli); return; }
   if (d.openPro) { go("pro", d.openPro); return; }
   if (d.openProg) { go("progetto", d.openProg); return; }
