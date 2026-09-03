@@ -402,30 +402,31 @@ function mieiDatiPersonali() {
 }
 
 /* ---------------- nav ---------------- */
+/* Il menu: quattro zone. I numeri contano solo cose che ti aspettano. */
 function navFor() {
   return [
-    { g: "Lavoro" },
-    { k: "dash", t: "La mia giornata" },
-    { k: "calendario", t: "Calendario" },
-    { k: "progetti", t: "Progetti", c: function () { return progVisibili().filter(function (p) { return p.stato !== "Completato"; }).length; } },
-    { k: "task", t: "Attività", c: function () { return ftask().filter(function (t) { return t.stato !== "Fatto"; }).length; } },
-    { k: "ore", t: "Ore & timesheet" },
-    { k: "carico", t: "Il mio carico" },
-    { g: "Profilo" },
-    { k: "profilo", t: "Il mio profilo" },
-    { k: "servizi", t: "I miei servizi", c: function () { return D.serv.filter(function (x) { return x.pro_id === me.pro_id; }).length; } },
-    { g: "Amministrazione" },
-    { k: "amm", t: "Quadro amministrativo" },
-    { k: "clienti", t: "Clienti", c: function () { return fcli().length; } },
-    { k: "commesse", t: "Preventivi", c: function () { return fcom().filter(function (k) { return ["Bozza", "Preventivo"].indexOf(k.stato) > -1; }).length; } },
-    { k: "fatture", t: "Fatture", c: function () { return fmov().filter(function (m) { return m.stato !== "Pagata"; }).length; } },
-    { k: "report", t: "Report" },
-    { g: "Studio" },
-    { k: "studio", t: "Bacheca" },
-    { k: "pool", t: "Professionisti", c: function () { return D.pros.length; } },
-    { k: "fornitori", t: "Fornitori", c: function () { return D.forn.length; } },
-    { k: "spazi", t: "Coworking & spazi" },
-    { k: "impostazioni", t: "Impostazioni" }
+    { g: "Lavoro", n: "quello che stai facendo" },
+    { k: "dash", t: "La mia giornata", d: "Cosa guardare adesso" },
+    { k: "calendario", t: "Calendario", d: "Scadenze e consegne sul mese" },
+    { k: "progetti", t: "Progetti", d: "Progetti aperti in cui sei dentro", c: function () { return progVisibili().filter(function (p) { return p.stato !== "Completato"; }).length; } },
+    { k: "task", t: "Attività", d: "Attività aperte assegnate a te", c: function () { return ftask().filter(function (t) { return t.stato !== "Fatto" && t.assegnato_id === me.pro_id; }).length; } },
+    { k: "ore", t: "Ore & timesheet", d: "La tua settimana, ora per ora" },
+    { k: "carico", t: "Il mio carico", d: "Quanto lavoro hai davanti" },
+    { g: "Profilo", n: "come ti vedono i colleghi" },
+    { k: "profilo", t: "Il mio profilo", d: "La tua scheda e quanto è completa" },
+    { k: "servizi", t: "I miei servizi", d: "Il tuo listino: è così che ti trovano", c: function () { return D.serv.filter(function (x) { return x.pro_id === me.pro_id; }).length; } },
+    { g: "Amministrazione", n: "i tuoi soldi e i tuoi clienti" },
+    { k: "amm", t: "Quadro amministrativo", d: "Fatturato, incassi, pipeline" },
+    { k: "clienti", t: "Clienti", d: "I tuoi clienti", c: function () { return fcli().length; } },
+    { k: "commesse", t: "Preventivi", d: "Preventivi ancora da chiudere", c: function () { return fcom().filter(function (k) { return ["Bozza", "Preventivo"].indexOf(k.stato) > -1; }).length; } },
+    { k: "fatture", t: "Fatture", d: "Fatture non ancora pagate", c: function () { return fmov().filter(function (m) { return m.stato !== "Pagata"; }).length; } },
+    { k: "report", t: "Report", d: "Numeri e andamenti" },
+    { g: "Studio", n: "quello che è di tutti" },
+    { k: "studio", t: "Bacheca", d: "Cosa condividiamo" },
+    { k: "pool", t: "Professionisti", d: "Chi c'è e cosa sa fare" },
+    { k: "fornitori", t: "Fornitori", d: "La rubrica dello studio" },
+    { k: "spazi", t: "Coworking & spazi", d: "Sale e postazioni" },
+    { k: "impostazioni", t: "Impostazioni", d: "Il tuo accesso e le regole" }
   ];
 }
 var RUOLO_ET = { admin: "Professionista", professionista: "Professionista", pr: "Professionista", cliente: "Cliente" };
@@ -440,11 +441,13 @@ function buildNav() {
   var vv = view;
   if (vv === "nuovo" || vv === "mod") { var fs = FSEZ[current]; vv = fs ? fs[0] : "dash"; }
   if (vv === "riga") vv = "commesse";
-  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti" }[vv] || vv;
+  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse" }[vv] || vv;
+  h += '<button class="cerca" data-pal="1" title="Cerca ovunque (⌘K)"><span>Cerca…</span><kbd>⌘K</kbd></button>';
   navFor().forEach(function (n) {
-    if (n.g) { h += '<div class="navgroup">' + n.g + "</div>"; return; }
+    if (n.g) { h += '<div class="navgroup"><span>' + esc(n.g) + "</span>" + (n.n ? '<i title="' + esc(n.n) + '">' + esc(n.n) + "</i>" : "") + "</div>"; return; }
     var c = n.c ? n.c() : null;
-    h += '<button data-go="' + n.k + '" class="' + (cur === n.k ? "on" : "") + '">' + n.t + (c ? '<span class="cnt">' + c + "</span>" : "") + "</button>";
+    h += '<button data-go="' + n.k + '" class="' + (cur === n.k ? "on" : "") + '" title="' + esc(n.d || n.t) + '"><span class="nt">' + esc(n.t) + "</span>" +
+      (c ? '<span class="cnt">' + c + "</span>" : "") + "</button>";
   });
   var tm = timerMio();
   if (tm) {
@@ -456,9 +459,8 @@ function buildNav() {
     var t2 = timerMio(); if (!t2) { clearInterval(TICK); return; }
     Array.prototype.forEach.call(document.querySelectorAll("#timerlbl"), function (n) { n.textContent = durata(t2.iniziato); });
   }, 15000);
-  el("#mename").textContent = me.nome;
-  el("#meemail").innerHTML = esc(me.email) + '<br><span class="badge" style="margin-top:6px">' + esc(RUOLO_ET[me.ruolo] || "—") + "</span>" +
-    (permEt() ? '<br><span class="faint" style="font-size:.72rem">' + esc(permEt()) + "</span>" : "");
+  el("#mename").innerHTML = (me.pro_id ? avatar(me.pro_id, 26) : "") + "<span>" + esc(me.nome) + "</span>";
+  el("#meemail").innerHTML = esc(me.email) + (permEt() ? '<br><span class="cura">' + esc(permEt()) + "</span>" : "");
 }
 function perspSel() {
   if (isCliente()) return "";
