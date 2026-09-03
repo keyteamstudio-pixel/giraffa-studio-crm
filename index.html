@@ -10,6 +10,7 @@
 
 
 
+
 <html lang="it">
 <head>
 <meta charset="UTF-8" />
@@ -276,6 +277,11 @@ textarea{min-height:86px;resize:vertical;line-height:1.5}
   border-radius:16px;box-shadow:var(--sh-2);
 }
 .fpage .actionbar .grow{flex:1}
+.fgroup{padding-bottom:6px;margin-bottom:18px;border-bottom:1px solid var(--line-soft)}
+.fgroup:last-child{border-bottom:0;margin-bottom:0}
+.fgroup h3{font-size:.82rem;text-transform:uppercase;letter-spacing:.07em;color:var(--soft);margin-bottom:14px;font-weight:550}
+.fgroup h3 .badge{text-transform:none;letter-spacing:0;margin-left:8px}
+.fgroup.priv{background:var(--cream);border:1px solid var(--line);border-radius:14px;padding:18px 18px 6px;margin-top:20px}
 .fpage .actionbar .danger{order:-1}
 @media(max-width:640px){.fpage .actionbar{bottom:0;border-radius:14px}.fpage .card{padding:20px}}
 
@@ -743,6 +749,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=20"></script>
 </body>
 </html>
