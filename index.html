@@ -123,7 +123,8 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 .nav button[data-go="carico"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12a9 9 0 0 1 18 0'/%3E%3Cpath d='M12 12l4.5-3.5'/%3E%3Cpath d='M3 19h18'/%3E%3C/svg%3E")}
 .nav button[data-go="spazi"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 21V9l9-6 9 6v12'/%3E%3Cpath d='M9 21v-6h6v6'/%3E%3C/svg%3E")}
 .nav button[data-go="impostazioni"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3.2'/%3E%3Cpath d='M12 2.5v3M12 18.5v3M21.5 12h-3M5.5 12h-3M18.5 5.5l-2 2M7.5 16.5l-2 2M18.5 18.5l-2-2M7.5 7.5l-2-2'/%3E%3C/svg%3E")}
-.nav button[data-go="progetti"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4' width='18' height='16' rx='3'/%3E%3Cpath d='M3 9h18M8 4v5'/%3E%3C/svg%3E")}
+.nav button[data-go="progetti"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'/%3E%3C/svg%3E")}
+.nav button[data-go="calendario"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='16' rx='3'/%3E%3Cpath d='M3 10h18M8 3v4M16 3v4'/%3E%3C/svg%3E")}
 .sidefoot{margin-top:auto;padding:16px 11px 0;border-top:1px solid var(--line);font-size:.78rem;color:var(--faint)}
 .sidefoot b{display:block;color:var(--ink);font-weight:600;font-size:.9rem;letter-spacing:-.01em;margin-bottom:3px}
 .linkbtn{background:none;border:1px solid var(--line);color:var(--soft);font:inherit;font-size:.76rem;font-weight:500;padding:5px 13px;border-radius:99px;cursor:pointer;margin-top:12px;transition:all .16s var(--ease)}
@@ -487,6 +488,33 @@ table.ts td:first-child{min-width:210px}
 .tsc.oggi{background:var(--terra-soft)}
 .tsr{font-variant-numeric:tabular-nums;color:var(--soft)}
 
+/* ---------- progetti e lavorazioni ---------- */
+.pcard{cursor:pointer;transition:transform .16s var(--ease),box-shadow .16s var(--ease)}
+.pcard:hover{transform:translateY(-3px);box-shadow:var(--sh-2)}
+.pfoot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line-soft);padding-top:12px}
+.pfoot b{color:var(--ink);font-variant-numeric:tabular-nums}
+.lav{border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:14px}
+.lavtop{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.lavtop b{color:var(--ink);font-weight:600}
+.lavbar{display:flex;align-items:center;gap:12px;margin:10px 0}
+.lavbar .prog{flex:1;margin-top:0}
+.lavact{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.lavact > span:last-child{display:flex;gap:7px;flex-wrap:wrap}
+
+/* ---------- calendario ---------- */
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:8px}
+.caldow{font-size:.7rem;color:var(--faint);font-weight:600;text-transform:uppercase;letter-spacing:.05em;padding-bottom:2px}
+.calday{min-height:106px;border:1px solid var(--line);border-radius:12px;padding:8px;cursor:pointer;transition:all .15s var(--ease);display:flex;flex-direction:column;gap:4px}
+.calday:hover{border-color:var(--terra)}
+.calday.out{opacity:.38}
+.calday.today{border-color:var(--terra);box-shadow:0 0 0 1px var(--terra)}
+.caltop{display:flex;justify-content:space-between;align-items:center;font-size:.82rem;color:var(--soft)}
+.calday.today .caltop{color:var(--terra-deep);font-weight:700}
+.calore{font-size:.68rem;background:var(--cream);border-radius:99px;padding:1px 7px;color:var(--soft)}
+.calev{font-size:.72rem;padding:3px 7px;border-radius:7px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}
+.calev:hover{filter:brightness(.95)}
+@media(max-width:900px){.cal{gap:5px}.calday{min-height:76px;padding:6px}.calev{font-size:.64rem;padding:2px 5px}.caldow{font-size:.6rem}}
+
 /* ---------- preventivo ---------- */
 .pgroup{border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:14px}
 .pgroup.opz{background:var(--cream);border-style:dashed}
@@ -623,6 +651,6 @@ window.GS_CONFIG = {
   SUPABASE_ANON_KEY: "sb_publishable_ckqEpmyfFpsWXnK5J2-o4g_p4c_NJll"
 };
 </script>
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
