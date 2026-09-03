@@ -4,6 +4,7 @@
 
 
 
+
 (function () {
 "use strict";
 
@@ -87,11 +88,11 @@ function budget(k) {
   var oreStim = sum(righeOf(k.id), function (r) { return r.ore_stimate; }) + sum(vApp, function (v) { return v.ore; });
   var ore = oreOf(k.id);
   var oreFatte = sum(ore, function (o) { return o.ore; });
-  var costoReale = sum(ore, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); });
+  var costoReale = c.cost;
   var margPian = ricavo - c.cost;
-  var margReale = ricavo - Math.max(c.cost, costoReale);
+  var margReale = ricavo - c.cost;
   var burnOre = oreStim ? Math.round(oreFatte / oreStim * 100) : null;
-  var burnCosto = ricavo ? Math.round(Math.max(c.cost, costoReale) / ricavo * 100) : 0;
+  var burnCosto = ricavo ? Math.round(c.cost / ricavo * 100) : 0;
   return { ricavo: ricavo, extra: extra, oreStim: oreStim, oreFatte: oreFatte, costoPian: c.cost, costoReale: costoReale, margPian: margPian, margReale: margReale, burnOre: burnOre, burnCosto: burnCosto, varianti: vApp.length };
 }
 function salute(k) {
@@ -644,7 +645,7 @@ function vCommessa() {
   if (vediCosti()) {
     var bo = b.burnOre == null ? 0 : b.burnOre, bc = b.burnCosto;
     h += '<div class="card"><div class="grid g2">' +
-      '<div><div class="cardhead"><h2>Consumo ore</h2><span class="faint">' + num(b.oreFatte, 1) + " / " + num(b.oreStim, 0) + " h stimate</span></div><div class=\"prog\"><i class=\"" + (bo > 100 ? "bad" : bo > 85 ? "warn" : "ok") + '" style="width:' + Math.min(100, bo) + '%"></i></div><p class="faint" style="margin-top:6px">' + bo + "% del budget ore</p></div>" +
+      '<div><div class="cardhead"><h2>Le mie ore</h2><span class="faint">' + num(b.oreFatte, 1) + " / " + num(b.oreStim, 0) + " h stimate in totale</span></div><div class=\"prog\"><i class=\"" + (bo > 100 ? "bad" : bo > 85 ? "warn" : "ok") + '" style="width:' + Math.min(100, bo) + '%"></i></div><p class="faint" style="margin-top:6px">' + bo + "% delle ore stimate · quelle dei colleghi sono private</p></div>" +
       '<div><div class="cardhead"><h2>Costo sul valore</h2><span class="faint">' + eur(Math.max(b.costoPian, b.costoReale)) + " su " + eur(b.ricavo) + "</span></div><div class=\"prog\"><i class=\"" + (bc > 90 ? "bad" : bc > 70 ? "warn" : "ok") + '" style="width:' + Math.min(100, bc) + '%"></i></div><p class="faint" style="margin-top:6px">' + bc + "% del valore va ai professionisti</p></div>" +
       "</div></div>";
   }
@@ -744,6 +745,7 @@ function vCommessa() {
       '<form class="qadd" data-qadd="' + k.id + '"><button class="ck" type="button" disabled></button><input name="titolo" placeholder="Aggiungi un\'attività e premi invio" autocomplete="off"></form></div>';
   }
   if (t === "ore") {
+    h += '<p class="faint" style="margin-bottom:10px">Il registro ore è personale: qui vedi solo le tue.</p>';
     var daFatt = ore.filter(function (o) { return o.fatturabile && !o.movimento_id; });
     var valDaFatt = sum(daFatt, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); });
     h += '<div class="cardhead"><h2>Ore registrate</h2><span>' + (daFatt.length && vediCosti() ? '<button class="btn sm ghost" data-fattore="' + k.id + '">Fattura ' + num(sum(daFatt, function (o) { return o.ore; }), 1) + " h · " + eur(valDaFatt) + "</button> " : "") + '<button class="btn sm ghost" data-new="ore" data-ctx="' + k.id + '">+ Registra ore</button></span></div>' + tblOre(ore);
@@ -879,7 +881,7 @@ function vOre() {
   var sett = list.filter(function (o) { return days(today(), o.data) < 7 && days(today(), o.data) >= 0; });
   var fatt = mese.filter(function (o) { return o.fatturabile; });
   var totMese = sum(mese, function (o) { return o.ore; });
-  var h = head("Ore & timesheet", "Registro ore " + (persp === "me" ? "personali" : "dello studio"), '<button class="btn sm" data-new="ore">+ Registra ore</button>');
+  var h = head("Ore & timesheet", "Il tuo registro ore: lo vedi solo tu, serve a te per tararti e per i clienti gestiti a ore", '<button class="btn sm" data-new="ore">+ Registra ore</button>');
   h += '<div class="grid g4">' +
     kpi(num(totMese, 1) + " h", "Questo mese", num(sum(sett, function (o) { return o.ore; }), 1) + " h negli ultimi 7 giorni") +
     kpi(num(sum(fatt, function (o) { return o.ore; }), 1) + " h", "Fatturabili", totMese ? Math.round(sum(fatt, function (o) { return o.ore; }) / totMese * 100) + "% del totale" : "—") +
@@ -922,14 +924,9 @@ function vOre() {
 
   var per = {}; list.forEach(function (o) { if (o.commessa_id) per[o.commessa_id] = (per[o.commessa_id] || 0) + (+o.ore || 0); });
   var pk = Object.keys(per).sort(function (a, b) { return per[b] - per[a]; });
-  h += '<div class="grid g2" style="margin-top:16px"><div class="card"><div class="cardhead"><h2>Ore per commessa</h2></div>';
+  h += '<div class="card" style="margin-top:16px"><div class="cardhead"><h2>Le tue ore per commessa</h2></div>';
   h += pk.length ? '<div class="bars">' + pk.slice(0, 8).map(function (id) { return bar(nameOf(D.com, id, "titolo"), per[id], per[pk[0]], num(per[id], 1) + " h"); }).join("") + "</div>" : vuoto("—");
   h += "</div>";
-  var pp = {}; list.forEach(function (o) { if (o.pro_id) pp[o.pro_id] = (pp[o.pro_id] || 0) + (+o.ore || 0); });
-  var ppk = Object.keys(pp).sort(function (a, b) { return pp[b] - pp[a]; });
-  h += '<div class="card"><div class="cardhead"><h2>Ore per professionista</h2></div>';
-  h += ppk.length ? '<div class="bars">' + ppk.map(function (id) { return bar(nameOf(D.pros, id), pp[id], pp[ppk[0]], num(pp[id], 1) + " h"); }).join("") + "</div>" : vuoto("—");
-  h += "</div></div>";
   h += '<div class="card"><div class="cardhead"><h2>Registrazioni</h2></div>' + tblOre(list.slice(0, 60)) + "</div>";
   return h;
 }
@@ -975,13 +972,13 @@ function vCompensi() {
     kpi(eur(tot.maturato + tot.atteso), "Totale assegnato", "righe di preventivo su commesse attive") + "</div>";
 
   h += '<div class="card" style="margin-top:18px"><div class="cardhead"><h2>' + (admin ? "Per persona" : "Il tuo riepilogo") + '</h2><span class="faint">maturato = righe su commesse in consegna o chiuse</span></div>';
-  h += '<table><thead><tr><th>Persona</th><th class="num">Maturato</th><th class="num">In lavorazione</th><th class="num">Liquidato</th><th class="num">Saldo</th><th class="num">Ore</th><th></th></tr></thead><tbody>';
+  h += '<table><thead><tr><th>Persona</th><th class="num">Maturato</th><th class="num">In lavorazione</th><th class="num">Liquidato</th><th class="num">Saldo</th><th class="num">Tue ore</th><th></th></tr></thead><tbody>';
   lista.slice().sort(function (a, b) { return compensoDi(b.id).saldo - compensoDi(a.id).saldo; }).forEach(function (p) {
     var c = compensoDi(p.id);
     h += "<tr><td>" + avatar(p.id, 22) + " " + esc(p.nome) + '<div class="faint">' + esc(p.ruolo || "—") + "</div></td>" +
       '<td class="num">' + eur(c.maturato) + '</td><td class="num faint">' + eur(c.atteso) + '</td><td class="num">' + eur(c.liquidato) + '</td>' +
       '<td class="num"><b class="' + (c.saldo > 0 ? "neg" : "") + '">' + eur(c.saldo) + "</b></td>" +
-      '<td class="num faint">' + num(c.ore, 1) + " h</td>" +
+      '<td class="num faint">' + (p.id === me.pro_id ? num(c.ore, 1) + " h" : "—") + "</td>" +
       '<td class="num">' + (admin && c.saldo > 0 ? '<button class="lnk" data-liquida="' + p.id + '|' + c.saldo + '">Liquida</button>' : "") + "</td></tr>";
   });
   h += "</tbody></table></div>";
@@ -1008,7 +1005,7 @@ function vCompensi() {
 
 /* ---------------- carico di lavoro ---------------- */
 function vCarico() {
-  var h = head("Carico di lavoro", "Solo le persone che lavorano sulle tue commesse");
+  var h = head("Carico di lavoro", "Ore stimate e attività aperte di chi lavora sulle tue commesse. Le ore registrate restano private: vedi solo le tue.");
   var rows = D.pros.filter(function (p) { return p.tipo !== "PR"; }).map(function (p) {
     var stim = 0;
     D.righe.forEach(function (r) {
@@ -1016,7 +1013,7 @@ function vCarico() {
       var k = by(D.com, r.commessa_id);
       if (pid === p.id && k && ["Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1) stim += (+r.ore_stimate || 0);
     });
-    var fatte = sum(D.ore.filter(function (o) { return o.pro_id === p.id; }), function (o) { return o.ore; });
+    var fatte = p.id === me.pro_id ? sum(D.ore.filter(function (o) { return o.pro_id === p.id; }), function (o) { return o.ore; }) : 0;
     var tk = D.task.filter(function (t) { return t.assegnato_id === p.id && t.stato !== "Fatto"; });
     var scadute = tk.filter(function (t) { return t.scadenza && t.scadenza < today(); });
     return { p: p, stim: stim, fatte: fatte, tk: tk.length, sc: scadute.length, residuo: Math.max(0, stim - fatte) };
@@ -1024,7 +1021,7 @@ function vCarico() {
   var mx = Math.max.apply(null, rows.map(function (r) { return r.residuo; }).concat([1]));
   h += '<div class="card"><div class="cardhead"><h2>Ore residue stimate sulle commesse attive</h2></div><div class="bars">' +
     rows.map(function (r) { return bar(r.p.nome, r.residuo, mx, num(r.residuo, 0) + " h"); }).join("") + "</div></div>";
-  h += '<div class="card"><table><thead><tr><th>Professionista</th><th>Ruolo</th><th class="num">Ore stimate</th><th class="num">Ore fatte</th><th class="num">Residuo</th><th class="num">Attività aperte</th><th class="num">Scadute</th></tr></thead><tbody>' +
+  h += '<div class="card"><table><thead><tr><th>Professionista</th><th>Ruolo</th><th class="num">Ore stimate</th><th class="num">Tue ore</th><th class="num">Residuo</th><th class="num">Attività aperte</th><th class="num">Scadute</th></tr></thead><tbody>' +
     rows.map(function (r) {
       return '<tr><td><button class="lnk" data-open-pro="' + r.p.id + '">' + esc(r.p.nome) + "</button></td><td>" + esc(r.p.ruolo || "—") + '</td><td class="num">' + num(r.stim, 0) + '</td><td class="num">' + num(r.fatte, 1) + '</td><td class="num">' + num(r.residuo, 0) + '</td><td class="num">' + r.tk + '</td><td class="num">' + (r.sc ? '<span class="badge b-red">' + r.sc + "</span>" : "0") + "</td></tr>";
     }).join("") + "</tbody></table></div>";
@@ -1110,7 +1107,7 @@ function vPool() {
     h += '<div class="card"><div class="cardhead"><h2>' + esc(p.nome) + '</h2><span class="badge ' + (p.vetting === "Attivo" ? "b-green" : "b-amber") + '">' + esc(p.vetting || "—") + "</span></div>" +
       '<p class="muted" style="font-size:.88rem">' + esc(p.ruolo || "—") + ' <span class="badge">' + esc(p.tipo || "Professionista") + "</span></p>" +
       '<div style="margin:10px 0">' + (p.competenze || "").split(",").filter(Boolean).map(function (x) { return '<span class="chip">' + esc(x.trim()) + "</span>"; }).join("") + "</div>" +
-      "<table><tbody>" + row2("Tariffa oraria", p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "—") + row2("Servizi a listino", srv.length) + row2("Commesse", com.length) + row2("Ore registrate", num(sum(ore, function (o) { return o.ore; }), 1) + " h") + "</tbody></table>" +
+      "<table><tbody>" + (p.id === me.pro_id ? row2("Tariffa oraria", p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "—") : "") + row2("Servizi a listino", srv.length) + row2("Commesse", com.length) + (p.id === me.pro_id ? row2("Ore registrate", num(sum(ore, function (o) { return o.ore; }), 1) + " h") : "") + "</tbody></table>" +
       '<div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm ghost" data-open-pro="' + p.id + '">Scheda</button><button class="btn sm ghost" data-edit="pros:' + p.id + '">Modifica</button></div></div>';
   });
   return h + "</div>";
@@ -1126,7 +1123,7 @@ function vPro() {
   h += '<div class="grid g4">' +
     kpi(String(com.length), "Commesse", D.cli.filter(function (c) { return c.owner_id === p.id; }).length + " clienti propri") +
     kpi(num(sum(ore, function (o) { return o.ore; }), 1) + " h", "Ore registrate", ore.length + " registrazioni") +
-    kpi(eur(sum(ore, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); })), "Valore ore", p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "tariffa non impostata") +
+    kpi(p.id === me.pro_id ? eur(sum(ore, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); })) : "—", p.id === me.pro_id ? "Valore delle tue ore" : "Ore private", p.id === me.pro_id ? (p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "tariffa non impostata") : "le vede solo chi le registra") +
     kpi(String(tk.filter(function (t) { return t.stato !== "Fatto"; }).length), "Attività aperte", tk.length + " totali") + "</div>";
   h += '<div class="grid g32" style="margin-top:16px"><div>';
   h += '<div class="card"><div class="cardhead"><h2>Commesse</h2></div>' + (com.length ? tblCom(com) : vuoto("—")) + "</div>";
@@ -1136,7 +1133,7 @@ function vPro() {
     row2("Tipo", esc(p.tipo || "Professionista")) +
     row2("Vetting", '<span class="badge ' + (p.vetting === "Attivo" ? "b-green" : "b-amber") + '">' + esc(p.vetting || "—") + "</span>") +
     row2("Email", esc(p.email || "—")) + row2("Telefono", esc(p.telefono || "—")) + row2("Città", esc(p.citta || "—")) +
-    row2("P. IVA", esc(p.piva || "—")) + row2("Tariffa oraria", p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "—") +
+    row2("P. IVA", esc(p.piva || "—")) + (p.id === me.pro_id ? row2("Tariffa oraria", p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "—") : "") +
     row2("Competenze", esc(p.competenze || "—")) + row2("Note", esc(p.note || "—")) + "</tbody></table></div>";
   h += '<div class="card"><h3 style="margin-bottom:12px">Ultime ore</h3>' + tblOre(ore.slice(0, 8)) + "</div>";
   return h + "</div></div>";
