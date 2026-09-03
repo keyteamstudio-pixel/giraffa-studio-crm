@@ -5,6 +5,7 @@
 
 
 
+
 (function () {
 "use strict";
 
@@ -15,7 +16,7 @@ var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], 
 var CAL = 0;
 var PLINK = null;
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", liq: "liquidazioni", port: "portali" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
@@ -54,7 +55,6 @@ var FASE_COL = { "Da iniziare": "", "In corso": "b-terra", "In attesa cliente": 
 var PRIO_COL = { Alta: "b-red", Media: "b-amber", Bassa: "" };
 var MOV_COL = { Pagata: "b-green", Emessa: "b-blue", "Da emettere": "b-amber", Insoluta: "b-red" };
 var APPR_COL = { Approvata: "b-green", "In attesa": "b-amber", "Modifiche richieste": "b-red" };
-var MODELLI = ["A · ognuno il suo", "B · Giraffa fattura", "C · subappalto"];
 var TIPI_MAT = ["Brief", "Riferimenti", "Cartella", "Bozza", "Consegna", "Contratto", "Altro"];
 
 /* ---------------- calcoli ---------------- */
@@ -296,8 +296,8 @@ function calc(k) {
   });
   var sconto = Math.round(imp * (+k.sconto || 0) / 100);
   imp = imp - sconto;
-  var fee = Math.round(imp * (+k.fee || 0) / 100);
-  var tot = imp + fee;
+  var fee = 0;
+  var tot = imp;
   var iva = Math.round(tot * (k.iva == null ? 22 : +k.iva) / 100);
   return { imp: imp, cost: cost, fee: fee, tot: tot, iva: iva, lordo: tot + iva, margine: tot - cost, mio: mio, opz: opz, mrr: mrr, sconto: sconto, spese: spese };
 }
@@ -360,7 +360,6 @@ function navFor() {
     { k: "commesse", t: "I miei preventivi", c: function () { return fcom().length; } },
     { k: "progetti", t: "Progetti", c: function () { return progVisibili().length; } },
     { g: "Clienti" }, { k: "clienti", t: "I miei clienti", c: function () { return fcli().length; } },
-    { g: "Soldi" }, { k: "compensi", t: "I miei compensi" },
     { g: "Studio" }, { k: "impostazioni", t: "Impostazioni" }
   ];
   if (isPro()) return [
@@ -384,7 +383,7 @@ function navFor() {
     { k: "pool", t: "Pool professionisti", c: function () { return D.pros.length; } },
     { k: "servizi", t: "Servizi & listino" },
     { g: "Soldi" }, { k: "fatture", t: "Fatturazione", c: function () { return fmov().filter(function (m) { return m.stato !== "Pagata"; }).length; } },
-    { k: "compensi", t: "Compensi" }, { k: "report", t: "Report" },
+    { k: "report", t: "Report" },
     { g: "Studio" }, { k: "carico", t: "Carico di lavoro" }, { k: "spazi", t: "Spazi & ufficio" }, { k: "impostazioni", t: "Impostazioni" }
   ];
 }
@@ -726,10 +725,21 @@ function vCommessa() {
         }).join("") + "</tbody></table></div>";
     }
     if (rr.length) {
+      var perPro = {};
+      rr.filter(function (x) { return !x.opzionale && x.tipo !== "Sconto"; }).forEach(function (x) {
+        var cc = rigaCalc(x), pid = cc.pro || k.owner_id;
+        perPro[pid] = (perPro[pid] || 0) + cc.prezzo;
+      });
+      var pids = Object.keys(perPro);
+      if (pids.length > 1) {
+        h += '<div class="card" style="margin-top:14px;background:var(--cream)"><div class="cardhead"><h2>Chi fattura cosa</h2><span class="faint">ognuno emette la sua fattura al cliente</span></div>' +
+          '<table><tbody>' + pids.sort(function (a, b) { return perPro[b] - perPro[a]; }).map(function (pid) {
+            return "<tr><td>" + avatar(pid, 20) + " " + esc(nameOf(D.pros, pid)) + '</td><td class="num">' + eur(perPro[pid]) + "</td></tr>";
+          }).join("") + "</tbody></table></div>";
+      }
       h += '<div class="totali"><table><tbody>' +
         row2("Imponibile", eur(c.imp + c.sconto)) +
         (c.sconto ? row2("Sconto commerciale (" + (k.sconto || 0) + "%)", "−" + eur(c.sconto)) : "") +
-        (c.fee ? row2("Coordinamento Giraffa Studio (" + (k.fee || 0) + "%)", eur(c.fee)) : "") +
         row2("<b>Totale imponibile</b>", "<b>" + eur(c.tot) + "</b>") +
         row2("IVA " + (k.iva == null ? 22 : k.iva) + "%", eur(c.iva)) +
         row2("<b>Totale con IVA</b>", "<b>" + eur(c.lordo) + "</b>") +
@@ -794,12 +804,12 @@ function vCommessa() {
     (k.pr_id ? row2("Portato da", esc(nameOf(D.pros, k.pr_id))) : "") +
     row2("Stato", '<span class="badge ' + (STATO_COL[k.stato] || "") + '">' + esc(k.stato) + "</span>") +
     row2("Probabilità", (k.probabilita == null ? 50 : k.probabilita) + " %") +
-    row2("Fatturazione", esc(k.modello || "—")) +
+    row2("Fatturazione", "Ognuno fattura la sua parte al cliente") +
     row2("Periodo", dt(k.inizio) + " → " + dt(k.scadenza)) +
     row2("Note", esc(k.note || "—")) + "</tbody></table></div>";
 
   h += '<div class="card"><h3 style="margin-bottom:12px">Economics</h3><table><tbody>' +
-    row2("Imponibile servizi", eur(c.imp)) + row2("Fee coordinamento", eur(c.fee)) +
+    row2("Imponibile servizi", eur(c.imp)) +
     (b.extra ? row2("Varianti approvate", eur(b.extra)) : "") +
     row2("<b>Valore commessa</b>", "<b>" + eur(b.ricavo) + "</b>") +
     (vediCosti() ? row2("Costo pianificato", eur(b.costoPian)) + row2("Costo reale (ore)", eur(b.costoReale)) +
@@ -928,78 +938,6 @@ function vOre() {
   h += pk.length ? '<div class="bars">' + pk.slice(0, 8).map(function (id) { return bar(nameOf(D.com, id, "titolo"), per[id], per[pk[0]], num(per[id], 1) + " h"); }).join("") + "</div>" : vuoto("—");
   h += "</div>";
   h += '<div class="card"><div class="cardhead"><h2>Registrazioni</h2></div>' + tblOre(list.slice(0, 60)) + "</div>";
-  return h;
-}
-
-/* ---------------- compensi ---------------- */
-function compensoDi(proId) {
-  var righeAss = D.righe.filter(function (r) {
-    var k = by(D.com, r.commessa_id); if (!k) return false;
-    if (["Approvata", "In corso", "Consegna", "Chiusa"].indexOf(k.stato) < 0) return false;
-    if (r.opzionale || r.tipo === "Sconto") return false;
-    var cc = rigaCalc(r);
-    return cc.pro === proId;
-  });
-  var maturato = 0, atteso = 0;
-  righeAss.forEach(function (r) {
-    var cc = rigaCalc(r), k = by(D.com, r.commessa_id);
-    if (["Consegna", "Chiusa"].indexOf(k.stato) > -1) maturato += cc.costo; else atteso += cc.costo;
-  });
-  var mieOre = D.ore.filter(function (o) { return o.pro_id === proId; });
-  var liq = D.liq.filter(function (l) { return l.pro_id === proId; });
-  var liquidato = sum(liq.filter(function (l) { return l.stato === "Liquidato"; }), function (l) { return l.importo; });
-  return {
-    righe: righeAss, maturato: maturato, atteso: atteso,
-    ore: sum(mieOre, function (o) { return o.ore; }),
-    valoreOre: sum(mieOre, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); }),
-    liquidato: liquidato, saldo: maturato - liquidato, liq: liq
-  };
-}
-function vCompensi() {
-  var admin = me.ruolo === "admin";
-  var lista = admin ? D.pros.filter(function (p) { return p.tipo !== "PR"; }) : (me.pro_id ? [by(D.pros, me.pro_id)].filter(Boolean) : []);
-  var h = head(admin ? "Compensi" : "I miei compensi",
-    admin ? "Quanto lo studio deve a ciascun professionista, e cosa è già stato liquidato" : "Il tuo maturato, quello che è già stato liquidato e il saldo",
-    admin ? '<button class="btn sm" data-new="liq">+ Registra liquidazione</button>' : "");
-  if (!lista.length) return h + '<div class="card">' + vuoto("Nessun professionista collegato.") + "</div>";
-
-  var tot = { maturato: 0, atteso: 0, liquidato: 0, saldo: 0 };
-  lista.forEach(function (p) { var c = compensoDi(p.id); tot.maturato += c.maturato; tot.atteso += c.atteso; tot.liquidato += c.liquidato; tot.saldo += c.saldo; });
-  h += '<div class="grid g4">' +
-    kpi(eur(tot.saldo), admin ? "Da liquidare adesso" : "Il tuo saldo", "su " + eur(tot.maturato) + " maturati") +
-    kpi(eur(tot.atteso), "In lavorazione", "diventa maturato alla consegna") +
-    kpi(eur(tot.liquidato), "Già liquidato", "somma delle liquidazioni registrate") +
-    kpi(eur(tot.maturato + tot.atteso), "Totale assegnato", "righe di preventivo su commesse attive") + "</div>";
-
-  h += '<div class="card" style="margin-top:18px"><div class="cardhead"><h2>' + (admin ? "Per persona" : "Il tuo riepilogo") + '</h2><span class="faint">maturato = righe su commesse in consegna o chiuse</span></div>';
-  h += '<table><thead><tr><th>Persona</th><th class="num">Maturato</th><th class="num">In lavorazione</th><th class="num">Liquidato</th><th class="num">Saldo</th><th class="num">Tue ore</th><th></th></tr></thead><tbody>';
-  lista.slice().sort(function (a, b) { return compensoDi(b.id).saldo - compensoDi(a.id).saldo; }).forEach(function (p) {
-    var c = compensoDi(p.id);
-    h += "<tr><td>" + avatar(p.id, 22) + " " + esc(p.nome) + '<div class="faint">' + esc(p.ruolo || "—") + "</div></td>" +
-      '<td class="num">' + eur(c.maturato) + '</td><td class="num faint">' + eur(c.atteso) + '</td><td class="num">' + eur(c.liquidato) + '</td>' +
-      '<td class="num"><b class="' + (c.saldo > 0 ? "neg" : "") + '">' + eur(c.saldo) + "</b></td>" +
-      '<td class="num faint">' + (p.id === me.pro_id ? num(c.ore, 1) + " h" : "—") + "</td>" +
-      '<td class="num">' + (admin && c.saldo > 0 ? '<button class="lnk" data-liquida="' + p.id + '|' + c.saldo + '">Liquida</button>' : "") + "</td></tr>";
-  });
-  h += "</tbody></table></div>";
-
-  var dett = lista.length === 1 ? lista[0] : null;
-  if (dett) {
-    var c2 = compensoDi(dett.id);
-    h += '<div class="grid g2" style="margin-top:16px"><div class="card"><div class="cardhead"><h2>Righe assegnate</h2></div>';
-    h += c2.righe.length ? '<table><thead><tr><th>Voce</th><th>Commessa</th><th>Stato</th><th class="num">Compenso</th></tr></thead><tbody>' +
-      c2.righe.map(function (r) {
-        var cc = rigaCalc(r), k = by(D.com, r.commessa_id);
-        return "<tr><td>" + esc(cc.nome) + "</td><td>" + esc(k.titolo) + '</td><td><span class="badge ' + (STATO_COL[k.stato] || "") + '">' + esc(k.stato) + '</span></td><td class="num">' + eur(cc.costo) + "</td></tr>";
-      }).join("") + "</tbody></table>" : vuoto("Nessuna riga assegnata.");
-    h += "</div>";
-    h += '<div class="card"><div class="cardhead"><h2>Liquidazioni</h2></div>';
-    h += c2.liq.length ? '<table><thead><tr><th>Periodo</th><th class="num">Importo</th><th>Stato</th><th>Pagato il</th></tr></thead><tbody>' +
-      c2.liq.slice().sort(function (a, b) { return (a.periodo || "") < (b.periodo || "") ? 1 : -1; }).map(function (l) {
-        return "<tr><td>" + esc(l.periodo || "—") + '</td><td class="num">' + eur(l.importo) + '</td><td><span class="badge ' + (l.stato === "Liquidato" ? "b-green" : "b-amber") + '">' + esc(l.stato) + "</span></td><td>" + dt(l.pagato_il) + "</td></tr>";
-      }).join("") + "</tbody></table>" : vuoto("Nessuna liquidazione registrata.");
-    h += "</div></div>";
-  }
   return h;
 }
 
@@ -1567,7 +1505,7 @@ function openPreventivo(id) {
     '<table style="margin-top:20px"><tbody>' +
     row2("Imponibile", eur(c.imp + c.sconto)) +
     (c.sconto ? row2("Sconto commerciale (" + (k.sconto || 0) + "%)", "−" + eur(c.sconto)) : "") +
-    (c.fee ? row2("Coordinamento Giraffa Studio (" + (k.fee || 0) + "%)", eur(c.fee)) : "") +
+
     row2("<b>Totale imponibile</b>", "<b>" + eur(c.tot) + "</b>") +
     row2("IVA " + (k.iva == null ? 22 : k.iva) + "%", eur(c.iva)) +
     row2("<b>Totale</b>", "<b>" + eur(c.lordo) + "</b>") +
@@ -1612,7 +1550,7 @@ var FORMS = {
       '<div class="row2">' + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) + selField("stato", "Stato", sel(STATI, r.stato || "Bozza")) + "</div>" +
       '<div class="row2">' + selField("owner_id", "Owner (chi ha il rapporto)", opt(D.pros, r.owner_id || me.pro_id)) + selField("pm_id", "Regia / PM", opt(D.pros, r.pm_id)) + "</div>" +
       selField("pr_id", "Chi ha portato il cliente", opt(PROS_PR(), r.pr_id)) +
-      '<div class="row2">' + selField("modello", "Modello di fatturazione", sel(MODELLI, r.modello)) + fld("fee", "Fee coordinamento (%)", "number", r.fee == null ? SET.fee_default : r.fee) + "</div>" +
+
       '<div class="row2">' + selField("tipo_prezzo", "Tipo di commessa", sel(["Fisso", "Tempo e materiali", "Retainer"], r.tipo_prezzo || "Fisso")) + fld("budget_importo", "Budget concordato (€)", "number", r.budget_importo) + "</div>" +
       '<div class="row2">' + fld("retainer_mensile", "Retainer mensile (€, se ricorrente)", "number", r.retainer_mensile) + fld("budget_ore", "Budget ore", "number", r.budget_ore) + "</div>" +
       '<div class="row2">' + fld("inizio", "Inizio", "date", r.inizio) + fld("scadenza", "Consegna prevista", "date", r.scadenza) + "</div>" +
@@ -1746,12 +1684,6 @@ var FORMS = {
       '<div class="row2">' + fld("data", "Data", "date", r.data || today()) + selField("slot", "Slot", sel(["Giornata", "Mattina", "Pomeriggio", "Sala riunioni"], r.slot || "Giornata")) + "</div>" +
       fld("note", "Note", "text", r.note);
   }},
-  liq: { t: "Liquidazione", tb: "liq", f: function (r) {
-    return '<div class="row2">' + selField("pro_id", "A chi", opt(D.pros, r.pro_id)) + fld("periodo", "Periodo (es. 2026-09)", "text", r.periodo || (new Date().toISOString().slice(0, 7))) + "</div>" +
-      '<div class="row2">' + fld("importo", "Importo (€)", "number", r.importo) + selField("stato", "Stato", sel(["Da liquidare", "Liquidato"], r.stato || "Da liquidare")) + "</div>" +
-      '<div class="row2">' + fld("pagato_il", "Pagato il", "date", r.pagato_il) + fld("metodo", "Metodo", "text", r.metodo) + "</div>" +
-      fld("note", "Note", "text", r.note);
-  }},
   membri: { t: "Accesso", tb: "membri", key: "user_id", f: function (r) {
     return fld("user_id", "User UID (da Supabase → Authentication)", "text", r.user_id, true) +
       fld("email", "Email", "email", r.email) +
@@ -1790,7 +1722,7 @@ async function duplica(id) {
   var k = by(D.com, id); if (!k) return;
   var titolo = prompt("Titolo della nuova commessa", k.titolo + " (copia)");
   if (!titolo) return;
-  var nuovo = { titolo: titolo, cliente_id: k.cliente_id, owner_id: me.pro_id || k.owner_id, pm_id: k.pm_id, stato: "Bozza", modello: k.modello, fee: k.fee, tipo_prezzo: k.tipo_prezzo, budget_ore: k.budget_ore, probabilita: 50, note: k.note, inizio: today() };
+  var nuovo = { titolo: titolo, cliente_id: k.cliente_id, owner_id: me.pro_id || k.owner_id, pm_id: k.pm_id, stato: "Bozza", tipo_prezzo: k.tipo_prezzo, budget_ore: k.budget_ore, probabilita: 50, note: k.note, inizio: today() };
   var r = await sb.from("commesse").insert(nuovo).select().single();
   if (r.error) { toast(r.error.message, true); return; }
   var nid = r.data.id, base = new Date();
@@ -1895,7 +1827,7 @@ function render() {
     return;
   }
   buildNav();
-  var V = { dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, report: vReport, carico: vCarico, spazi: vSpazi, compensi: vCompensi, impostazioni: vSettings };
+  var V = { dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, report: vReport, carico: vCarico, spazi: vSpazi, impostazioni: vSettings };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
@@ -2023,11 +1955,6 @@ document.addEventListener("click", async function (e) {
   if (d.portcopy) {
     try { await navigator.clipboard.writeText(d.portcopy); toast("Link copiato"); }
     catch (e) { toast("Copia manualmente dal campo", true); }
-    return;
-  }
-  if (d.liquida) {
-    var lq = d.liquida.split("|");
-    openForm("liq", null, { pro_id: lq[0], importo: Math.round(+lq[1]), periodo: new Date().toISOString().slice(0, 7), stato: "Liquidato", pagato_il: today() });
     return;
   }
   if (d.incassa) {
