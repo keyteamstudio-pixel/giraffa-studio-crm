@@ -10,23 +10,24 @@
 
 
 
+
 (function () {
 "use strict";
 
 var cfg = window.GS_CONFIG || {};
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
-var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [] };
+var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [] };
 var CAL = 0;
 var PLINK = null;
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
 var EXP = {}, VISTA = "tabella", FSTATO = "", FSAL = "", DRAG = null;
 var PAL = [], PALR = [], PALI = 0;
-var WEEK = 0, NOTEDIT = false, NOTET = null, TICK = null;
+var WEEK = 0, NOTEDIT = false, NOTET = null, TICK = null, TSEXTRA = [];
 
 /* ---------------- helpers ---------------- */
 function el(s) { return document.querySelector(s); }
@@ -931,16 +932,409 @@ function kanban(list) {
   });
   return h + '</div><p class="faint" style="margin-top:12px">Trascina un\'attività da una colonna all\'altra per cambiarle stato.</p>';
 }
-function vTask() {
-  var list = ftask();
-  var late = list.filter(function (t) { return t.stato !== "Fatto" && t.scadenza && t.scadenza < today(); });
-  var h = head("Attività", list.filter(function (t) { return t.stato !== "Fatto"; }).length + " aperte · " + late.length + " scadute", '<button class="btn sm" data-new="task">+ Nuova attività</button>');
-  h += '<div class="card">' + kanban(list) + "</div>";
-  h += '<div class="card"><div class="cardhead"><h2>Elenco</h2></div><table><thead><tr><th>Attività</th><th>Commessa</th><th>Assegnata a</th><th>Priorità</th><th>Scadenza</th><th>Stato</th><th></th></tr></thead><tbody>';
-  list.slice().sort(function (a, b) { return (a.scadenza || "9") < (b.scadenza || "9") ? -1 : 1; }).forEach(function (t) {
-    h += '<tr><td><button class="lnk" data-open-task="' + t.id + '">' + esc(t.titolo) + "</button></td><td>" + esc(t.commessa_id ? nameOf(D.com, t.commessa_id, "titolo") : "—") + "</td><td>" + esc(nameOf(D.pros, t.assegnato_id)) + '</td><td><span class="badge ' + (PRIO_COL[t.priorita] || "") + '">' + esc(t.priorita || "Media") + "</span></td><td>" + (t.scadenza && t.scadenza < today() && t.stato !== "Fatto" ? '<span class="badge b-red">' + dt(t.scadenza) + "</span>" : dt(t.scadenza)) + '</td><td><span class="badge ' + (t.stato === "Fatto" ? "b-green" : t.stato === "In corso" ? "b-terra" : "") + '">' + esc(t.stato) + '</span></td><td class="num">' + (t.stato !== "Fatto" ? '<button class="lnk" data-done="' + t.id + '">Segna fatto</button>' : "") + "</td></tr>";
+/* ---------------- attività: viste, filtri, raggruppamenti ---------------- */
+var TF = { stato: "aperte", pro: "", prog: "", prio: "", cerca: "", scadute: false };
+var TGROUP = "progetto", TSORT = "scadenza";
+
+function taskFiltrate() {
+  var l = ftask();
+  if (TF.stato === "aperte") l = l.filter(function (t) { return t.stato !== "Fatto"; });
+  else if (TF.stato === "fatte") l = l.filter(function (t) { return t.stato === "Fatto"; });
+  if (TF.pro) l = l.filter(function (t) { return t.assegnato_id === (TF.pro === "io" ? me.pro_id : TF.pro); });
+  if (TF.prog) l = l.filter(function (t) { return t.progetto_id === TF.prog; });
+  if (TF.prio) l = l.filter(function (t) { return (t.priorita || "Media") === TF.prio; });
+  if (TF.scadute) l = l.filter(function (t) { return t.scadenza && t.scadenza < today() && t.stato !== "Fatto"; });
+  if (TF.cerca) {
+    var q = TF.cerca.toLowerCase();
+    l = l.filter(function (t) { return (t.titolo + " " + (t.descrizione || "") + " " + (t.etichette || "")).toLowerCase().indexOf(q) > -1; });
+  }
+  return l.slice().sort(ordinaTask);
+}
+function ordinaTask(a, b) {
+  if (TSORT === "scadenza") return (a.scadenza || "9999-99") < (b.scadenza || "9999-99") ? -1 : 1;
+  if (TSORT === "priorita") { var P = { Alta: 0, Media: 1, Bassa: 2 }; return (P[a.priorita] == null ? 1 : P[a.priorita]) - (P[b.priorita] == null ? 1 : P[b.priorita]); }
+  if (TSORT === "titolo") return (a.titolo || "").localeCompare(b.titolo || "");
+  return (a.ordine || 0) - (b.ordine || 0) || ((a.created_at || "") < (b.created_at || "") ? -1 : 1);
+}
+function chiaveGruppo(t) {
+  if (TGROUP === "progetto") return t.progetto_id ? nameOf(D.prog, t.progetto_id) : t.commessa_id ? nameOf(D.com, t.commessa_id, "titolo") : "Senza progetto";
+  if (TGROUP === "stato") return t.stato || "Da fare";
+  if (TGROUP === "persona") return t.assegnato_id ? nameOf(D.pros, t.assegnato_id) : "Non assegnata";
+  if (TGROUP === "priorita") return t.priorita || "Media";
+  if (TGROUP === "scadenza") {
+    if (!t.scadenza) return "Senza data";
+    if (t.scadenza < today()) return "In ritardo";
+    if (t.scadenza === today()) return "Oggi";
+    if (t.scadenza <= iso(new Date(Date.now() + 7 * 86400000))) return "Questa settimana";
+    return "Più avanti";
+  }
+  if (TGROUP === "sezione") return t.sezione || "Senza sezione";
+  return "Tutte";
+}
+function barraTask(vista) {
+  var opts = function (list, val) { return list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (val === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join(""); };
+  var progetti = [["", "Tutti i progetti"]].concat(progVisibili().map(function (p) { return [p.id, p.nome]; }));
+  var persone = [["", "Chiunque"], ["io", "Assegnate a me"]].concat(D.pros.map(function (p) { return [p.id, p.nome]; }));
+  return '<div class="vbar">' +
+    '<div class="vtabs">' + [["lista", "Lista"], ["bacheca", "Bacheca"], ["calendario", "Calendario"], ["timeline", "Timeline"], ["mie", "Le mie cose"]].map(function (v) {
+      return '<button data-route="task|-|' + v[0] + '" class="' + (vista === v[0] ? "on" : "") + '">' + v[1] + "</button>";
+    }).join("") + "</div>" +
+    '<div class="vfilt">' +
+    '<input id="tcerca" placeholder="Cerca fra le attività…" value="' + esc(TF.cerca) + '">' +
+    '<select data-tf="stato">' + opts([["aperte", "Aperte"], ["tutte", "Tutte"], ["fatte", "Fatte"]], TF.stato) + "</select>" +
+    '<select data-tf="pro">' + opts(persone, TF.pro) + "</select>" +
+    '<select data-tf="prog">' + opts(progetti, TF.prog) + "</select>" +
+    '<select data-tf="prio">' + opts([["", "Ogni priorità"], ["Alta", "Alta"], ["Media", "Media"], ["Bassa", "Bassa"]], TF.prio) + "</select>" +
+    '<button class="chipbtn' + (TF.scadute ? " on" : "") + '" data-tf-scadute="1">Solo in ritardo</button>' +
+    (vista === "lista" || vista === "bacheca" ? '<span class="vsep"></span><span class="faint">Raggruppa</span><select data-tg="1">' +
+      opts([["progetto", "Progetto"], ["stato", "Stato"], ["persona", "Persona"], ["priorita", "Priorità"], ["scadenza", "Scadenza"], ["sezione", "Sezione"], ["nessuno", "Niente"]], TGROUP) + "</select>" : "") +
+    (vista === "lista" ? '<span class="faint">Ordina</span><select data-ts="1">' +
+      opts([["scadenza", "Scadenza"], ["priorita", "Priorità"], ["titolo", "Titolo"], ["ordine", "Manuale"]], TSORT) + "</select>" : "") +
+    (D.viste.length ? '<span class="vsep"></span><select data-vista-apri="1"><option value="">Viste salvate…</option>' +
+      D.viste.filter(function (v) { return v.ambito === "task"; }).map(function (v) { return '<option value="' + v.id + '">' + esc(v.nome) + "</option>"; }).join("") + "</select>" : "") +
+    '<button class="lnk mini" data-vista-salva="1">Salva questa vista</button>' +
+    "</div></div>";
+}
+function rigaTaskLista(t) {
+  var fatto = t.stato === "Fatto";
+  var late = t.scadenza && t.scadenza < today() && !fatto;
+  var sub = D.task.filter(function (x) { return x.padre_id === t.id; });
+  var subFatte = sub.filter(function (x) { return x.stato === "Fatto"; }).length;
+  var bloccata = D.dip.filter(function (d) { return d.task_id === t.id; }).some(function (d) { var b = by(D.task, d.blocca_id); return b && b.stato !== "Fatto"; });
+  return '<div class="trow' + (fatto ? " fatta" : "") + '">' +
+    '<button class="ck' + (fatto ? " on" : "") + '" data-tck="' + t.id + '" title="Segna fatta"></button>' +
+    '<button class="ttit" data-open-task="' + t.id + '">' + esc(t.titolo) +
+      (sub.length ? '<span class="faint"> · ' + subFatte + "/" + sub.length + " sotto-attività</span>" : "") +
+      (bloccata ? ' <span class="badge b-amber">bloccata</span>' : "") + "</button>" +
+    '<span class="tmeta">' +
+      (t.stimate ? '<span class="faint">' + num(t.stimate, 1) + " h</span>" : "") +
+      '<span class="badge ' + (PRIO_COL[t.priorita] || "") + '">' + esc(t.priorita || "Media") + "</span>" +
+      (t.scadenza ? '<span class="badge ' + (late ? "b-red" : "") + '">' + dshort(t.scadenza) + "</span>" : '<span class="faint">—</span>') +
+      (t.assegnato_id ? avatar(t.assegnato_id, 22) : '<span class="av vuoto">?</span>') +
+    "</span></div>";
+}
+function vistaLista(list) {
+  if (!list.length) return '<div class="card">' + vuoto("Nessuna attività con questi filtri.", '<button class="lnk" data-tf-reset="1">Azzera i filtri</button>') + "</div>";
+  if (TGROUP === "nessuno") return '<div class="card tlist">' + list.map(rigaTaskLista).join("") + "</div>";
+  var g = {};
+  list.forEach(function (t) { var k = chiaveGruppo(t); (g[k] = g[k] || []).push(t); });
+  var ordine = Object.keys(g).sort();
+  if (TGROUP === "scadenza") { var pref = ["In ritardo", "Oggi", "Questa settimana", "Più avanti", "Senza data"]; ordine = pref.filter(function (x) { return g[x]; }); }
+  if (TGROUP === "stato") ordine = TASK_STATI.filter(function (x) { return g[x]; });
+  if (TGROUP === "priorita") ordine = ["Alta", "Media", "Bassa"].filter(function (x) { return g[x]; });
+  return ordine.map(function (k) {
+    var aperte = g[k].filter(function (t) { return t.stato !== "Fatto"; }).length;
+    return '<div class="card tgroup"><div class="cardhead"><h2>' + esc(k) + '</h2><span class="faint">' + aperte + " aperte su " + g[k].length + "</span></div>" +
+      '<div class="tlist">' + g[k].map(rigaTaskLista).join("") + "</div></div>";
+  }).join("");
+}
+function vistaBacheca(list) {
+  var col = [], titolo = {};
+  if (TGROUP === "stato" || TGROUP === "nessuno") { col = TASK_STATI; }
+  else {
+    var s = {};
+    list.forEach(function (t) { s[chiaveGruppo(t)] = 1; });
+    col = Object.keys(s).sort();
+  }
+  var perStato = (TGROUP === "stato" || TGROUP === "nessuno");
+  var h = '<div class="kanban">';
+  col.forEach(function (c) {
+    var items = list.filter(function (t) { return (perStato ? (t.stato || "Da fare") : chiaveGruppo(t)) === c; });
+    h += '<div class="kcol"' + (perStato ? ' data-stato="' + esc(c) + '"' : "") + '><h3>' + esc(c) + "<span>" + items.length + "</span></h3>";
+    items.forEach(function (t) {
+      var late = t.scadenza && t.scadenza < today() && t.stato !== "Fatto";
+      h += '<div class="tsk"' + (perStato ? ' draggable="true"' : "") + ' data-open-task="' + t.id + '">' +
+        '<div class="tsktop">' + esc(t.titolo) + (t.assegnato_id ? avatar(t.assegnato_id, 22) : "") + "</div>" +
+        '<div class="meta"><span class="badge ' + (PRIO_COL[t.priorita] || "") + '">' + esc(t.priorita || "Media") + "</span><span>" +
+        (t.scadenza ? (late ? '<span class="badge b-red">' + dshort(t.scadenza) + "</span>" : dshort(t.scadenza)) : "") + "</span></div>" +
+        (t.progetto_id || t.commessa_id ? '<div class="meta"><span class="faint">' + esc(t.progetto_id ? nameOf(D.prog, t.progetto_id) : nameOf(D.com, t.commessa_id, "titolo")) + "</span></div>" : "") + "</div>";
+    });
+    h += perStato ? '<div class="kdrop">rilascia qui</div>' : "";
+    h += "</div>";
   });
-  return h + "</tbody></table></div>";
+  h += "</div>";
+  return '<div class="card">' + h + (perStato ? '<p class="faint" style="margin-top:12px">Trascina una scheda da una colonna all\'altra per cambiare stato.</p>' : "") + "</div>";
+}
+function vistaCalendarioTask(list) {
+  var base = new Date(); base.setDate(1); base.setMonth(base.getMonth() + CAL);
+  var anno = base.getFullYear(), mese = base.getMonth();
+  var primo = new Date(anno, mese, 1), ultimo = new Date(anno, mese + 1, 0);
+  var start = new Date(primo); start.setDate(1 - ((primo.getDay() + 6) % 7));
+  var celle = [];
+  for (var i = 0; i < 42; i++) {
+    var d = new Date(start.getTime() + i * 86400000), k = iso(d);
+    var items = list.filter(function (t) { return t.scadenza === k; });
+    celle.push('<div class="calday' + (d.getMonth() !== mese ? " out" : "") + (k === today() ? " today" : "") + '" data-day="' + k + '">' +
+      '<div class="caltop"><span>' + d.getDate() + "</span>" + (items.length ? '<span class="calore">' + items.length + "</span>" : "") + "</div>" +
+      items.slice(0, 3).map(function (t) {
+        var late = t.scadenza < today() && t.stato !== "Fatto";
+        return '<div class="calev ' + (t.stato === "Fatto" ? "b-green" : late ? "b-red" : PRIO_COL[t.priorita] || "b-blue") + '" data-open-task="' + t.id + '" title="' + esc(t.titolo) + '">' + esc(t.titolo) + "</div>";
+      }).join("") + (items.length > 3 ? '<div class="faint" style="font-size:.72rem">+' + (items.length - 3) + " altro</div>" : "") + "</div>");
+  }
+  var etichettaMese = primo.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
+  return '<div class="card"><div class="cardhead"><h2>' + etichettaMese.charAt(0).toUpperCase() + etichettaMese.slice(1) +
+    '</h2><span class="wknav"><button class="btn sm ghost" data-cal="-1">‹</button><button class="btn sm ghost" data-cal="0">Oggi</button><button class="btn sm ghost" data-cal="1">›</button></span></div>' +
+    '<div class="cal"><div class="caldow">lun</div><div class="caldow">mar</div><div class="caldow">mer</div><div class="caldow">gio</div><div class="caldow">ven</div><div class="caldow">sab</div><div class="caldow">dom</div>' +
+    celle.join("") + '</div><p class="faint" style="margin-top:10px">Clicca un giorno per creare un\'attività con quella scadenza.</p></div>';
+}
+function vistaTimeline(list) {
+  var con = list.filter(function (t) { return t.scadenza || t.inizio; });
+  if (!con.length) return '<div class="card">' + vuoto("Nessuna attività con date: metti un inizio o una scadenza per vederla sulla timeline.") + "</div>";
+  var date = con.map(function (t) { return t.inizio || t.scadenza; }).concat(con.map(function (t) { return t.scadenza || t.inizio; })).sort();
+  var da = new Date(date[0]), a = new Date(date[date.length - 1]);
+  da.setDate(da.getDate() - 3); a.setDate(a.getDate() + 3);
+  var giorni = Math.max(7, Math.round((a - da) / 86400000));
+  var mesi = [], cur = "";
+  for (var i = 0; i <= giorni; i += 7) {
+    var d = new Date(da.getTime() + i * 86400000);
+    var m = d.toLocaleDateString("it-IT", { month: "short" });
+    mesi.push('<span style="left:' + (i / giorni * 100) + '%">' + (m !== cur ? m + " " : "") + d.getDate() + "</span>");
+    cur = m;
+  }
+  var righe = con.slice().sort(function (x, y) { return (x.inizio || x.scadenza) < (y.inizio || y.scadenza) ? -1 : 1; }).map(function (t) {
+    var i1 = new Date(t.inizio || t.scadenza), i2 = new Date(t.scadenza || t.inizio);
+    var x = Math.max(0, (i1 - da) / 86400000 / giorni * 100);
+    var w = Math.max(2.2, ((i2 - i1) / 86400000 + 1) / giorni * 100);
+    var late = t.scadenza && t.scadenza < today() && t.stato !== "Fatto";
+    return '<div class="tlrow"><div class="tlname" data-open-task="' + t.id + '">' + esc(t.titolo) + "</div>" +
+      '<div class="tltrack"><button class="tlbar ' + (t.stato === "Fatto" ? "ok" : late ? "bad" : "") + '" style="left:' + x + "%;width:" + w + '%" data-open-task="' + t.id + '">' +
+      esc(t.assegnato_id ? nameOf(D.pros, t.assegnato_id).split(" ")[0] : "") + "</button></div></div>";
+  }).join("");
+  return '<div class="card"><div class="cardhead"><h2>Timeline</h2><span class="faint">da ' + dshort(iso(da)) + " a " + dshort(iso(a)) + "</span></div>" +
+    '<div class="tlhead">' + mesi.join("") + "</div>" + righe + "</div>";
+}
+function vistaMie(list) {
+  var mie = list.filter(function (t) { return t.assegnato_id === me.pro_id && t.stato !== "Fatto"; });
+  var sett = iso(new Date(Date.now() + 7 * 86400000));
+  var gruppi = [
+    ["oggi", "Oggi e in ritardo", mie.filter(function (t) { return t.scadenza && t.scadenza <= today(); })],
+    ["settimana", "Questa settimana", mie.filter(function (t) { return t.scadenza && t.scadenza > today() && t.scadenza <= sett; })],
+    ["dopo", "Più avanti", mie.filter(function (t) { return t.scadenza && t.scadenza > sett; })],
+    ["senza", "Senza data", mie.filter(function (t) { return !t.scadenza; })]
+  ];
+  return '<div class="grid g4-1">' + gruppi.map(function (g) {
+    return '<div class="card mcol" data-quando="' + g[0] + '"><div class="cardhead"><h2>' + g[1] + '</h2><span class="faint">' + g[2].length + "</span></div>" +
+      '<div class="tlist">' + (g[2].length ? g[2].map(function (t) {
+        return '<div class="trow" draggable="true" data-open-task="' + t.id + '">' +
+          '<button class="ck" data-tck="' + t.id + '"></button>' +
+          '<button class="ttit" data-open-task="' + t.id + '">' + esc(t.titolo) + "</button>" +
+          '<span class="tmeta"><span class="faint">' + (t.progetto_id ? esc(nameOf(D.prog, t.progetto_id)) : t.commessa_id ? esc(nameOf(D.com, t.commessa_id, "titolo")) : "") + "</span></span></div>";
+      }).join("") : vuoto("Niente qui.")) + "</div></div>";
+  }).join("") + '</div><p class="faint" style="margin-top:12px">Trascina un\'attività in un\'altra colonna per spostarne la scadenza: oggi, entro la settimana, fra due settimane o nessuna data.</p>';
+}
+function vTask() {
+  var vista = tab || "lista";
+  var tutte = ftask();
+  var aperte = tutte.filter(function (t) { return t.stato !== "Fatto"; });
+  var late = aperte.filter(function (t) { return t.scadenza && t.scadenza < today(); });
+  var list = taskFiltrate();
+  var h = head("Attività", aperte.length + " aperte · " + late.length + " in ritardo · " + tutte.length + " in tutto",
+    '<button class="btn sm ghost" data-modelli="1">Modelli</button><button class="btn sm" data-new="task">+ Nuova attività</button>');
+  h += barraTask(vista);
+  if (vista === "bacheca") h += vistaBacheca(list);
+  else if (vista === "calendario") h += vistaCalendarioTask(list);
+  else if (vista === "timeline") h += vistaTimeline(list);
+  else if (vista === "mie") h += vistaMie(tutte);
+  else h += vistaLista(list);
+  return h;
+}
+
+/* Quando chiudi un'attività ricorrente ne nasce subito la prossima */
+async function prossimaRicorrenza(t) {
+  var giorni = t.ricorrenza === "settimanale" ? 7 : t.ricorrenza === "quindicinale" ? 14 : t.ricorrenza === "mensile" ? 30 : 0;
+  if (!giorni) return;
+  var base = t.scadenza ? new Date(t.scadenza) : new Date();
+  var nuova = new Date(base.getTime() + giorni * 86400000);
+  if (t.ricorrenza_fino && iso(nuova) > t.ricorrenza_fino) return;
+  var r = await sb.from("task").insert({
+    titolo: t.titolo, descrizione: t.descrizione, commessa_id: t.commessa_id, progetto_id: t.progetto_id,
+    lavorazione_id: t.lavorazione_id, assegnato_id: t.assegnato_id, stato: "Da fare", priorita: t.priorita,
+    scadenza: iso(nuova), stimate: t.stimate, sezione: t.sezione, etichette: t.etichette,
+    ricorrenza: t.ricorrenza, ricorrenza_fino: t.ricorrenza_fino, origine_id: t.origine_id || t.id
+  });
+  if (!r.error) toast("Prossima occorrenza creata per il " + dt(iso(nuova)));
+}
+
+/* Modelli: una struttura di lavoro pronta da far nascere in un clic */
+function apriModelli() {
+  var miei = D.modelli.filter(function (m) { return m.pro_id === me.pro_id || m.condiviso; });
+  modal('<div class="box wide"><h2>Modelli di lavoro</h2>' +
+    '<p class="faint" style="margin-bottom:14px">Un modello è un elenco di lavorazioni e attività con le scadenze contate dal giorno di partenza. Lo applichi a un progetto e nasce tutto insieme.</p>' +
+    (miei.length ? '<table><thead><tr><th>Modello</th><th>Voci</th><th>Di chi</th><th></th></tr></thead><tbody>' + miei.map(function (m) {
+      return "<tr><td><b>" + esc(m.nome) + "</b>" + (m.descrizione ? '<div class="faint">' + esc(m.descrizione) + "</div>" : "") + "</td><td>" + (m.voci || []).length +
+        "</td><td>" + (m.pro_id === me.pro_id ? "tuo" : esc(nameOf(D.pros, m.pro_id))) + (m.condiviso ? ' <span class="badge">condiviso</span>' : "") +
+        '</td><td class="num"><button class="lnk" data-mod-usa="' + m.id + '">Applica a un progetto</button>' +
+        (m.pro_id === me.pro_id ? ' · <button class="lnk" data-del="modelli:' + m.id + '">elimina</button>' : "") + "</td></tr>";
+    }).join("") + "</tbody></table>" : vuoto("Nessun modello ancora.")) +
+    '<div class="actions"><button type="button" class="btn ghost" data-close>Chiudi</button><button class="btn" data-mod-nuovo="1">Crea un modello da un progetto</button></div></div>');
+}
+async function creaModelloDaProgetto() {
+  var pg = progVisibili();
+  if (!pg.length) { toast("Non hai progetti da cui partire", true); return; }
+  var elenco = pg.map(function (p, i) { return (i + 1) + ") " + p.nome; }).join("\n");
+  var scelta = prompt("Da quale progetto vuoi ricavare il modello?\n" + elenco, "1");
+  var p = pg[(+scelta || 1) - 1]; if (!p) return;
+  var nome = prompt("Come si chiama il modello?", p.nome);
+  if (!nome) return;
+  var inizio = p.inizio ? new Date(p.inizio) : new Date(p.created_at || Date.now());
+  var voci = [];
+  lavOf(p.id).forEach(function (l) {
+    voci.push({ tipo: "lavorazione", nome: l.nome, giorni: l.fine ? Math.max(0, Math.round((new Date(l.fine) - inizio) / 86400000)) : null, ore: l.ore_stimate || null });
+  });
+  D.task.filter(function (t) { return t.progetto_id === p.id; }).forEach(function (t) {
+    voci.push({ tipo: "attivita", nome: t.titolo, giorni: t.scadenza ? Math.max(0, Math.round((new Date(t.scadenza) - inizio) / 86400000)) : null, ore: t.stimate || null, sezione: t.sezione || null, lavorazione: t.lavorazione_id ? nameOf(D.lav, t.lavorazione_id) : null });
+  });
+  if (!voci.length) { toast("Quel progetto non ha ancora lavorazioni o attività", true); return; }
+  var r = await sb.from("modelli").insert({ pro_id: me.pro_id, nome: nome, descrizione: "Ricavato da " + p.nome, voci: voci });
+  if (r.error) { toast(r.error.message, true); return; }
+  await reload(["modelli"]); closeModal(); toast("Modello creato con " + voci.length + " voci"); render();
+}
+async function applicaModello(mid) {
+  var m = by(D.modelli, mid); if (!m) return;
+  var pg = progVisibili();
+  if (!pg.length) { toast("Crea prima un progetto a cui applicarlo", true); return; }
+  var elenco = pg.map(function (p, i) { return (i + 1) + ") " + p.nome; }).join("\n");
+  var scelta = prompt("A quale progetto lo applico?\n" + elenco, "1");
+  var p = pg[(+scelta || 1) - 1]; if (!p) return;
+  var da = prompt("Da che giorno parte? (aaaa-mm-gg)", today());
+  if (!da) return;
+  var base = new Date(da);
+  var mappaLav = {};
+  for (var i = 0; i < (m.voci || []).length; i++) {
+    var v = m.voci[i];
+    var quando = v.giorni == null ? null : iso(new Date(base.getTime() + v.giorni * 86400000));
+    if (v.tipo === "lavorazione") {
+      var rl = await sb.from("lavorazioni").insert({ progetto_id: p.id, commessa_id: p.commessa_id, nome: v.nome, pro_id: me.pro_id, stato: "Da iniziare", ore_stimate: v.ore || 0, inizio: da, fine: quando, ordine: i + 1 }).select().single();
+      if (!rl.error) mappaLav[v.nome] = rl.data.id;
+    } else {
+      await sb.from("task").insert({
+        titolo: v.nome, commessa_id: p.commessa_id, progetto_id: p.id,
+        lavorazione_id: v.lavorazione ? mappaLav[v.lavorazione] || null : null,
+        assegnato_id: me.pro_id, stato: "Da fare", priorita: "Media", scadenza: quando, stimate: v.ore || null, sezione: v.sezione || null
+      });
+    }
+  }
+  await reload(["lav", "task"]);
+  closeModal(); toast("Modello applicato a " + p.nome); go("progetto", p.id, "lavorazioni");
+}
+
+/* ---------------- scheda dell'attività ---------------- */
+function campoRapido(id, campo, etichetta, controllo) {
+  return '<div class="qfield"><label>' + esc(etichetta) + "</label>" + controllo + "</div>";
+}
+function vAttivita() {
+  var t = by(D.task, current);
+  if (!t) return '<div class="card">Attività non trovata. <button class="lnk" data-route="task">Torna all\'elenco</button></div>';
+  var sub = D.task.filter(function (x) { return x.padre_id === t.id; }).sort(ordinaTask);
+  var subFatte = sub.filter(function (x) { return x.stato === "Fatto"; }).length;
+  var padre = t.padre_id ? by(D.task, t.padre_id) : null;
+  var prog = t.progetto_id ? by(D.prog, t.progetto_id) : null;
+  var com = t.commessa_id ? by(D.com, t.commessa_id) : null;
+  var comm = D.comm.filter(function (c) { return c.task_id === t.id; }).sort(function (a, b) { return (a.created_at || "") < (b.created_at || "") ? -1 : 1; });
+  var files = D.mat.filter(function (m) { return m.task_id === t.id; });
+  var ore = D.ore.filter(function (o) { return o.task_id === t.id; });
+  var oreT = sum(ore, function (o) { return o.ore; });
+  var bloccanti = D.dip.filter(function (d) { return d.task_id === t.id; }).map(function (d) { return by(D.task, d.blocca_id); }).filter(Boolean);
+  var bloccate = D.dip.filter(function (d) { return d.blocca_id === t.id; }).map(function (d) { return by(D.task, d.task_id); }).filter(Boolean);
+  var apre = bloccanti.filter(function (b) { return b.stato !== "Fatto"; });
+  var fatto = t.stato === "Fatto";
+  var late = t.scadenza && t.scadenza < today() && !fatto;
+  var tm = timerMio(), attivo = tm && tm.task_id === t.id;
+
+  var via = [["Lavoro"], ["Attività", "task"]];
+  if (prog) via.push([prog.nome, "progetto", prog.id, "attivita"]);
+  if (padre) via.push([padre.titolo, "attivita", padre.id, ""]);
+  via.push([t.titolo]);
+
+  var h = crumbs(via);
+  h += '<div class="top"><h1 class="' + (fatto ? "done" : "") + '">' + esc(t.titolo) + '<span class="sub">' +
+    (prog ? esc(prog.nome) + " · " : "") + (com ? esc(nameOf(D.cli, com.cliente_id)) : "attività personale") + "</span></h1><div class=\"tools\">" +
+    '<button class="btn sm ' + (fatto ? "ghost" : "") + '" data-tck="' + t.id + '">' + (fatto ? "Riapri" : "✓ Segna fatta") + "</button>" +
+    (attivo ? '<button class="btn sm stop" data-tstop="1">■ Ferma <span id="timerlbl">' + durata(tm.iniziato) + "</span></button>"
+      : '<button class="btn sm ghost" data-tstart-task="' + t.id + '">▶ Timer</button>') +
+    '<button class="btn sm ghost" data-new="ore" data-ctx-task="' + t.id + '">+ Ore</button>' +
+    '<button class="btn sm ghost" data-dupl-task="' + t.id + '">Duplica</button>' +
+    '<button class="btn sm ghost" data-edit="task:' + t.id + '">Modifica tutto</button></div></div>';
+
+  if (apre.length) {
+    h += '<div class="card" style="border-left:3px solid var(--amber);margin-bottom:16px"><b>In attesa di ' + apre.length + (apre.length === 1 ? " attività" : " attività") + "</b>" +
+      '<p class="faint" style="margin-top:6px">' + apre.map(function (b) { return '<button class="lnk" data-open-task="' + b.id + '">' + esc(b.titolo) + "</button>"; }).join(" · ") + "</p></div>";
+  }
+
+  h += '<div class="grid g32"><div>';
+
+  h += '<div class="card"><div class="cardhead"><h2>Descrizione</h2><span class="faint" id="tstat"></span></div>' +
+    '<textarea id="tdesc" class="doc" placeholder="Cosa va fatto, come, con quali riferimenti. Si salva da solo.">' + esc(t.descrizione || "") + "</textarea></div>";
+
+  h += '<div class="card"><div class="cardhead"><h2>Sotto-attività</h2><span class="faint">' + subFatte + " / " + sub.length + "</span></div>" +
+    '<div class="tlist">' + sub.map(function (x) {
+      var lx = x.scadenza && x.scadenza < today() && x.stato !== "Fatto";
+      return '<div class="trow' + (x.stato === "Fatto" ? " fatta" : "") + '">' +
+        '<button class="ck' + (x.stato === "Fatto" ? " on" : "") + '" data-tck="' + x.id + '"></button>' +
+        '<button class="ttit" data-open-task="' + x.id + '">' + esc(x.titolo) + "</button>" +
+        '<span class="tmeta">' + (x.scadenza ? '<span class="badge ' + (lx ? "b-red" : "") + '">' + dshort(x.scadenza) + "</span>" : "") +
+        (x.assegnato_id ? avatar(x.assegnato_id, 22) : "") + "</span></div>";
+    }).join("") + "</div>" +
+    '<form class="qadd" data-qadd-sub="' + t.id + '"><button class="ck" type="button" disabled></button><input name="titolo" placeholder="Aggiungi una sotto-attività" autocomplete="off"></form></div>';
+
+  h += '<div class="card"><div class="cardhead"><h2>Discussione</h2><span class="faint">' + comm.length + "</span></div>";
+  h += comm.length ? '<ul class="timeline">' + comm.map(function (c) {
+    return "<li>" + avatar(c.pro_id, 22) + " <b>" + esc(nameOf(D.pros, c.pro_id)) + "</b> · " + esc(c.testo || "") +
+      '<div class="when">' + dt(c.created_at) + "</div></li>";
+  }).join("") + "</ul>" : vuoto("Nessun commento.");
+  h += '<form class="qadd" data-comm-task="' + t.id + '"><input name="testo" placeholder="Scrivi un commento…" autocomplete="off"><button class="btn sm" type="submit">Invia</button></form></div>';
+
+  h += '<div class="card"><div class="cardhead"><h2>Allegati</h2><button class="btn sm ghost" data-new="mat" data-ctx-task="' + t.id + '">+ Allega link</button></div>';
+  h += files.length ? "<table><tbody>" + files.map(function (m) {
+    return "<tr><td>" + (m.path ? '<button class="lnk" data-file="' + m.id + '">' + esc(m.nome) + "</button>" : m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome)) +
+      '</td><td class="faint">' + dshort(m.created_at) + '</td><td class="num"><button class="lnk" data-del="mat:' + m.id + '">elimina</button></td></tr>';
+  }).join("") + "</tbody></table>" : vuoto("Nessun allegato.");
+  h += '<div class="drop" id="drop" data-tid="' + t.id + '"' + (t.commessa_id ? ' data-kid="' + t.commessa_id + '"' : "") + '><b>Trascina qui i file</b><span class="faint">oppure <label class="lnk">scegli dal computer<input type="file" id="fileinp" multiple style="display:none"></label></span></div>';
+  h += "</div>";
+
+  h += "</div><div>";
+
+  h += '<div class="card"><h3 style="margin-bottom:14px">Dettagli</h3>' +
+    campoRapido(t.id, "stato", "Stato", '<select data-tset="stato|' + t.id + '">' + sel(TASK_STATI, t.stato || "Da fare") + "</select>") +
+    campoRapido(t.id, "assegnato_id", "Assegnata a", '<select data-tset="assegnato_id|' + t.id + '"><option value="">— nessuno —</option>' + opt(D.pros, t.assegnato_id) + "</select>") +
+    campoRapido(t.id, "priorita", "Priorità", '<select data-tset="priorita|' + t.id + '">' + sel(["Bassa", "Media", "Alta"], t.priorita || "Media") + "</select>") +
+    '<div class="row2">' +
+      campoRapido(t.id, "inizio", "Inizio", '<input type="date" data-tset="inizio|' + t.id + '" value="' + esc(t.inizio || "") + '">') +
+      campoRapido(t.id, "scadenza", "Scadenza", '<input type="date" data-tset="scadenza|' + t.id + '" value="' + esc(t.scadenza || "") + '">') +
+    "</div>" +
+    '<div class="row2">' +
+      campoRapido(t.id, "stimate", "Ore stimate", '<input type="number" step="0.5" data-tset="stimate|' + t.id + '" value="' + (t.stimate == null ? "" : t.stimate) + '">') +
+      campoRapido(t.id, "etichette", "Etichette", '<input type="text" data-tset="etichette|' + t.id + '" value="' + esc(t.etichette || "") + '" placeholder="urgente, cliente">') +
+    "</div>" +
+    campoRapido(t.id, "progetto_id", "Progetto", '<select data-tset="progetto_id|' + t.id + '"><option value="">— nessuno —</option>' +
+      progVisibili().map(function (p) { return '<option value="' + p.id + '"' + (t.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + " · " + esc(nameOf(D.com, p.commessa_id, "titolo")) + "</option>"; }).join("") + "</select>") +
+    campoRapido(t.id, "lavorazione_id", "Lavorazione", '<select data-tset="lavorazione_id|' + t.id + '"><option value="">— nessuna —</option>' +
+      D.lav.filter(function (l) { return !t.progetto_id || l.progetto_id === t.progetto_id; }).map(function (l) { return '<option value="' + l.id + '"' + (t.lavorazione_id === l.id ? " selected" : "") + ">" + esc(l.nome) + "</option>"; }).join("") + "</select>") +
+    campoRapido(t.id, "sezione", "Sezione", '<input type="text" data-tset="sezione|' + t.id + '" value="' + esc(t.sezione || "") + '" placeholder="es. Prima consegna">') +
+    campoRapido(t.id, "ricorrenza", "Si ripete", '<select data-tset="ricorrenza|' + t.id + '">' +
+      selKV([["", "no, una volta sola"], ["settimanale", "ogni settimana"], ["quindicinale", "ogni due settimane"], ["mensile", "ogni mese"]], t.ricorrenza || "") + "</select>") +
+    (t.ricorrenza ? '<p class="faint">Quando la segni fatta, ne nasce subito la prossima con la scadenza spostata in avanti.</p>' : "") +
+    "</div>";
+
+  h += '<div class="card"><h3 style="margin-bottom:12px">Tempo</h3><table><tbody>' +
+    row2("Stimate", t.stimate ? num(t.stimate, 1) + " h" : "—") +
+    row2("Registrate da te", num(oreT, 1) + " h") +
+    row2("Scostamento", t.stimate ? (oreT > t.stimate ? '<span class="badge b-red">+' + num(oreT - t.stimate, 1) + " h</span>" : '<span class="badge b-green">' + num(t.stimate - oreT, 1) + " h residue</span>") : "—") +
+    "</tbody></table>" + (ore.length ? tblOre(ore.slice(0, 6)) : "") + "</div>";
+
+  h += '<div class="card"><h3 style="margin-bottom:12px">Dipendenze</h3>' +
+    '<p class="faint" style="margin-bottom:8px">Bloccata da</p>' +
+    (bloccanti.length ? '<div class="tlist">' + bloccanti.map(function (b) {
+      return '<div class="trow"><span class="badge ' + (b.stato === "Fatto" ? "b-green" : "b-amber") + '">' + esc(b.stato) + '</span><button class="ttit" data-open-task="' + b.id + '">' + esc(b.titolo) + '</button><button class="lnk mini" data-dip-via="' + t.id + "|" + b.id + '">togli</button></div>';
+    }).join("") + "</div>" : '<p class="faint">Niente.</p>') +
+    '<form class="qadd" data-dip-add="' + t.id + '"><select name="blocca"><option value="">Aggiungi un blocco…</option>' +
+      ftask().filter(function (x) { return x.id !== t.id && !bloccanti.some(function (b) { return b.id === x.id; }); }).slice(0, 60)
+        .map(function (x) { return '<option value="' + x.id + '">' + esc(x.titolo) + "</option>"; }).join("") + '</select><button class="btn sm" type="submit">Aggiungi</button></form>' +
+    (bloccate.length ? '<p class="faint" style="margin:12px 0 6px">Blocca</p><div class="tlist">' + bloccate.map(function (b) {
+      return '<div class="trow"><button class="ttit" data-open-task="' + b.id + '">' + esc(b.titolo) + "</button></div>";
+    }).join("") + "</div>" : "") + "</div>";
+
+  return h + "</div></div>";
 }
 
 /* ---------------- ore ---------------- */
@@ -972,30 +1366,64 @@ function vOre() {
     nomi.push(dd.toLocaleDateString("it-IT", { weekday: "short" }).replace(".", "") + " " + dd.getDate());
   }
   var mieOre = D.ore.filter(function (o) { return o.pro_id === me.pro_id; });
+  var settPrec = gg.map(function (g) { return iso(new Date(new Date(g).getTime() - 7 * 86400000)); });
   var righeTs = D.lav.filter(function (l) {
+    if (TSEXTRA.indexOf(l.id) > -1) return true;
     if (mieOre.some(function (o) { return o.lavorazione_id === l.id && gg.indexOf(o.data) > -1; })) return true;
-    if (l.stato === "Fatta" || l.stato === "Annullata") return false;
-    return l.pro_id === me.pro_id;
+    if (l.stato === "Completata") return false;
+    if (l.pro_id === me.pro_id) return true;
+    /* righe suggerite: dove hai messo ore nelle ultime due settimane */
+    return mieOre.some(function (o) { return o.lavorazione_id === l.id && days(today(), o.data) <= 14 && days(today(), o.data) >= 0; });
   });
   function cella(lid, g) { return sum(mieOre.filter(function (o) { return o.lavorazione_id === lid && o.data === g; }), function (o) { return o.ore; }); }
   var titSett = lun.toLocaleDateString("it-IT", { day: "numeric", month: "short" }) + " → " + new Date(lun.getTime() + 6 * 86400000).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
 
-  h += '<div class="card" style="margin-top:18px"><div class="cardhead"><h2>La mia settimana</h2><div class="wknav"><button class="btn sm ghost" data-wk="-1">‹</button><span class="faint">' + titSett + '</span><button class="btn sm ghost" data-wk="1">›</button>' + (WEEK ? '<button class="btn sm ghost" data-wk="0">Oggi</button>' : "") + "</div></div>";
-  h += '<p class="faint" style="margin-bottom:12px">Scrivi le ore nelle caselle: si salvano da sole e finiscono sulla lavorazione giusta.</p>';
-  h += '<div class="tswrap"><table class="ts"><thead><tr><th>Lavorazione</th>' + nomi.map(function (n, i) { return '<th class="num' + (gg[i] === today() ? " oggi" : "") + '">' + n + "</th>"; }).join("") + '<th class="num">Tot</th></tr></thead><tbody>';
-  righeTs.forEach(function (l) {
+  var oreSettPrec = sum(mieOre.filter(function (o) { return settPrec.indexOf(o.data) > -1; }), function (o) { return o.ore; });
+  h += '<div class="card" style="margin-top:18px"><div class="cardhead"><h2>La mia settimana</h2><div class="wknav"><button class="btn sm ghost" data-wk="-1">‹</button><span class="faint">' + titSett + '</span><button class="btn sm ghost" data-wk="1">›</button>' + (WEEK ? '<button class="btn sm ghost" data-wk="0">Oggi</button>' : "") +
+    (oreSettPrec ? '<button class="btn sm ghost" data-tscopy="1" title="Ricrea le stesse righe e le stesse ore della settimana precedente">Copia settimana scorsa</button>' : "") + "</div></div>";
+  h += '<p class="faint" style="margin-bottom:12px">Scrivi le ore nelle caselle: si salvano da sole. Ti muovi con le frecce, <b>Invio</b> scende di una riga, <b>Tab</b> passa al giorno dopo.</p>';
+  h += '<div class="tswrap"><table class="ts"><thead><tr><th>Lavorazione</th>' + nomi.map(function (n, i) { return '<th class="num' + (gg[i] === today() ? " oggi" : "") + '">' + n + "</th>"; }).join("") + '<th class="num">Tot</th><th class="num">Stima</th></tr></thead><tbody>';
+  righeTs.forEach(function (l, ri) {
     var tot = 0;
+    var fatteL = sum(oreOfLav(l.id), function (o) { return o.ore; });
+    var res = l.ore_stimate ? Math.max(0, (+l.ore_stimate || 0) - fatteL) : null;
     h += "<tr><td>" + esc(l.nome) + '<div class="faint">' + esc(nameOf(D.prog, l.progetto_id)) + " · " + esc(nameOf(D.com, l.commessa_id, "titolo")) + "</div></td>";
-    gg.forEach(function (g) {
+    gg.forEach(function (g, ci) {
       var v = cella(l.id, g); tot += v;
-      h += '<td class="num"><input class="tsc' + (g === today() ? " oggi" : "") + '" inputmode="decimal" data-ts="' + l.id + "|" + g + '" value="' + (v ? num(v, 1) : "") + '" placeholder="·"></td>';
+      h += '<td class="num"><input class="tsc' + (g === today() ? " oggi" : "") + '" inputmode="decimal" data-ts="' + l.id + "|" + g + '" data-rc="' + ri + "|" + ci + '" value="' + (v ? num(v, 1) : "") + '" placeholder="·"></td>';
     });
-    h += '<td class="num tsr" data-tsrow="' + l.id + '">' + (tot ? num(tot, 1) : "—") + "</td></tr>";
+    h += '<td class="num tsr" data-tsrow="' + l.id + '">' + (tot ? num(tot, 1) : "—") + "</td>" +
+      '<td class="num faint">' + (l.ore_stimate ? num(fatteL, 1) + " / " + num(l.ore_stimate, 0) + (res === 0 ? ' <span class="badge b-red">finite</span>' : "") : "—") + "</td></tr>";
   });
   h += '</tbody><tfoot><tr><td><b>Totale</b></td>' + gg.map(function (g) {
     var t2 = sum(mieOre.filter(function (o) { return o.data === g; }), function (o) { return o.ore; });
     return '<td class="num" data-tscol="' + g + '"><b>' + (t2 ? num(t2, 1) : "—") + "</b></td>";
-  }).join("") + '<td class="num" id="tstot"><b>' + num(sum(mieOre.filter(function (o) { return gg.indexOf(o.data) > -1; }), function (o) { return o.ore; }), 1) + "</b></td></tr></tfoot></table></div></div>";
+  }).join("") + '<td class="num" id="tstot"><b>' + num(sum(mieOre.filter(function (o) { return gg.indexOf(o.data) > -1; }), function (o) { return o.ore; }), 1) + "</b></td><td></td></tr></tfoot></table></div>";
+  var candidate = D.lav.filter(function (l) { return righeTs.indexOf(l) === -1; });
+  if (candidate.length) {
+    h += '<form class="qadd" data-tsadd="1" style="margin-top:12px"><select name="lav"><option value="">Aggiungi una riga…</option>' +
+      candidate.map(function (l) { return '<option value="' + l.id + '">' + esc(l.nome) + " · " + esc(nameOf(D.prog, l.progetto_id)) + "</option>"; }).join("") +
+      '</select><button class="btn sm ghost" type="submit">Aggiungi</button></form>';
+  }
+  h += "</div>";
+
+  /* ore fatturabili non ancora messe in fattura */
+  var daFatt = {};
+  mieOre.filter(function (o) { return o.fatturabile !== false && !o.movimento_id && o.commessa_id; }).forEach(function (o) {
+    var e = daFatt[o.commessa_id] = daFatt[o.commessa_id] || { ore: 0, val: 0 };
+    e.ore += (+o.ore || 0); e.val += (+o.ore || 0) * (+o.tariffa || 0);
+  });
+  var dfk = Object.keys(daFatt).filter(function (k) { return daFatt[k].ore > 0; });
+  if (dfk.length) {
+    h += '<div class="card" style="margin-top:16px"><div class="cardhead"><h2>Ore da fatturare</h2><span class="faint">' +
+      num(sum(dfk.map(function (k) { return daFatt[k]; }), function (x) { return x.ore; }), 1) + " h · " + eur(sum(dfk.map(function (k) { return daFatt[k]; }), function (x) { return x.val; })) + "</span></div>" +
+      '<table><thead><tr><th>Preventivo</th><th>Cliente</th><th class="num">Ore</th><th class="num">Valore</th><th class="num"></th></tr></thead><tbody>' +
+      dfk.map(function (k) {
+        var kk = by(D.com, k);
+        return '<tr><td><button class="lnk" data-open-com="' + k + '">' + esc(nameOf(D.com, k, "titolo")) + "</button></td><td>" + esc(kk ? nameOf(D.cli, kk.cliente_id) : "—") +
+          '</td><td class="num">' + num(daFatt[k].ore, 1) + '</td><td class="num">' + eur(daFatt[k].val) + '</td><td class="num"><button class="lnk" data-fattore="' + k + '">Genera fattura</button></td></tr>';
+      }).join("") + '</tbody></table><p class="faint" style="margin-top:10px">Genera una fattura da queste ore: le righe usate restano collegate al movimento e spariscono da qui.</p></div>';
+  }
 
   h += '<div class="grid g32" style="margin-top:18px"><div class="card"><div class="cardhead"><h2>Ritmo delle ultime 12 settimane</h2><span class="faint">ogni quadratino è un giorno</span></div>' + heatOre(list) + "</div>";
   h += '<div class="card"><div class="cardhead"><h2>Andamento</h2><span class="faint">8 settimane</span></div>' + spark(settimane(list, 8)) + "</div></div>";
@@ -1945,10 +2373,18 @@ var FORMS = {
       fld("descrizione", "Descrizione", "textarea", r.descrizione);
   }},
   task: { t: "Attività", tb: "task", f: function (r) {
-    return fld("titolo", "Titolo", "text", r.titolo, true) +
-      '<div class="row2">' + selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) + selField("assegnato_id", "Assegnata a", opt(D.pros, r.assegnato_id || me.pro_id)) + "</div>" +
-      '<div class="row2">' + selField("stato", "Stato", sel(TASK_STATI, r.stato || "Da fare")) + selField("priorita", "Priorità", sel(["Bassa", "Media", "Alta"], r.priorita || "Media")) + "</div>" +
-      fld("scadenza", "Scadenza", "date", r.scadenza) + fld("note", "Note", "textarea", r.note);
+    return '<div class="fgroup"><h3>Cosa</h3>' +
+      fld("titolo", "Titolo", "text", r.titolo, true) +
+      fld("descrizione", "Descrizione", "textarea", r.descrizione) +
+      '<div class="row2">' + selField("stato", "Stato", sel(TASK_STATI, r.stato || "Da fare")) + selField("priorita", "Priorità", sel(["Bassa", "Media", "Alta"], r.priorita || "Media")) + "</div></div>" +
+      '<div class="fgroup"><h3>Dove e chi</h3>' +
+      selField("progetto_id", "Progetto", '<option value="">— nessuno —</option>' + progVisibili().map(function (p) { return '<option value="' + p.id + '"' + (r.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + " · " + esc(nameOf(D.com, p.commessa_id, "titolo")) + "</option>"; }).join("")) +
+      '<div class="row2">' + selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) + selField("assegnato_id", "Assegnata a", opt(D.pros, r.assegnato_id || me.pro_id)) + "</div>" +
+      '<div class="row2">' + fld("sezione", "Sezione", "text", r.sezione) + fld("etichette", "Etichette", "text", r.etichette) + "</div></div>" +
+      '<div class="fgroup"><h3>Quando</h3>' +
+      '<div class="row2">' + fld("inizio", "Inizio", "date", r.inizio) + fld("scadenza", "Scadenza", "date", r.scadenza) + "</div>" +
+      '<div class="row2">' + fld("stimate", "Ore stimate", "number", r.stimate) + selField("ricorrenza", "Si ripete", selKV([["", "no"], ["settimanale", "ogni settimana"], ["quindicinale", "ogni due settimane"], ["mensile", "ogni mese"]], r.ricorrenza || "")) + "</div></div>" +
+      fld("note", "Note", "textarea", r.note);
   }},
   ore: { t: "Ore", tb: "ore", f: function (r) {
     var p = me.pro_id ? by(D.pros, me.pro_id) : null;
@@ -2038,7 +2474,7 @@ var FORMS = {
 function modal(html) { el("#modal").innerHTML = '<div class="modal">' + html + "</div>"; }
 
 /* Micro-azioni: restano in finestra rapida. Tutto il resto è una pagina vera. */
-var RAPIDI = { ore: 1, pren: 1, ev: 1, inter: 1, mat: 1, task: 1, appr: 1 };
+var RAPIDI = { ore: 1, pren: 1, ev: 1, inter: 1, mat: 1, appr: 1 };
 /* Sezione di appartenenza di ogni modulo: serve per il percorso e per il ritorno */
 var FSEZ = {
   com: ["commesse", "Preventivi"], cli: ["clienti", "Clienti"], pros: ["pool", "Professionisti"],
@@ -2046,10 +2482,10 @@ var FSEZ = {
   mov: ["fatture", "Fatture"], forn: ["fornitori", "Fornitori"], spazi: ["spazi", "Coworking & spazi"],
   membri: ["impostazioni", "Impostazioni"], fasi: ["commesse", "Preventivi"], pag: ["commesse", "Preventivi"],
   vari: ["commesse", "Preventivi"], appr: ["commesse", "Preventivi"], righe: ["commesse", "Preventivi"],
-  task: ["task", "Attività"], ore: ["ore", "Ore & timesheet"], inter: ["clienti", "Clienti"],
+  task: ["task", "Attività"], ore: ["ore", "Ore & timesheet"], inter: ["clienti", "Clienti"], modelli: ["task", "Attività"],
   mat: ["commesse", "Preventivi"], ev: ["commesse", "Preventivi"], pren: ["spazi", "Coworking & spazi"]
 };
-var FDETT = { com: ["commessa", "servizi"], cli: ["cliente", ""], prog: ["progetto", "lavorazioni"], lav: ["lavorazione", ""], pros: ["pro", ""] };
+var FDETT = { com: ["commessa", "servizi"], cli: ["cliente", ""], prog: ["progetto", "lavorazioni"], lav: ["lavorazione", ""], pros: ["pro", ""], task: ["attivita", ""] };
 
 function openForm(entity, id, ctx) {
   var F = FORMS[entity]; if (!F) return;
@@ -2264,10 +2700,11 @@ function render() {
     return;
   }
   buildNav();
-  var V = { dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga };
+  var V = { attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
-  var s = el("#search"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
+  var s = el("#search") || el("#tcerca");
+  if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
   countUp();
 }
 
@@ -2331,7 +2768,7 @@ document.addEventListener("click", async function (e) {
   if (d.openCli) { go("cliente", d.openCli); return; }
   if (d.openPro) { go("pro", d.openPro); return; }
   if (d.openProg) { go("progetto", d.openProg); return; }
-  if (d.openTask) { openForm("task", d.openTask); return; }
+  if (d.openTask) { go("attivita", d.openTask); return; }
   if (d.apprSi) { await apprRispondi(d.apprSi, "Approvata"); return; }
   if (d.apprNo) { await apprRispondi(d.apprNo, "Modifiche richieste"); return; }
   if (d.new) {
@@ -2341,6 +2778,7 @@ document.addEventListener("click", async function (e) {
     if (d.ctxPro) ctx.pro_id = d.ctxPro;
     if (d.ctxProg) { ctx.progetto_id = d.ctxProg; var pk2 = by(D.prog, d.ctxProg); if (pk2) ctx.commessa_id = pk2.commessa_id; }
     if (d.ctxLav) { var lk = by(D.lav, d.ctxLav); if (lk) { ctx.lavorazione_id = lk.id; ctx.progetto_id = lk.progetto_id; ctx.commessa_id = lk.commessa_id; } }
+    if (d.ctxTask) { var tk8 = by(D.task, d.ctxTask); if (tk8) { ctx.task_id = tk8.id; ctx.lavorazione_id = tk8.lavorazione_id; ctx.progetto_id = tk8.progetto_id; ctx.commessa_id = tk8.commessa_id; } }
     openForm(d.new, null, ctx); return;
   }
   if (d.edit) { var p = d.edit.split(":"); openForm(p[0], p.slice(1).join(":")); return; }
@@ -2422,20 +2860,52 @@ document.addEventListener("click", async function (e) {
   }
   if (d.tck) {
     var tt = by(D.task, d.tck); if (!tt) return;
-    var st2 = tt.stato === "Fatto" ? "Da fare" : "Fatto";
-    var rt = await sb.from("task").update({ stato: st2 }).eq("id", tt.id);
+    var fattoOra = tt.stato !== "Fatto";
+    var st2 = fattoOra ? "Fatto" : "Da fare";
+    var rt = await sb.from("task").update({ stato: st2, completata_il: fattoOra ? new Date().toISOString() : null }).eq("id", tt.id);
     if (rt.error) { toast(rt.error.message, true); return; }
-    if (st2 === "Fatto" && tt.commessa_id) await logEv(tt.commessa_id, "Attività completata: " + tt.titolo);
+    if (fattoOra && tt.commessa_id) await logEv(tt.commessa_id, "Attività completata: " + tt.titolo);
+    if (fattoOra && tt.ricorrenza) await prossimaRicorrenza(tt);
     await reload(["task", "ev"]); render(); return;
   }
-  if (d.sub) {
-    var padre = by(D.task, d.sub); if (!padre) return;
-    var tit = prompt("Sotto-attività di “" + padre.titolo + "”");
-    if (!tit) return;
-    var rs2 = await sb.from("task").insert({ titolo: tit, padre_id: padre.id, commessa_id: padre.commessa_id, assegnato_id: me.pro_id, stato: "Da fare", priorita: "Media" });
-    if (rs2.error) { toast(rs2.error.message, true); return; }
-    await reload(["task"]); render(); return;
+  if (d.dipVia) {
+    var dv = d.dipVia.split("|");
+    var rdv = await sb.from("task_dip").delete().eq("task_id", dv[0]).eq("blocca_id", dv[1]);
+    if (rdv.error) { toast(rdv.error.message, true); return; }
+    await reload(["dip"]); render(); return;
   }
+  if (d.duplTask) {
+    var td = by(D.task, d.duplTask); if (!td) return;
+    var copia = {
+      titolo: td.titolo + " (copia)", descrizione: td.descrizione, commessa_id: td.commessa_id, progetto_id: td.progetto_id,
+      lavorazione_id: td.lavorazione_id, assegnato_id: td.assegnato_id, stato: "Da fare", priorita: td.priorita,
+      scadenza: td.scadenza, inizio: td.inizio, stimate: td.stimate, sezione: td.sezione, etichette: td.etichette
+    };
+    var rdt = await sb.from("task").insert(copia).select().single();
+    if (rdt.error) { toast(rdt.error.message, true); return; }
+    await reload(["task"]); toast("Attività duplicata"); go("attivita", rdt.data.id); return;
+  }
+  if (d.tstartTask) {
+    var tk9 = by(D.task, d.tstartTask); if (!tk9) return;
+    if (!me.pro_id) { toast("Il tuo utente non è collegato a una scheda", true); return; }
+    var rtt = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: tk9.commessa_id, progetto_id: tk9.progetto_id, lavorazione_id: tk9.lavorazione_id, task_id: tk9.id, iniziato: new Date().toISOString() });
+    if (rtt.error) { toast(rtt.error.message, true); return; }
+    await reload(["tmr"]); toast("Timer avviato"); render(); return;
+  }
+  if (d.tfScadute) { TF.scadute = !TF.scadute; render(); return; }
+  if (d.tfReset) { TF = { stato: "aperte", pro: "", prog: "", prio: "", cerca: "", scadute: false }; render(); return; }
+  if (d.vistaSalva) {
+    if (!me.pro_id) { toast("Serve una scheda collegata", true); return; }
+    var nomeV = prompt("Come si chiama questa vista?", "La mia vista");
+    if (!nomeV) return;
+    var rvs = await sb.from("viste").insert({ pro_id: me.pro_id, ambito: "task", nome: nomeV, config: { TF: TF, TGROUP: TGROUP, TSORT: TSORT, vista: tab || "lista" } });
+    if (rvs.error) { toast(rvs.error.message, true); return; }
+    await reload(["viste"]); toast("Vista salvata"); render(); return;
+  }
+  if (d.modelli) { apriModelli(); return; }
+  if (d.modNuovo) { await creaModelloDaProgetto(); return; }
+  if (d.modUsa) { await applicaModello(d.modUsa); return; }
+  if (d.sub) { go("attivita", d.sub); return; }
   if (d.file) {
     var mf = by(D.mat, d.file); if (!mf || !mf.path) return;
     var sg = await sb.storage.from("materiali").createSignedUrl(mf.path, 120);
@@ -2449,6 +2919,23 @@ document.addEventListener("click", async function (e) {
     await reload(["mat"]); toast(!mv2.visibile_cliente ? "Ora è visibile al cliente" : "Ora è solo interno"); render(); return;
   }
   if (d.wk !== undefined) { WEEK = d.wk === "0" ? 0 : WEEK + (+d.wk); render(); return; }
+  if (d.tscopy) {
+    var lunC = lunedi(WEEK), nuoveC = [];
+    for (var gi9 = 0; gi9 < 7; gi9++) {
+      var gC = iso(new Date(lunC.getTime() + gi9 * 86400000));
+      var pC = iso(new Date(lunC.getTime() + (gi9 - 7) * 86400000));
+      D.ore.filter(function (o) { return o.pro_id === me.pro_id && o.data === pC; }).forEach(function (o) {
+        var gia = D.ore.some(function (x) { return x.pro_id === me.pro_id && x.data === gC && x.lavorazione_id === o.lavorazione_id; });
+        if (gia) return;
+        nuoveC.push({ pro_id: me.pro_id, lavorazione_id: o.lavorazione_id, progetto_id: o.progetto_id, commessa_id: o.commessa_id, data: gC, ore: o.ore, tariffa: o.tariffa, fatturabile: o.fatturabile, descrizione: o.descrizione });
+      });
+    }
+    if (!nuoveC.length) { toast("Niente da copiare: la settimana scorsa è vuota o è già stata copiata"); return; }
+    if (!confirm("Copio " + nuoveC.length + " registrazioni dalla settimana scorsa?")) return;
+    var rcp = await sb.from("ore").insert(nuoveC);
+    if (rcp.error) { toast(rcp.error.message, true); return; }
+    await reload(["ore"]); toast(nuoveC.length + " registrazioni copiate"); render(); return;
+  }
   if (d.tstart) {
     if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
     var r5 = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: d.tstart, iniziato: new Date().toISOString() });
@@ -2590,18 +3077,19 @@ function totaliTs() {
   });
   var g = el("#tstot"); if (g) g.innerHTML = "<b>" + num(tot, 1) + "</b>";
 }
-async function uploadFile(files, kid) {
+async function uploadFile(files, kid, tid) {
   toast("Carico " + files.length + " file…");
+  var cartella = kid || tid || "personali";
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
-    var path = kid + "/" + Date.now() + "-" + f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    var path = cartella + "/" + Date.now() + "-" + f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     var up = await sb.storage.from("materiali").upload(path, f);
     if (up.error) { toast(up.error.message, true); continue; }
     var est = (f.name.split(".").pop() || "").toLowerCase();
     var tipo = ["jpg", "jpeg", "png", "gif", "webp", "heic"].indexOf(est) > -1 ? "Immagine" : ["pdf"].indexOf(est) > -1 ? "Documento" : ["mp4", "mov"].indexOf(est) > -1 ? "Video" : "File";
-    await sb.from("materiali").insert({ commessa_id: kid, nome: f.name, path: path, dim: f.size, tipo: tipo, visibile_cliente: false, caricato_da: me.pro_id });
+    await sb.from("materiali").insert({ commessa_id: kid || null, task_id: tid || null, nome: f.name, path: path, dim: f.size, tipo: tipo, visibile_cliente: false, caricato_da: me.pro_id });
   }
-  await logEv(kid, "Caricati file nei materiali");
+  if (kid) await logEv(kid, "Caricati file nei materiali");
   await reload(["mat", "ev"]); toast("File caricati"); render();
 }
 
@@ -2639,6 +3127,34 @@ document.addEventListener("submit", async function (e) {
     await reload(["righe"]); closeModal(); toast("Voce salvata");
     if (f.dataset.page) { FDIRTY = false; FBACK = null; go("commessa", kid, "servizi"); return; }
     render(); return;
+  }
+  if (f.dataset.tsadd) {
+    e.preventDefault();
+    var lid9 = f.lav.value; if (!lid9) return;
+    if (TSEXTRA.indexOf(lid9) === -1) TSEXTRA.push(lid9);
+    render(); return;
+  }
+  if (f.dataset.qaddSub) {
+    e.preventDefault();
+    var tsub = f.titolo.value.trim(); if (!tsub) return;
+    var pd = by(D.task, f.dataset.qaddSub); if (!pd) return;
+    var rqs = await sb.from("task").insert({ titolo: tsub, padre_id: pd.id, commessa_id: pd.commessa_id, progetto_id: pd.progetto_id, lavorazione_id: pd.lavorazione_id, assegnato_id: pd.assegnato_id || me.pro_id, stato: "Da fare", priorita: "Media" });
+    if (rqs.error) { toast(rqs.error.message, true); return; }
+    f.titolo.value = ""; await reload(["task"]); render(); return;
+  }
+  if (f.dataset.commTask) {
+    e.preventDefault();
+    var testo = f.testo.value.trim(); if (!testo) return;
+    var rct = await sb.from("commenti").insert({ task_id: f.dataset.commTask, pro_id: me.pro_id, testo: testo });
+    if (rct.error) { toast(rct.error.message, true); return; }
+    f.testo.value = ""; await reload(["comm"]); render(); return;
+  }
+  if (f.dataset.dipAdd) {
+    e.preventDefault();
+    var bl = f.blocca.value; if (!bl) return;
+    var rda = await sb.from("task_dip").insert({ task_id: f.dataset.dipAdd, blocca_id: bl });
+    if (rda.error) { toast(rda.error.message, true); return; }
+    await reload(["dip"]); render(); return;
   }
   if (f.dataset.qaddLav) {
     e.preventDefault();
@@ -2696,6 +3212,18 @@ document.addEventListener("input", function (e) {
   }
   if (e.target.id === "search") { search = e.target.value; render(); }
   if (e.target.id === "palq") renderPal(e.target.value);
+  if (e.target.id === "tdesc") {
+    var vald = e.target.value, tid9 = current, std = el("#tstat");
+    if (std) std.textContent = "scrivo…";
+    clearTimeout(NOTET);
+    NOTET = setTimeout(async function () {
+      var rd9 = await sb.from("task").update({ descrizione: vald }).eq("id", tid9);
+      var t9 = by(D.task, tid9); if (t9) t9.descrizione = vald;
+      var s9 = el("#tstat"); if (s9) s9.textContent = rd9.error ? "errore" : "salvato";
+      setTimeout(function () { var s8 = el("#tstat"); if (s8) s8.textContent = ""; }, 2200);
+    }, 800);
+  }
+  if (e.target.id === "tcerca") { TF.cerca = e.target.value; render(); }
   if (e.target.id === "noteprog") {
     var valp = e.target.value, pid = current, stp = el("#notestat");
     if (stp) stp.textContent = "scrivo…";
@@ -2721,6 +3249,31 @@ document.addEventListener("input", function (e) {
 });
 
 document.addEventListener("change", async function (e) {
+  /* modifica rapida di un campo dell'attività: si salva subito */
+  if (e.target.dataset && e.target.dataset.tset) {
+    var pz = e.target.dataset.tset.split("|"), campo = pz[0], tid = pz[1];
+    var val = e.target.value;
+    if (val === "") val = null;
+    else if (e.target.type === "number") val = +val;
+    var patch = {}; patch[campo] = val;
+    if (campo === "progetto_id" && val) { var pg9 = by(D.prog, val); if (pg9) patch.commessa_id = pg9.commessa_id; }
+    if (campo === "lavorazione_id" && val) { var lv9 = by(D.lav, val); if (lv9) { patch.progetto_id = lv9.progetto_id; patch.commessa_id = lv9.commessa_id; } }
+    if (campo === "stato" && val === "Fatto") patch.completata_il = new Date().toISOString();
+    var rq = await sb.from("task").update(patch).eq("id", tid);
+    if (rq.error) { toast(rq.error.message, true); return; }
+    await reload(["task"]); toast("Salvato"); render(); return;
+  }
+  if (e.target.dataset && e.target.dataset.tf) { TF[e.target.dataset.tf] = e.target.value; render(); return; }
+  if (e.target.dataset && e.target.dataset.tg) { TGROUP = e.target.value; render(); return; }
+  if (e.target.dataset && e.target.dataset.ts) { TSORT = e.target.value; render(); return; }
+  if (e.target.dataset && e.target.dataset.vistaApri) {
+    var vv9 = by(D.viste, e.target.value); if (!vv9) return;
+    var cfg = vv9.config || {};
+    if (cfg.TF) TF = cfg.TF;
+    if (cfg.TGROUP) TGROUP = cfg.TGROUP;
+    if (cfg.TSORT) TSORT = cfg.TSORT;
+    go("task", null, cfg.vista || "lista"); return;
+  }
   if (e.target.classList && e.target.classList.contains("tsc")) {
     var p = e.target.dataset.ts.split("|");
     await salvaTs(p[0], p[1], e.target.value);
@@ -2744,7 +3297,7 @@ document.addEventListener("drop", async function (e) {
   var z = e.target.closest && e.target.closest("#drop");
   if (!z) return;
   e.preventDefault(); z.classList.remove("over");
-  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) await uploadFile(e.dataTransfer.files, z.dataset.kid);
+  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) await uploadFile(e.dataTransfer.files, z.dataset.kid, z.dataset.tid);
 });
 
 document.addEventListener("keydown", function (e) {
@@ -2764,8 +3317,22 @@ document.addEventListener("keydown", function (e) {
   if (e.key === "o" && !e.metaKey && !e.ctrlKey && !isCliente() && !isPR()) { e.preventDefault(); openForm("ore"); return; }
 });
 
+/* Griglia ore: ci si muove con le frecce, Invio scende */
+document.addEventListener("keydown", function (e) {
+  var c = e.target;
+  if (!c.classList || !c.classList.contains("tsc") || !c.dataset.rc) return;
+  var p = c.dataset.rc.split("|"), r = +p[0], k = +p[1], dr = 0, dk = 0;
+  if (e.key === "ArrowDown" || e.key === "Enter") dr = 1;
+  else if (e.key === "ArrowUp") dr = -1;
+  else if (e.key === "ArrowLeft" && c.selectionStart === 0) dk = -1;
+  else if (e.key === "ArrowRight" && c.selectionStart === c.value.length) dk = 1;
+  else return;
+  var n = document.querySelector('.tsc[data-rc="' + (r + dr) + "|" + (k + dk) + '"]');
+  if (!n) return;
+  e.preventDefault(); n.focus(); n.select();
+});
 document.addEventListener("dragstart", function (e) {
-  var t = e.target.closest && e.target.closest(".tsk");
+  var t = e.target.closest && e.target.closest(".tsk, .trow[draggable]");
   if (!t) return;
   DRAG = t.dataset.openTask; t.classList.add("dragging");
   if (e.dataTransfer) { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", DRAG); } catch (x) {} }
@@ -2775,14 +3342,28 @@ document.addEventListener("dragend", function (e) {
   Array.prototype.forEach.call(document.querySelectorAll(".kcol.over"), function (c) { c.classList.remove("over"); });
 });
 document.addEventListener("dragover", function (e) {
-  var c = e.target.closest && e.target.closest(".kcol");
+  var c = e.target.closest && e.target.closest(".kcol, .mcol");
   if (!c || !DRAG) return;
   e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
   c.classList.add("over");
 });
 document.addEventListener("dragleave", function (e) {
-  var c = e.target.closest && e.target.closest(".kcol");
+  var c = e.target.closest && e.target.closest(".kcol, .mcol");
   if (c && !c.contains(e.relatedTarget)) c.classList.remove("over");
+});
+/* Le mie cose: trascini fra Oggi / Settimana / Più avanti / Senza data e cambia la scadenza */
+document.addEventListener("drop", async function (e) {
+  var col = e.target.closest && e.target.closest(".mcol");
+  if (!col || !DRAG) return;
+  e.preventDefault(); col.classList.remove("over");
+  var idm = DRAG; DRAG = null;
+  var quando = col.dataset.quando;
+  var nuova = quando === "oggi" ? today()
+    : quando === "settimana" ? iso(new Date(Date.now() + 3 * 86400000))
+    : quando === "dopo" ? iso(new Date(Date.now() + 14 * 86400000)) : null;
+  var rm9 = await sb.from("task").update({ scadenza: nuova }).eq("id", idm);
+  if (rm9.error) { toast(rm9.error.message, true); return; }
+  await reload(["task"]); toast(nuova ? "Spostata al " + dt(nuova) : "Scadenza tolta"); render();
 });
 document.addEventListener("drop", async function (e) {
   var c = e.target.closest && e.target.closest(".kcol");
