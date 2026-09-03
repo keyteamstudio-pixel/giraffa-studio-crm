@@ -6,6 +6,7 @@
 
 
 
+
 (function () {
 "use strict";
 
@@ -16,7 +17,7 @@ var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], 
 var CAL = 0;
 var PLINK = null;
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
@@ -354,42 +355,34 @@ async function reload(keys) {
 }
 /* ---------------- nav ---------------- */
 function navFor() {
-  if (isPR()) return [
-    { g: "Il mio lavoro" }, { k: "dash", t: "Dashboard" },
-    { k: "calendario", t: "Calendario" },
-    { k: "commesse", t: "I miei preventivi", c: function () { return fcom().length; } },
-    { k: "progetti", t: "Progetti", c: function () { return progVisibili().length; } },
-    { g: "Clienti" }, { k: "clienti", t: "I miei clienti", c: function () { return fcli().length; } },
-    { g: "Studio" }, { k: "impostazioni", t: "Impostazioni" }
-  ];
-  if (isPro()) return [
-    { g: "Il mio lavoro" }, { k: "dash", t: "Dashboard" },
-    { k: "calendario", t: "Calendario" },
-    { k: "progetti", t: "Progetti", c: function () { return progVisibili().filter(function (p) { return p.stato !== "Completato"; }).length; } },
-    { k: "ore", t: "Ore & timesheet" },
-    { g: "Clienti" }, { k: "clienti", t: "Clienti", c: function () { return fcli().length; } },
-    { k: "commesse", t: "Preventivi", c: function () { return fcom().length; } },
-    { k: "servizi", t: "I miei servizi" },
-    { g: "Soldi" }, { k: "fatture", t: "Le mie fatture" },
-    { g: "Studio" }, { k: "spazi", t: "Spazi & ufficio" }, { k: "impostazioni", t: "Impostazioni" }
-  ];
   return [
-    { g: "Lavoro" }, { k: "dash", t: "Dashboard" },
+    { g: "Lavoro" },
+    { k: "dash", t: "La mia giornata" },
     { k: "calendario", t: "Calendario" },
     { k: "progetti", t: "Progetti", c: function () { return progVisibili().filter(function (p) { return p.stato !== "Completato"; }).length; } },
+    { k: "task", t: "Attività", c: function () { return ftask().filter(function (t) { return t.stato !== "Fatto"; }).length; } },
     { k: "ore", t: "Ore & timesheet" },
-    { g: "Clienti" }, { k: "clienti", t: "Clienti", c: function () { return fcli().length; } },
+    { g: "Profilo" },
+    { k: "profilo", t: "Il mio profilo" },
+    { k: "servizi", t: "I miei servizi", c: function () { return D.serv.filter(function (x) { return x.pro_id === me.pro_id; }).length; } },
+    { g: "Amministrazione" },
+    { k: "amm", t: "Quadro amministrativo" },
+    { k: "clienti", t: "Clienti", c: function () { return fcli().length; } },
     { k: "commesse", t: "Preventivi", c: function () { return fcom().filter(function (k) { return ["Bozza", "Preventivo"].indexOf(k.stato) > -1; }).length; } },
-    { k: "pool", t: "Pool professionisti", c: function () { return D.pros.length; } },
-    { k: "servizi", t: "Servizi & listino" },
-    { g: "Soldi" }, { k: "fatture", t: "Fatturazione", c: function () { return fmov().filter(function (m) { return m.stato !== "Pagata"; }).length; } },
+    { k: "fatture", t: "Fatture", c: function () { return fmov().filter(function (m) { return m.stato !== "Pagata"; }).length; } },
     { k: "report", t: "Report" },
-    { g: "Studio" }, { k: "carico", t: "Carico di lavoro" }, { k: "spazi", t: "Spazi & ufficio" }, { k: "impostazioni", t: "Impostazioni" }
+    { g: "Studio" },
+    { k: "studio", t: "Bacheca" },
+    { k: "pool", t: "Professionisti", c: function () { return D.pros.length; } },
+    { k: "fornitori", t: "Fornitori", c: function () { return D.forn.length; } },
+    { k: "spazi", t: "Coworking & spazi" },
+    { k: "carico", t: "Carico di lavoro" },
+    { k: "impostazioni", t: "Impostazioni" }
   ];
 }
 var RUOLO_ET = { admin: "Regia", professionista: "Professionista", pr: "PR", cliente: "Cliente" };
 function buildNav() {
-  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti" }[view] || view;
+  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti" }[view] || view;
   navFor().forEach(function (n) {
     if (n.g) { h += '<div class="navgroup">' + n.g + "</div>"; return; }
     var c = n.c ? n.c() : null;
@@ -938,6 +931,128 @@ function vOre() {
   h += pk.length ? '<div class="bars">' + pk.slice(0, 8).map(function (id) { return bar(nameOf(D.com, id, "titolo"), per[id], per[pk[0]], num(per[id], 1) + " h"); }).join("") + "</div>" : vuoto("—");
   h += "</div>";
   h += '<div class="card"><div class="cardhead"><h2>Registrazioni</h2></div>' + tblOre(list.slice(0, 60)) + "</div>";
+  return h;
+}
+
+/* ---------------- quadro amministrativo ---------------- */
+function vAmm() {
+  var com = fcom(), cli = fcli(), mov = fmov();
+  var d = new Date(), anno = d.getFullYear();
+  var aperte = com.filter(function (k) { return ["Preventivo", "Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1; });
+  var inviati = com.filter(function (k) { return k.stato === "Preventivo"; });
+  var vinti = com.filter(function (k) { return ["Approvata", "In corso", "Consegna", "Chiusa"].indexOf(k.stato) > -1; });
+  var persi = com.filter(function (k) { return k.stato === "Persa"; });
+  var tassoVinc = (vinti.length + persi.length) ? Math.round(vinti.length / (vinti.length + persi.length) * 100) : null;
+  var fatturato = sum(mov.filter(function (m) { return m.tipo === "Attiva" && String(m.data || "").slice(0, 4) === String(anno); }), function (m) { return m.importo; });
+  var daIncassare = sum(mov.filter(function (m) { return m.tipo === "Attiva" && m.stato !== "Pagata"; }), function (m) { return m.importo; });
+  var scadute = mov.filter(function (m) { return m.tipo === "Attiva" && m.stato !== "Pagata" && m.scadenza && m.scadenza < today(); });
+  var pagAperti = D.pag.filter(function (p) { return p.stato === "Da incassare" && can(p.commessa_id); });
+  var h = head("Quadro amministrativo", "Clienti, preventivi e denaro: il tuo, solo il tuo",
+    '<button class="btn sm ghost" data-new="cli">+ Cliente</button><button class="btn sm" data-new="com">+ Preventivo</button>');
+  h += '<div class="grid g4">' +
+    kpi(eur(fatturato), "Fatturato " + anno, mov.filter(function (m) { return m.tipo === "Attiva"; }).length + " fatture emesse") +
+    kpi(eur(daIncassare), "Da incassare", scadute.length ? scadute.length + " già scadute" : "nessuna scaduta") +
+    kpi(eur(sum(aperte, function (k) { return calc(k).tot; })), "Pipeline aperta", aperte.length + " preventivi in gioco") +
+    kpi(tassoVinc == null ? "—" : tassoVinc + " %", "Preventivi vinti", vinti.length + " vinti · " + persi.length + " persi") + "</div>";
+
+  h += '<div class="grid g32" style="margin-top:18px"><div>';
+  h += '<div class="card"><div class="cardhead"><h2>Da incassare</h2><button class="btn sm ghost" data-go="fatture">Tutte le fatture</button></div>';
+  var apertiMov = mov.filter(function (m) { return m.tipo === "Attiva" && m.stato !== "Pagata"; }).sort(function (a, b) { return (a.scadenza || "") < (b.scadenza || "") ? -1 : 1; });
+  h += apertiMov.length ? '<table><thead><tr><th>Numero</th><th>Cliente</th><th>Scadenza</th><th class="num">Importo</th><th>Stato</th></tr></thead><tbody>' +
+    apertiMov.slice(0, 10).map(function (m) {
+      var late = m.scadenza && m.scadenza < today();
+      return "<tr><td>" + esc(m.numero || "—") + "</td><td>" + esc(nameOf(D.cli, m.cliente_id)) + "</td><td>" + (late ? '<span class="badge b-red">' + dt(m.scadenza) + "</span>" : dt(m.scadenza)) + '</td><td class="num">' + eur(m.importo) + '</td><td><span class="badge ' + (m.stato === "Pagata" ? "b-green" : "b-amber") + '">' + esc(m.stato) + "</span></td></tr>";
+    }).join("") + "</tbody></table>" : vuoto("Niente da incassare.");
+  h += "</div>";
+  h += '<div class="card"><div class="cardhead"><h2>Preventivi da seguire</h2><button class="btn sm ghost" data-go="commesse">Tutti</button></div>';
+  h += inviati.length ? '<div class="checklist">' + inviati.map(function (k) {
+    var g = days(today(), k.created_at ? String(k.created_at).slice(0, 10) : today());
+    return '<div class="cri"><button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button><span class=\"faint\"> · " + esc(nameOf(D.cli, k.cliente_id)) + " · " + eur(calc(k).tot) + (g > 7 ? ' · <b class="neg">inviato ' + g + " giorni fa</b>" : "") + "</span></div>";
+  }).join("") + "</div>" : vuoto("Nessun preventivo in attesa di risposta.");
+  h += "</div></div><div>";
+  h += '<div class="card"><div class="cardhead"><h2>Scadenze di pagamento</h2></div>';
+  h += pagAperti.length ? '<ul class="timeline">' + pagAperti.slice().sort(function (a, b) { return (a.scadenza || "") < (b.scadenza || "") ? -1 : 1; }).slice(0, 8).map(function (p) {
+    return "<li><b>" + eur(p.importo) + "</b> · " + esc(p.nome) + '<div class="faint">' + esc(nameOf(D.com, p.commessa_id, "titolo")) + " · " + dt(p.scadenza) + "</div></li>";
+  }).join("") + "</ul>" : vuoto("Nessuna scadenza aperta.");
+  h += "</div>";
+  h += '<div class="card"><div class="cardhead"><h2>I tuoi clienti</h2><button class="btn sm ghost" data-go="clienti">Vedi tutti</button></div>';
+  h += cli.length ? '<div class="checklist">' + cli.slice(0, 8).map(function (c) {
+    return '<div class="cri"><button class="lnk" data-open-cli="' + c.id + '">' + esc(c.nome) + '</button><span class="faint"> · ' + eur(valoreCliente(c.id)) + "</span></div>";
+  }).join("") + "</div>" : vuoto("Nessun cliente ancora.");
+  h += "</div></div></div>";
+  return h;
+}
+
+/* ---------------- profilo personale ---------------- */
+function vProfilo() {
+  var p = me.pro_id ? by(D.pros, me.pro_id) : null;
+  if (!p) return '<div class="card">' + vuoto("Il tuo utente non è collegato a nessuna scheda del pool.") + "</div>";
+  current = p.id;
+  return vPro();
+}
+
+/* ---------------- bacheca dello studio ---------------- */
+function vStudio() {
+  var h = head("Bacheca dello studio", "Quello che condividiamo: persone, fornitori, spazi");
+  var attivi = D.pros.filter(function (x) { return x.vetting !== "Sospeso"; });
+  var conServizi = D.pros.filter(function (x) { return D.serv.some(function (s) { return s.pro_id === x.id; }); });
+  h += '<div class="grid g4">' +
+    kpi(String(attivi.length), "Professionisti", conServizi.length + " con servizi a listino") +
+    kpi(String(D.serv.filter(function (s) { return s.attivo !== false; }).length), "Servizi disponibili", "da usare nei tuoi preventivi") +
+    kpi(String(D.forn.length), "Fornitori segnalati", "consigliati dai colleghi") +
+    kpi(String(D.spazi.length), "Spazi", "coworking e sale") + "</div>";
+
+  h += '<div class="grid g32" style="margin-top:18px"><div>';
+  h += '<div class="card"><div class="cardhead"><h2>Cosa sanno fare i colleghi</h2><button class="btn sm ghost" data-go="servizi">Vai al listino</button></div>';
+  var cats = {};
+  D.serv.filter(function (s) { return s.attivo !== false && s.pro_id !== me.pro_id; }).forEach(function (s) { (cats[s.cat || "Altro"] = cats[s.cat || "Altro"] || []).push(s); });
+  var ck = Object.keys(cats).sort();
+  h += ck.length ? ck.map(function (c) {
+    return '<div style="margin-bottom:14px"><div class="glab" style="margin-bottom:6px">' + esc(c) + "</div>" + cats[c].slice(0, 6).map(function (s) {
+      return '<div class="cri"><b>' + esc(s.nome) + '</b><span class="faint"> · ' + esc(nameOf(D.pros, s.pro_id)) + " · " + eur(s.prezzo) + (s.unita ? " / " + esc(s.unita) : "") + "</span></div>";
+    }).join("") + "</div>";
+  }).join("") : vuoto("Nessun servizio dei colleghi, per ora.");
+  h += "</div>";
+  h += '<div class="card"><div class="cardhead"><h2>Fornitori consigliati</h2><button class="btn sm ghost" data-go="fornitori">Tutti</button></div>';
+  h += D.forn.length ? '<div class="checklist">' + D.forn.slice(0, 6).map(function (f) {
+    return '<div class="cri"><b>' + esc(f.nome) + '</b><span class="faint"> · ' + esc(f.categoria || "—") + (f.consigliato_da ? " · da " + esc(nameOf(D.pros, f.consigliato_da)) : "") + "</span></div>";
+  }).join("") + "</div>" : vuoto("Nessun fornitore segnalato.", '<button class="lnk" data-new="forn">Segnalane uno</button>');
+  h += "</div></div><div>";
+  h += '<div class="card"><div class="cardhead"><h2>Chi c\'è</h2><button class="btn sm ghost" data-go="pool">Il pool</button></div>';
+  h += '<div class="checklist">' + attivi.slice(0, 10).map(function (x) {
+    return '<div class="cri">' + avatar(x.id, 22) + ' <button class="lnk" data-open-pro="' + x.id + '">' + esc(x.nome) + '</button><span class="faint"> · ' + esc(x.ruolo || "—") + "</span></div>";
+  }).join("") + "</div></div>";
+  h += '<div class="card"><div class="cardhead"><h2>Spazi</h2><button class="btn sm ghost" data-go="spazi">Prenota</button></div>';
+  h += D.spazi.length ? '<div class="checklist">' + D.spazi.map(function (x) {
+    return '<div class="cri"><b>' + esc(x.nome) + '</b><span class="faint"> · ' + esc(x.stato || "—") + (x.partner ? " · " + esc(x.partner) : "") + "</span></div>";
+  }).join("") + "</div>" : vuoto("Nessuno spazio ancora.");
+  h += "</div></div></div>";
+  return h;
+}
+
+/* ---------------- fornitori condivisi ---------------- */
+function vFornitori() {
+  var q = (search || "").toLowerCase();
+  var list = D.forn.filter(function (f) {
+    return !q || (f.nome + " " + (f.categoria || "") + " " + (f.citta || "") + " " + (f.note || "")).toLowerCase().indexOf(q) > -1;
+  });
+  var h = head("Fornitori condivisi", "La rubrica dello studio: tipografie, stampatori, service, consulenti. Chi lo segnala risponde della segnalazione.",
+    '<button class="btn sm" data-new="forn">+ Segnala fornitore</button>');
+  h += '<div class="card"><div class="filters"><input id="search" class="fc" placeholder="Cerca per nome, categoria, città…" value="' + esc(search || "") + '"></div></div>';
+  var cats = {};
+  list.forEach(function (f) { (cats[f.categoria || "Altro"] = cats[f.categoria || "Altro"] || []).push(f); });
+  var ck = Object.keys(cats).sort();
+  if (!list.length) return h + '<div class="card">' + vuoto("Nessun fornitore in rubrica.", '<button class="lnk" data-new="forn">Segnala il primo</button>') + "</div>";
+  ck.forEach(function (c) {
+    h += '<div class="card"><div class="cardhead"><h2>' + esc(c) + "</h2><span class=\"faint\">" + cats[c].length + "</span></div>";
+    h += '<table><thead><tr><th>Fornitore</th><th>Referente</th><th>Contatti</th><th>Città</th><th>Segnalato da</th><th></th></tr></thead><tbody>' +
+      cats[c].map(function (f) {
+        return "<tr><td><b>" + esc(f.nome) + "</b>" + (f.note ? '<div class="faint">' + esc(f.note) + "</div>" : "") + "</td><td>" + esc(f.referente || "—") + "</td><td>" +
+          (f.email ? '<a href="mailto:' + esc(f.email) + '">' + esc(f.email) + "</a>" : "") + (f.telefono ? '<div class="faint">' + esc(f.telefono) + "</div>" : "") +
+          (f.sito ? '<div><a href="' + esc(f.sito) + '" target="_blank" rel="noopener">sito</a></div>' : "") + "</td><td>" + esc(f.citta || "—") + "</td><td>" +
+          (f.consigliato_da ? avatar(f.consigliato_da, 20) + " " + esc(nameOf(D.pros, f.consigliato_da)) : "—") + '</td><td class="num"><button class="lnk" data-edit="forn:' + f.id + '">Modifica</button></td></tr>';
+      }).join("") + "</tbody></table></div>";
+  });
   return h;
 }
 
@@ -1684,6 +1799,14 @@ var FORMS = {
       '<div class="row2">' + fld("data", "Data", "date", r.data || today()) + selField("slot", "Slot", sel(["Giornata", "Mattina", "Pomeriggio", "Sala riunioni"], r.slot || "Giornata")) + "</div>" +
       fld("note", "Note", "text", r.note);
   }},
+  forn: { t: "Fornitore", tb: "forn", f: function (r) {
+    return '<div class="row2">' + fld("nome", "Nome", "text", r.nome, true) + fld("categoria", "Categoria (es. Tipografia)", "text", r.categoria) + "</div>" +
+      '<div class="row2">' + fld("referente", "Referente", "text", r.referente) + fld("citta", "Città", "text", r.citta) + "</div>" +
+      '<div class="row2">' + fld("email", "Email", "email", r.email) + fld("telefono", "Telefono", "text", r.telefono) + "</div>" +
+      fld("sito", "Sito", "text", r.sito) +
+      fld("note", "Perché lo consigli", "text", r.note) +
+      selField("consigliato_da", "Segnalato da", opt(D.pros, r.consigliato_da || me.pro_id));
+  }},
   membri: { t: "Accesso", tb: "membri", key: "user_id", f: function (r) {
     return fld("user_id", "User UID (da Supabase → Authentication)", "text", r.user_id, true) +
       fld("email", "Email", "email", r.email) +
@@ -1827,7 +1950,7 @@ function render() {
     return;
   }
   buildNav();
-  var V = { dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, report: vReport, carico: vCarico, spazi: vSpazi, impostazioni: vSettings };
+  var V = { dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
