@@ -5,9 +5,9 @@
 var cfg = window.GS_CONFIG || {};
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "" };
-var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [] };
+var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [] };
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
@@ -244,18 +244,37 @@ function prossimo(k) {
   return out;
 }
 
+function progOf(k) { return D.prog.filter(function (p) { return p.commessa_id === k; }).sort(function (a, b) { return (a.ordine || 0) - (b.ordine || 0); }); }
+function rigaCalc(r) {
+  var s = r.serv_id ? by(D.serv, r.serv_id) : null;
+  var pu = r.prezzo_unit != null ? +r.prezzo_unit : (s ? +s.prezzo || 0 : 0);
+  var cu = r.costo_unit != null ? +r.costo_unit : (s ? +s.costo || 0 : 0);
+  var q = +r.qty || 1, cic = r.ricorrente ? Math.max(1, +r.cicli || 1) : 1;
+  var sc = (+r.sconto || 0) / 100;
+  var prezzo = Math.round(pu * q * cic * (1 - sc));
+  var costo = Math.round(cu * q * cic);
+  if (r.tipo === "Sconto") { prezzo = -Math.abs(prezzo); costo = 0; }
+  return { pu: pu, cu: cu, q: q, cic: cic, sc: sc, prezzo: prezzo, costo: costo,
+    unita: r.unita || (s ? s.unita : "") || "", nome: r.nome || (s ? s.nome : "Riga"),
+    pro: r.assegnato_id || (s ? s.pro_id : null), cat: s ? s.cat : (r.tipo || "") };
+}
 function calc(k) {
-  var imp = 0, cost = 0, mio = 0;
+  var imp = 0, cost = 0, mio = 0, opz = 0, mrr = 0, spese = 0;
   righeOf(k.id).forEach(function (r) {
-    var s = by(D.serv, r.serv_id); if (!s) return;
-    imp += (+s.prezzo || 0) * (r.qty || 1);
-    cost += (+s.costo || 0) * (r.qty || 1);
-    if (me.pro_id && (r.assegnato_id === me.pro_id || (!r.assegnato_id && s.pro_id === me.pro_id))) mio += (+s.costo || 0) * (r.qty || 1);
+    var rc = rigaCalc(r);
+    if (r.opzionale) { opz += rc.prezzo; return; }
+    imp += rc.prezzo; cost += rc.costo;
+    if (r.tipo === "Trasferta" || r.tipo === "Spesa") spese += rc.prezzo;
+    if (r.ricorrente) mrr += Math.round(rc.pu * rc.q * (1 - rc.sc) / (r.periodo === "Annuale" ? 12 : 1));
+    if (me.pro_id && rc.pro === me.pro_id) mio += rc.costo;
   });
+  var sconto = Math.round(imp * (+k.sconto || 0) / 100);
+  imp = imp - sconto;
   var fee = Math.round(imp * (+k.fee || 0) / 100);
   var tot = imp + fee;
+  var iva = Math.round(tot * (k.iva == null ? 22 : +k.iva) / 100);
   var prov = Math.round(tot * (+k.provvigione || 0) / 100);
-  return { imp: imp, cost: cost, fee: fee, tot: tot, margine: tot - cost, mio: mio, prov: prov };
+  return { imp: imp, cost: cost, fee: fee, tot: tot, iva: iva, lordo: tot + iva, margine: tot - cost, mio: mio, prov: prov, opz: opz, mrr: mrr, sconto: sconto, spese: spese };
 }
 function avanzamento(k) {
   var f = fasiOf(k); if (!f.length) return null;
@@ -574,7 +593,7 @@ function vCommessa() {
     '<button class="btn sm" data-portale="' + k.id + '">Anteprima cliente</button></div></div>';
 
   h += '<div class="grid g4">' +
-    kpi(eur(b.ricavo), "Valore commessa", b.extra ? eur(k.budget_importo || c.tot) + " + " + eur(b.extra) + " di varianti" : "imponibile " + eur(c.imp) + " + fee " + (k.fee || 0) + "%") +
+    kpi(eur(b.ricavo), "Valore commessa", c.mrr ? eur(c.mrr) + " al mese ricorrenti" : b.extra ? eur(k.budget_importo || c.tot) + " + " + eur(b.extra) + " di varianti" : "imponibile " + eur(c.imp) + " · IVA " + eur(c.iva)) +
     kpi(av == null ? "—" : av + " %", "Avanzamento", fs.length + " fasi") +
     kpi('<span class="badge ' + sal.c + '" style="font-size:.9rem;padding:5px 12px">' + sal.t + "</span>", "Salute", sal.d) +
     kpi(vediCosti() ? eur(b.margReale) : eur(c.prov), vediCosti() ? "Margine atteso" : "La mia provvigione", vediCosti() ? "pianificato " + eur(b.margPian) : (k.provvigione || 0) + "% del totale") + "</div>";
@@ -595,7 +614,7 @@ function vCommessa() {
   }
 
   h += '<div class="grid g32" style="margin-top:18px"><div>';
-  var TABS = [["fasi", "Fasi (" + fs.length + ")"], ["servizi", "Servizi (" + righeOf(k.id).length + ")"], ["attivita", "Attività (" + tk.filter(function (z) { return z.stato !== "Fatto"; }).length + ")"], ["materiali", "Materiali (" + mt.length + ")"], ["pagamenti", "Pagamenti (" + pg.length + ")"], ["approvazioni", "Approvazioni (" + ap.filter(function (a) { return a.stato === "In attesa"; }).length + ")"], ["varianti", "Varianti (" + vr.length + ")"], ["log", "Diario"]];
+  var TABS = [["fasi", "Fasi (" + fs.length + ")"], ["servizi", "Preventivo (" + righeOf(k.id).length + ")"], ["attivita", "Attività (" + tk.filter(function (z) { return z.stato !== "Fatto"; }).length + ")"], ["materiali", "Materiali (" + mt.length + ")"], ["pagamenti", "Pagamenti (" + pg.length + ")"], ["approvazioni", "Approvazioni (" + ap.filter(function (a) { return a.stato === "In attesa"; }).length + ")"], ["varianti", "Varianti (" + vr.length + ")"], ["log", "Diario"]];
   if (!isPR()) TABS.splice(3, 0, ["ore", "Ore (" + num(oreT, 1) + ")"]);
   TABS.unshift(["note", "Note"], ["discussione", "Discussione (" + D.comm.filter(function (x) { return x.commessa_id === k.id; }).length + ")"]);
   h += '<div class="card"><div class="tabs">' + TABS.map(function (x) { return '<button data-tab="' + x[0] + '" class="' + (t === x[0] ? "on" : "") + '">' + x[1] + "</button>"; }).join("") + "</div>";
@@ -624,13 +643,56 @@ function vCommessa() {
     }).join("") + "</tbody></table>" + gantt(k) : vuoto("Nessuna fase: dividi il lavoro in passaggi così il cliente vede l'avanzamento.", '<button class="lnk" data-new="fasi" data-ctx="' + k.id + '">Aggiungi la prima fase</button>');
   }
   if (t === "servizi") {
-    h += '<div class="cardhead"><h2>Servizi e assegnazioni</h2><button class="btn sm ghost" data-riga="' + k.id + '">+ Aggiungi servizio</button></div>';
-    h += righeOf(k.id).length ? '<table><thead><tr><th>Servizio</th><th>Assegnato a</th><th class="num">Q.tà</th><th class="num">Ore stim.</th>' + (vediCosti() ? '<th class="num">Costo</th>' : "") + '<th class="num">Prezzo</th><th>Stato</th><th></th></tr></thead><tbody>' +
-      righeOf(k.id).map(function (r) {
-        var s = by(D.serv, r.serv_id); if (!s) return "";
-        var oreR = sum(ore.filter(function (o) { return o.pro_id === (r.assegnato_id || s.pro_id); }), function (o) { return o.ore; });
-        return "<tr><td>" + esc(s.nome) + '<div class="faint">' + esc(s.cat || "") + "</div></td><td>" + esc(nameOf(D.pros, r.assegnato_id || s.pro_id)) + '</td><td class="num">' + (r.qty || 1) + '</td><td class="num">' + num(r.ore_stimate, 0) + " / " + num(oreR, 1) + "</td>" + (vediCosti() ? '<td class="num">' + eur((s.costo || 0) * (r.qty || 1)) + "</td>" : "") + '<td class="num">' + eur((s.prezzo || 0) * (r.qty || 1)) + '</td><td><span class="badge">' + esc(r.stato || "Da iniziare") + '</span></td><td class="num"><button class="lnk" data-riga-edit="' + r.id + '">Modifica</button></td></tr>';
-      }).join("") + "</tbody></table>" : vuoto("Nessun servizio.", '<button class="lnk" data-riga="' + k.id + '">Aggiungi il primo</button>');
+    var pg = progOf(k.id), rr = righeOf(k.id);
+    h += '<div class="cardhead"><h2>Preventivo</h2><div style="display:flex;gap:8px"><button class="btn sm ghost" data-new="prog" data-ctx="' + k.id + '">+ Progetto</button><button class="btn sm ghost" data-riga="' + k.id + '">+ Riga</button></div></div>';
+    if (!rr.length) h += vuoto("Il preventivo è vuoto: crea i progetti (sito, foto, social…) e aggiungi le righe.", '<button class="lnk" data-riga="' + k.id + '">Aggiungi la prima riga</button>');
+    var gruppi = pg.map(function (p) { return { p: p, r: rr.filter(function (x) { return x.progetto_id === p.id && !x.opzionale; }) }; });
+    var senza = rr.filter(function (x) { return !x.progetto_id && !x.opzionale; });
+    if (senza.length) gruppi.push({ p: { id: null, nome: "Altre voci" }, r: senza });
+    gruppi.forEach(function (g) {
+      if (!g.r.length && !g.p.id) return;
+      var sub = sum(g.r, function (x) { return rigaCalc(x).prezzo; });
+      var subc = sum(g.r, function (x) { return rigaCalc(x).costo; });
+      h += '<div class="pgroup"><div class="pghead"><div><b>' + esc(g.p.nome) + "</b>" + (g.p.pro_id ? " " + avatar(g.p.pro_id, 22) : "") + (g.p.stato ? ' <span class="badge">' + esc(g.p.stato) + "</span>" : "") + "</div><div>" +
+        (vediCosti() ? '<span class="faint">costo ' + eur(subc) + "</span> · " : "") + "<b>" + eur(sub) + "</b>" +
+        (g.p.id ? ' <button class="lnk mini2" data-edit="prog:' + g.p.id + '">modifica</button>' : "") + "</div></div>";
+      h += g.r.length ? '<table><thead><tr><th>Voce</th><th>Chi</th><th class="num">Q.tà</th><th class="num">Prezzo un.</th>' + (vediCosti() ? '<th class="num">Compenso</th>' : "") + '<th class="num">Totale</th><th></th></tr></thead><tbody>' +
+        g.r.map(function (r) {
+          var rc = rigaCalc(r);
+          var oreR = sum(ore.filter(function (o) { return o.pro_id === rc.pro; }), function (o) { return o.ore; });
+          return "<tr><td><b>" + esc(rc.nome) + "</b>" + (r.tipo && r.tipo !== "Servizio" ? ' <span class="badge b-amber">' + esc(r.tipo) + "</span>" : "") +
+            (r.descrizione ? '<div class="faint">' + esc(r.descrizione) + "</div>" : "") +
+            (r.ricorrente ? '<div class="faint">' + esc(r.periodo || "Mensile") + " × " + (r.cicli || 1) + "</div>" : "") +
+            (r.ore_stimate ? '<div class="faint">' + num(r.ore_stimate, 0) + " h stimate · " + num(oreR, 1) + " fatte</div>" : "") + "</td>" +
+            "<td>" + (rc.pro ? avatar(rc.pro, 24) : '<span class="faint">—</span>') + "</td>" +
+            '<td class="num">' + num(rc.q, rc.q % 1 ? 1 : 0) + '<div class="faint">' + esc(rc.unita || "") + "</div></td>" +
+            '<td class="num">' + eur(rc.pu) + (r.sconto ? '<div class="faint">−' + r.sconto + "%</div>" : "") + "</td>" +
+            (vediCosti() ? '<td class="num">' + eur(rc.costo) + "</td>" : "") +
+            '<td class="num"><b>' + eur(rc.prezzo) + "</b></td>" +
+            '<td class="num"><button class="lnk" data-riga-edit="' + r.id + '">Modifica</button></td></tr>';
+        }).join("") + "</tbody></table>" : '<div class="empty" style="padding:12px 2px">Nessuna voce in questo progetto. <button class="lnk" data-riga="' + k.id + '">Aggiungine una</button></div>';
+      h += "</div>";
+    });
+    var opzR = rr.filter(function (x) { return x.opzionale; });
+    if (opzR.length) {
+      h += '<div class="pgroup opz"><div class="pghead"><div><b>Opzioni</b> <span class="faint">non incluse nel totale</span></div><div><b>' + eur(c.opz) + "</b></div></div><table><tbody>" +
+        opzR.map(function (r) {
+          var rc = rigaCalc(r);
+          return "<tr><td><b>" + esc(rc.nome) + "</b>" + (r.descrizione ? '<div class="faint">' + esc(r.descrizione) + "</div>" : "") + '</td><td class="num">' + num(rc.q, 0) + " " + esc(rc.unita) + '</td><td class="num"><b>' + eur(rc.prezzo) + '</b></td><td class="num"><button class="lnk" data-riga-edit="' + r.id + '">Modifica</button></td></tr>';
+        }).join("") + "</tbody></table></div>";
+    }
+    if (rr.length) {
+      h += '<div class="totali"><table><tbody>' +
+        row2("Imponibile", eur(c.imp + c.sconto)) +
+        (c.sconto ? row2("Sconto commerciale (" + (k.sconto || 0) + "%)", "−" + eur(c.sconto)) : "") +
+        (c.fee ? row2("Coordinamento Giraffa Studio (" + (k.fee || 0) + "%)", eur(c.fee)) : "") +
+        row2("<b>Totale imponibile</b>", "<b>" + eur(c.tot) + "</b>") +
+        row2("IVA " + (k.iva == null ? 22 : k.iva) + "%", eur(c.iva)) +
+        row2("<b>Totale con IVA</b>", "<b>" + eur(c.lordo) + "</b>") +
+        (c.mrr ? row2("Di cui ricorrente", eur(c.mrr) + " al mese") : "") +
+        (c.spese ? row2("Di cui spese e trasferte", eur(c.spese)) : "") +
+        "</tbody></table></div>";
+    }
   }
   if (t === "attivita") {
     h += '<div class="cardhead"><h2>Attività</h2><button class="btn sm ghost" data-new="task" data-ctx="' + k.id + '">Apri in dettaglio</button></div>';
@@ -1178,18 +1240,43 @@ function docHead(k, titolo) {
 }
 function openPreventivo(id) {
   var k = by(D.com, id); if (!k) return;
-  var c = calc(k);
-  var rows = righeOf(k.id).map(function (r) {
-    var s = by(D.serv, r.serv_id); if (!s) return "";
-    return "<tr><td>" + esc(s.nome) + (s.descrizione ? '<div class="faint">' + esc(s.descrizione) + "</div>" : "") + '</td><td class="faint">' + esc(nameOf(D.pros, r.assegnato_id || s.pro_id)) + '</td><td class="num">' + (r.qty || 1) + '</td><td class="num">' + eur((s.prezzo || 0) * (r.qty || 1)) + "</td></tr>";
-  }).join("");
-  var pg = pagOf(k.id);
+  var c = calc(k), rr = righeOf(k.id), pgt = progOf(k.id), pg = pagOf(k.id);
+  var corpo = "";
+  var gruppi = pgt.map(function (p) { return { p: p, r: rr.filter(function (x) { return x.progetto_id === p.id && !x.opzionale; }) }; });
+  var senza = rr.filter(function (x) { return !x.progetto_id && !x.opzionale; });
+  if (senza.length) gruppi.push({ p: { nome: "Altre voci" }, r: senza });
+  gruppi.forEach(function (g) {
+    if (!g.r.length) return;
+    corpo += '<h3 style="margin:22px 0 8px">' + esc(g.p.nome) + (g.p.pro_id ? ' <span class="faint">· a cura di ' + esc(nameOf(D.pros, g.p.pro_id)) + "</span>" : "") + "</h3>" +
+      '<table><thead><tr><th>Voce</th><th class="num">Q.tà</th><th class="num">Prezzo un.</th><th class="num">Importo</th></tr></thead><tbody>' +
+      g.r.map(function (r) {
+        var rc = rigaCalc(r);
+        return "<tr><td><b>" + esc(rc.nome) + "</b>" + (r.descrizione ? '<div class="faint">' + esc(r.descrizione) + "</div>" : "") +
+          (r.ricorrente ? '<div class="faint">' + esc(r.periodo || "Mensile") + ", per " + (r.cicli || 1) + (r.periodo === "Annuale" ? " anni" : " mesi") + "</div>" : "") +
+          '</td><td class="num">' + num(rc.q, rc.q % 1 ? 1 : 0) + " " + esc(rc.unita || "") + '</td><td class="num">' + eur(rc.pu) + (r.sconto ? " −" + r.sconto + "%" : "") + '</td><td class="num">' + eur(rc.prezzo) + "</td></tr>";
+      }).join("") +
+      '</tbody><tfoot><tr><td colspan="3"><b>Totale ' + esc(g.p.nome) + '</b></td><td class="num"><b>' + eur(sum(g.r, function (x) { return rigaCalc(x).prezzo; })) + "</b></td></tr></tfoot></table>";
+  });
+  var opzR = rr.filter(function (x) { return x.opzionale; });
   modal('<div class="box wide">' + docHead(k, "Preventivo") +
-    '<h2 style="margin-top:22px">' + esc(k.titolo) + "</h2>" +
-    '<table style="margin-top:14px"><thead><tr><th>Servizio</th><th>A cura di</th><th class="num">Q.tà</th><th class="num">Importo</th></tr></thead><tbody>' + rows + "</tbody></table>" +
-    '<table style="margin-top:16px"><tbody>' + row2("Imponibile", eur(c.imp)) + row2("Coordinamento Giraffa Studio (" + (k.fee || 0) + "%)", eur(c.fee)) + row2("<b>Totale</b>", "<b>" + eur(c.tot) + "</b>") + "</tbody></table>" +
-    (pg.length ? '<h3 style="margin:20px 0 8px">Piano di pagamento</h3><table><tbody>' + pg.map(function (p) { return "<tr><td>" + esc(p.nome) + '</td><td class="faint">' + dt(p.scadenza) + '</td><td class="num">' + eur(p.importo) + "</td></tr>"; }).join("") + "</tbody></table>" : "") +
-    '<p class="faint" style="margin-top:14px">Importi IVA esclusa. Validità 30 giorni. Ogni professionista opera con la propria partita IVA sotto il coordinamento di Giraffa Studio.</p>' +
+    '<h2 style="margin-top:22px">' + esc(k.titolo) + "</h2>" + (k.note ? '<p class="muted">' + esc(k.note) + "</p>" : "") +
+    corpo +
+    '<table style="margin-top:20px"><tbody>' +
+    row2("Imponibile", eur(c.imp + c.sconto)) +
+    (c.sconto ? row2("Sconto commerciale (" + (k.sconto || 0) + "%)", "−" + eur(c.sconto)) : "") +
+    (c.fee ? row2("Coordinamento Giraffa Studio (" + (k.fee || 0) + "%)", eur(c.fee)) : "") +
+    row2("<b>Totale imponibile</b>", "<b>" + eur(c.tot) + "</b>") +
+    row2("IVA " + (k.iva == null ? 22 : k.iva) + "%", eur(c.iva)) +
+    row2("<b>Totale</b>", "<b>" + eur(c.lordo) + "</b>") +
+    (c.mrr ? row2("Di cui ricorrente", eur(c.mrr) + " al mese") : "") +
+    "</tbody></table>" +
+    (opzR.length ? '<h3 style="margin:22px 0 8px">Opzioni, se le vorrete attivare</h3><table><tbody>' + opzR.map(function (r) {
+      var rc = rigaCalc(r);
+      return "<tr><td>" + esc(rc.nome) + (r.descrizione ? '<div class="faint">' + esc(r.descrizione) + "</div>" : "") + '</td><td class="num">' + eur(rc.prezzo) + "</td></tr>";
+    }).join("") + "</tbody></table>" : "") +
+    (pg.length ? '<h3 style="margin:22px 0 8px">Piano di pagamento</h3><table><tbody>' + pg.map(function (p) { return "<tr><td>" + esc(p.nome) + '</td><td class="faint">' + dt(p.scadenza) + '</td><td class="num">' + eur(p.importo) + "</td></tr>"; }).join("") + "</tbody></table>" : "") +
+    (k.condizioni ? '<h3 style="margin:22px 0 8px">Condizioni</h3>' + md(k.condizioni) : "") +
+    '<p class="faint" style="margin-top:16px">Validità ' + (k.validita == null ? 30 : k.validita) + " giorni. Ogni professionista opera con la propria partita IVA sotto il coordinamento di Giraffa Studio.</p>" +
     '<div class="actions noprint"><button class="btn ghost" data-close>Chiudi</button><button class="btn" onclick="window.print()">Stampa / PDF</button></div></div>');
 }
 function openPortale(id) {
@@ -1226,8 +1313,10 @@ var FORMS = {
       '<div class="row2">' + selField("tipo_prezzo", "Tipo di commessa", sel(["Fisso", "Tempo e materiali", "Retainer"], r.tipo_prezzo || "Fisso")) + fld("budget_importo", "Budget concordato (€)", "number", r.budget_importo) + "</div>" +
       '<div class="row2">' + fld("retainer_mensile", "Retainer mensile (€, se ricorrente)", "number", r.retainer_mensile) + fld("budget_ore", "Budget ore", "number", r.budget_ore) + "</div>" +
       '<div class="row2">' + fld("inizio", "Inizio", "date", r.inizio) + fld("scadenza", "Consegna prevista", "date", r.scadenza) + "</div>" +
-      fld("probabilita", "Probabilità di chiusura (%)", "number", r.probabilita == null ? 50 : r.probabilita) +
-      fld("note", "Note", "textarea", r.note);
+      '<div class="row2">' + fld("sconto", "Sconto commerciale (%)", "number", r.sconto || 0) + fld("iva", "IVA (%)", "number", r.iva == null ? 22 : r.iva) + "</div>" +
+      '<div class="row2">' + fld("validita", "Validità preventivo (giorni)", "number", r.validita == null ? 30 : r.validita) + fld("probabilita", "Probabilità di chiusura (%)", "number", r.probabilita == null ? 50 : r.probabilita) + "</div>" +
+      fld("condizioni", "Condizioni e tempi (compaiono sul preventivo)", "textarea", r.condizioni) +
+      fld("note", "Note interne", "textarea", r.note);
   }},
   vari: { t: "Variante", tb: "vari", f: function (r) {
     return fld("nome", "Cosa cambia", "text", r.nome, true) +
@@ -1260,9 +1349,18 @@ var FORMS = {
   serv: { t: "Servizio", tb: "serv", f: function (r) {
     return fld("nome", "Nome", "text", r.nome, true) +
       selField("pro_id", "Professionista", opt(PROS_PRO(), r.pro_id || me.pro_id)) +
-      '<div class="row2">' + fld("cat", "Categoria", "text", r.cat) + fld("unita", "Unità (progetto, mese, shooting…)", "text", r.unita) + "</div>" +
+      '<div class="row2">' + fld("cat", "Categoria (Foto, Web, Social…)", "text", r.cat) + selField("tipo_unita", "Si vende a", sel(["Forfait", "Giornata", "Mezza giornata", "Ora", "Mese", "Anno", "A consumo"], r.tipo_unita || "Forfait")) + "</div>" +
+      '<div class="row2">' + fld("unita", "Come si chiama l unità (progetto, shooting, mese…)", "text", r.unita) + fld("min_qty", "Quantità minima", "number", r.min_qty == null ? 1 : r.min_qty) + "</div>" +
+      '<div class="row2">' + selField("ricorrente", "Ricorrente", sel(["no", "si"], r.ricorrente ? "si" : "no")) + selField("periodo", "Periodo", sel(["Mensile", "Annuale"], r.periodo || "Mensile")) + "</div>" +
       '<div class="row2">' + fld("costo", "Compenso al professionista (€)", "number", r.costo) + fld("prezzo", "Prezzo al cliente (€)", "number", r.prezzo) + "</div>" +
       fld("descrizione", "Descrizione", "textarea", r.descrizione);
+  }},
+  prog: { t: "Progetto", tb: "prog", f: function (r) {
+    return fld("nome", "Nome del progetto (Sito, Foto, Social…)", "text", r.nome, true) +
+      selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) +
+      '<div class="row2">' + selField("pro_id", "Chi lo segue", opt(PROS_PRO(), r.pro_id || me.pro_id)) + selField("stato", "Stato", sel(["Da iniziare", "In corso", "In attesa cliente", "Completato"], r.stato || "Da iniziare")) + "</div>" +
+      '<div class="row2">' + fld("ordine", "Ordine", "number", r.ordine == null ? 1 : r.ordine) + "</div>" +
+      fld("note", "Note interne", "textarea", r.note);
   }},
   task: { t: "Attività", tb: "task", f: function (r) {
     return fld("titolo", "Titolo", "text", r.titolo, true) +
@@ -1296,12 +1394,14 @@ var FORMS = {
       '<div class="row2">' + selField("stato", "Stato", sel(FASE_STATI, r.stato || "Da iniziare")) + fld("avanzamento", "Avanzamento (%)", "number", r.avanzamento == null ? 0 : r.avanzamento) + "</div>" +
       '<div class="row2">' + fld("inizio", "Inizio", "date", r.inizio) + fld("fine", "Fine", "date", r.fine) + "</div>" +
       '<div class="row2">' + fld("ordine", "Ordine", "number", r.ordine == null ? 1 : r.ordine) + selField("visibile_cliente", "Visibile al cliente", sel(["si", "no"], r.visibile_cliente === false ? "no" : "si")) + "</div>" +
+      selField("progetto_id", "Progetto", '<option value="">— nessuno —</option>' + progOf(r.commessa_id || current).map(function (p) { return '<option value="' + p.id + '"' + (r.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + "</option>"; }).join("")) +
       fld("note", "Note", "textarea", r.note);
   }},
   mat: { t: "Materiale", tb: "mat", f: function (r) {
     return fld("nome", "Nome", "text", r.nome, true) + fld("url", "Link (Drive, Dropbox, WeTransfer…)", "text", r.url) +
       '<div class="row2">' + selField("tipo", "Tipo", sel(TIPI_MAT, r.tipo || "Materiale")) + selField("fase_id", "Fase", opt(fasiOf(r.commessa_id || current), r.fase_id)) + "</div>" +
       '<div class="row2">' + selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) + selField("visibile_cliente", "Visibile al cliente", sel(["no", "si"], r.visibile_cliente ? "si" : "no")) + "</div>" +
+      selField("progetto_id", "Progetto", '<option value="">— nessuno —</option>' + progOf(r.commessa_id || current).map(function (p) { return '<option value="' + p.id + '"' + (r.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + "</option>"; }).join("")) +
       fld("note", "Note per chi lavora", "textarea", r.note);
   }},
   pag: { t: "Scadenza di pagamento", tb: "pag", f: function (r) {
@@ -1375,7 +1475,17 @@ async function duplica(id) {
     return { commessa_id: nid, nome: f.nome, ordine: f.ordine || i + 1, stato: "Da iniziare", avanzamento: 0, visibile_cliente: f.visibile_cliente, inizio: iso(new Date(base.getTime() + i * 10 * 86400000)), fine: iso(new Date(base.getTime() + (i + 1) * 10 * 86400000)) };
   });
   if (fs.length) await sb.from("fasi").insert(fs);
-  var rg = righeOf(k.id).map(function (x) { return { commessa_id: nid, serv_id: x.serv_id, qty: x.qty, ore_stimate: x.ore_stimate, assegnato_id: x.assegnato_id, stato: "Da iniziare" }; });
+  var mappa = {};
+  var pgs = progOf(k.id);
+  for (var pi = 0; pi < pgs.length; pi++) {
+    var np = await sb.from("progetti").insert({ commessa_id: nid, nome: pgs[pi].nome, pro_id: pgs[pi].pro_id, stato: "Da iniziare", ordine: pgs[pi].ordine }).select().single();
+    if (!np.error) mappa[pgs[pi].id] = np.data.id;
+  }
+  var rg = righeOf(k.id).map(function (x) {
+    return { commessa_id: nid, progetto_id: mappa[x.progetto_id] || null, serv_id: x.serv_id, tipo: x.tipo, nome: x.nome, descrizione: x.descrizione,
+      qty: x.qty, unita: x.unita, prezzo_unit: x.prezzo_unit, costo_unit: x.costo_unit, sconto: x.sconto, opzionale: x.opzionale,
+      ricorrente: x.ricorrente, periodo: x.periodo, cicli: x.cicli, ore_stimate: x.ore_stimate, assegnato_id: x.assegnato_id, stato: "Da iniziare" };
+  });
   if (rg.length) await sb.from("righe").insert(rg);
   await logEv(nid, "Commessa creata dal modello “" + k.titolo + "”");
   await reload(["com", "fasi", "righe", "ev"]);
@@ -1393,10 +1503,22 @@ async function delRow(entity, id) {
 function openRiga(kid, rid) {
   var r = rid ? by(D.righe, rid) : {};
   var k = kid || r.commessa_id;
-  modal('<form class="box" data-riga-save="' + k + ":" + (rid || "") + '"><h2>' + (rid ? "Modifica servizio" : "Aggiungi servizio") + "</h2>" +
-    selField("serv_id", "Servizio a listino", D.serv.map(function (s) { return '<option value="' + s.id + '"' + (r.serv_id === s.id ? " selected" : "") + ">" + esc(s.nome) + " · " + esc(nameOf(D.pros, s.pro_id)) + " · " + eur(s.prezzo) + "</option>"; }).join("")) +
-    '<div class="row2">' + fld("qty", "Quantità", "number", r.qty == null ? 1 : r.qty) + fld("ore_stimate", "Ore stimate", "number", r.ore_stimate == null ? 8 : r.ore_stimate) + "</div>" +
-    '<div class="row2">' + selField("assegnato_id", "Assegnato a", opt(PROS_PRO(), r.assegnato_id)) + selField("stato", "Stato", sel(["Da iniziare", "In corso", "Consegnato"], r.stato || "Da iniziare")) + "</div>" +
+  var pg = progOf(k);
+  modal('<form class="box wide" data-riga-save="' + k + ":" + (rid || "") + '"><h2>' + (rid ? "Modifica voce" : "Nuova voce di preventivo") + "</h2>" +
+    '<div class="row2">' + selField("tipo", "Tipo di voce", sel(["Servizio", "Trasferta", "Spesa", "Sconto"], r.tipo || "Servizio")) +
+    selField("progetto_id", "Progetto", '<option value="">— nessuno —</option>' + pg.map(function (p) { return '<option value="' + p.id + '"' + (r.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + "</option>"; }).join("")) + "</div>" +
+    selField("serv_id", "Prendi dal listino (facoltativo)", '<option value="">— voce libera —</option>' + D.serv.map(function (s) {
+      return '<option value="' + s.id + '"' + (r.serv_id === s.id ? " selected" : "") + ">" + esc(s.nome) + " · " + esc(nameOf(D.pros, s.pro_id)) + " · " + eur(s.prezzo) + (s.unita ? " / " + esc(s.unita) : "") + "</option>";
+    }).join("")) +
+    fld("nome", "Come appare sul preventivo", "text", r.nome) +
+    fld("descrizione", "Descrizione per il cliente", "textarea", r.descrizione) +
+    '<div class="row2">' + fld("qty", "Quantità", "number", r.qty == null ? 1 : r.qty) + selField("unita", "Unità", sel(["", "progetto", "giornata", "mezza giornata", "ora", "mese", "anno", "scatto", "post", "trasferta", "km", "pezzo"], r.unita || "")) + "</div>" +
+    '<div class="row2">' + fld("prezzo_unit", "Prezzo unitario al cliente (€)", "number", r.prezzo_unit) + fld("costo_unit", "Compenso unitario al professionista (€)", "number", r.costo_unit) + "</div>" +
+    '<div class="row2">' + fld("sconto", "Sconto su questa voce (%)", "number", r.sconto || 0) + selField("opzionale", "Voce opzionale", sel(["no", "si"], r.opzionale ? "si" : "no")) + "</div>" +
+    '<div class="row2">' + selField("ricorrente", "Ricorrente", sel(["no", "si"], r.ricorrente ? "si" : "no")) + selField("periodo", "Periodo", sel(["Mensile", "Annuale"], r.periodo || "Mensile")) + "</div>" +
+    '<div class="row2">' + fld("cicli", "Per quanti mesi/anni", "number", r.cicli == null ? 1 : r.cicli) + fld("ore_stimate", "Ore stimate", "number", r.ore_stimate == null ? 0 : r.ore_stimate) + "</div>" +
+    '<div class="row2">' + selField("assegnato_id", "Chi la esegue", opt(PROS_PRO(), r.assegnato_id)) + selField("stato", "Stato", sel(["Da iniziare", "In corso", "Consegnato"], r.stato || "Da iniziare")) + "</div>" +
+    '<p class="faint">Se prendi una voce dal listino i valori si compilano da soli, poi puoi cambiarli solo per questo preventivo.</p>' +
     '<div class="actions">' + (rid ? '<button type="button" class="btn danger" data-del="righe:' + rid + '">Elimina</button>' : "") +
     '<button type="button" class="btn ghost" data-close>Annulla</button><button class="btn" type="submit">Salva</button></div></form>');
 }
@@ -1652,7 +1774,28 @@ document.addEventListener("submit", async function (e) {
   if (f.dataset.rigaSave) {
     e.preventDefault();
     var pp = f.dataset.rigaSave.split(":"), kid = pp[0], rid = pp[1];
-    var obj = { commessa_id: kid, serv_id: f.serv_id.value, qty: +f.qty.value || 1, ore_stimate: +f.ore_stimate.value || 0, assegnato_id: f.assegnato_id.value || null, stato: f.stato.value };
+    var obj = {
+      commessa_id: kid,
+      serv_id: f.serv_id.value || null,
+      progetto_id: f.progetto_id.value || null,
+      tipo: f.tipo.value,
+      nome: f.nome.value || null,
+      descrizione: f.descrizione.value || null,
+      qty: parseFloat(String(f.qty.value).replace(",", ".")) || 1,
+      unita: f.unita.value || null,
+      prezzo_unit: f.prezzo_unit.value === "" ? null : parseFloat(String(f.prezzo_unit.value).replace(",", ".")),
+      costo_unit: f.costo_unit.value === "" ? null : parseFloat(String(f.costo_unit.value).replace(",", ".")),
+      sconto: +f.sconto.value || 0,
+      opzionale: f.opzionale.value === "si",
+      ricorrente: f.ricorrente.value === "si",
+      periodo: f.periodo.value,
+      cicli: +f.cicli.value || 1,
+      ore_stimate: +f.ore_stimate.value || 0,
+      assegnato_id: f.assegnato_id.value || null,
+      stato: f.stato.value
+    };
+    if (!obj.nome && obj.serv_id) { var sv = by(D.serv, obj.serv_id); if (sv) obj.nome = sv.nome; }
+    if (obj.prezzo_unit == null && obj.serv_id) { var sv2 = by(D.serv, obj.serv_id); if (sv2) { obj.prezzo_unit = sv2.prezzo; obj.costo_unit = obj.costo_unit == null ? sv2.costo : obj.costo_unit; } }
     var r = rid ? await sb.from("righe").update(obj).eq("id", rid) : await sb.from("righe").insert(obj);
     if (r.error) { toast(r.error.message, true); return; }
     await reload(["righe"]); closeModal(); toast("Servizio salvato"); render(); return;
