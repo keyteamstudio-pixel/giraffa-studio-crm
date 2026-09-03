@@ -1,5 +1,6 @@
 /* Giraffa Studio — CRM v3 (ruoli: admin · professionista · pr · cliente) */
 
+
 (function () {
 "use strict";
 
@@ -1445,7 +1446,7 @@ async function apprRispondi(id, esito) {
 
 /* ---------------- preventivo / anteprima ---------------- */
 function docHead(k, titolo) {
-  return '<div style="display:flex;justify-content:space-between;align-items:flex-start"><div style="display:flex;align-items:center;gap:11px"><i class="mark" style="height:40px"></i><div><div style="font-size:1.18rem;font-weight:600;letter-spacing:-.03em;color:var(--ink);line-height:1.05">Giraffa Studio</div><div style="font-size:.56rem;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--terra-deep);margin-top:4px">Studio collettivo</div></div></div><div style="text-align:right"><h2>' + titolo + '</h2><div class="faint">' + esc(nameOf(D.cli, k.cliente_id)) + " · " + dt(today()) + "</div></div></div>";
+  return '<div style="display:flex;justify-content:space-between;align-items:flex-start"><i class="mark" style="height:52px"></i><div style="text-align:right"><h2>' + titolo + '</h2><div class="faint">' + esc(nameOf(D.cli, k.cliente_id)) + " · " + dt(today()) + "</div></div></div>";
 }
 function openPreventivo(id) {
   var k = by(D.com, id); if (!k) return;
@@ -2214,11 +2215,4 @@ async function start() {
 async function init() {
   if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) { show("setup"); return; }
   sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  el("#logout").addEventListener("click", async function () { await sb.auth.signOut(); location.reload(); });
-  var ham = el("#ham"), scrim = el("#scrim");
-  if (ham) ham.addEventListener("click", function () { document.body.classList.toggle("navopen"); });
-  if (scrim) scrim.addEventListener("click", function () { document.body.classList.remove("navopen"); });
-  await start();
-}
-init();
-})();
+  el("#logout").addEventListener("click", async function () { await sb.auth.signOut(); location.reload();
