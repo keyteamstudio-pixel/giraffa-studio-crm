@@ -7,6 +7,7 @@
 
 
 
+
 (function () {
 "use strict";
 
@@ -482,13 +483,13 @@ function vDash() {
     return '<button class="frow" ' + (f.task ? 'data-open-task="' + f.task + '"' : f.act ? 'data-new="' + f.act + '"' : 'data-open-com="' + f.k + '"') + '><span class="fdot ' + (f.c || "b-blue") + '"></span><span class="ftxt"><b>' + esc(f.t) + '</b><span class="faint">' + esc(f.s) + "</span></span><span class=\"fgo\">›</span></button>";
   }).join("") : '<div class="empty">Nessuna urgenza: puoi lavorare sereno.</div>';
   h += "</div><div>";
-  h += '<div class="card ringcard">' + ring(avgAv, 104) + '<div><h2>Avanzamento medio</h2><p class="faint" style="margin-top:4px">' + attive.length + " commesse attive<br>" + (eur(pipeline) + " di pipeline") + "</p></div></div>";
+  h += '<div class="card ringcard">' + ring(avgAv, 104) + '<div><h2>Avanzamento medio</h2><p class="faint" style="margin-top:4px">' + attive.length + " lavori attivi<br>" + (eur(pipeline) + " di pipeline") + "</p></div></div>";
   h += '<div class="card"><div class="cardhead"><h2>Ore, ultime 8 settimane</h2><span class="faint">' + num(wk[wk.length - 1], 1) + " h questa settimana</span></div>" + spark(wk) + "</div>";
   h += "</div></div>";
 
   h += '<div class="grid g32" style="margin-top:18px">';
-  h += '<div class="card"><div class="cardhead"><h2>Le commesse su cui sei</h2><button class="btn sm ghost" data-go="commesse">Vedi tutte</button></div>';
-  h += com.length ? listCom(com.slice().sort(function (a, b) { return STATI.indexOf(a.stato) - STATI.indexOf(b.stato); }).slice(0, 6)) : vuoto("Nessuna commessa ancora.", '<button class="lnk" data-new="com">Creane una</button>');
+  h += '<div class="card"><div class="cardhead"><h2>I lavori su cui sei</h2><button class="btn sm ghost" data-go="commesse">Vedi tutte</button></div>';
+  h += com.length ? listCom(com.slice().sort(function (a, b) { return STATI.indexOf(a.stato) - STATI.indexOf(b.stato); }).slice(0, 6)) : vuoto("Nessun preventivo ancora.", '<button class="lnk" data-new="com">Creane una</button>');
   h += "</div><div>";
 
   var per = {}; STATI.forEach(function (s) { per[s] = com.filter(function (k) { return k.stato === s; }); });
@@ -603,14 +604,14 @@ function vCommesse() {
   h += '<div class="seg"><button class="' + (VISTA === "tabella" ? "on" : "") + '" data-vista="tabella">Tabella</button><button class="' + (VISTA === "board" ? "on" : "") + '" data-vista="board">Board</button></div>';
   h += "</div>";
 
-  if (!list.length) return h + '<div class="card">' + vuoto("Nessuna commessa con questi filtri.", '<button class="lnk" data-fs="">Azzera i filtri</button>') + "</div>";
+  if (!list.length) return h + '<div class="card">' + vuoto("Nessun preventivo con questi filtri.", '<button class="lnk" data-fs="">Azzera i filtri</button>') + "</div>";
   h += VISTA === "board" ? boardCom(list) : '<div class="card">' + tblCom(list.slice().sort(function (a, b) { return STATI.indexOf(a.stato) - STATI.indexOf(b.stato); })) + "</div>";
   return h;
 }
 
 function vCommessa() {
   var k = by(D.com, current);
-  if (!k) return '<div class="card">Commessa non trovata. <button class="lnk" data-go="commesse">Torna all\'elenco</button></div>';
+  if (!k) return '<div class="card">Preventivo non trovato. <button class="lnk" data-go="commesse">Torna all\'elenco</button></div>';
   var c = calc(k), ore = oreOf(k.id), tk = taskOf(k.id), mv = movOf(k.id), fs = fasiOf(k.id), mt = matOf(k.id), pg = pagOf(k.id), ap = apprOf(k.id);
   var oreT = sum(ore, function (o) { return o.ore; }), av = avanzamento(k.id);
   var incassato = sum(pg.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; });
@@ -619,7 +620,7 @@ function vCommessa() {
   var b = budget(k), sal = salute(k), vr = variOf(k.id);
 
   var h = '<div class="top"><h1>' + esc(k.titolo) + '<span class="sub">' + esc(nameOf(D.cli, k.cliente_id)) + " · " + esc(k.stato) + " · " + esc(k.tipo_prezzo || "Fisso") + (condivisa(k) ? " · condivisa con " + (proDi(k.id).length - 1) + " colleghi" : " · solo tua") + '</span></h1><div class="tools">' +
-    '<button class="btn sm ghost" data-go="commesse">← Commesse</button>' +
+    '<button class="btn sm ghost" data-go="commesse">← Preventivi</button>' +
     '<button class="btn sm ghost" data-edit="com:' + k.id + '">Modifica</button>' +
     '<button class="btn sm ghost" data-preventivo="' + k.id + '">Preventivo</button>' +
     (isPR() ? "" : (timerMio() && timerMio().commessa_id === k.id
@@ -629,7 +630,7 @@ function vCommessa() {
     '<button class="btn sm" data-portale="' + k.id + '">Anteprima cliente</button></div></div>';
 
   h += '<div class="grid g4">' +
-    kpi(eur(b.ricavo), "Valore commessa", c.mrr ? eur(c.mrr) + " al mese ricorrenti" : b.extra ? eur(k.budget_importo || c.tot) + " + " + eur(b.extra) + " di varianti" : "imponibile " + eur(c.imp) + " · IVA " + eur(c.iva)) +
+    kpi(eur(b.ricavo), "Valore del lavoro", c.mrr ? eur(c.mrr) + " al mese ricorrenti" : b.extra ? eur(k.budget_importo || c.tot) + " + " + eur(b.extra) + " di varianti" : "imponibile " + eur(c.imp) + " · IVA " + eur(c.iva)) +
     kpi(av == null ? "—" : av + " %", "Avanzamento", fs.length + " fasi") +
     kpi('<span class="badge ' + sal.c + '" style="font-size:.9rem;padding:5px 12px">' + sal.t + "</span>", "Salute", sal.d) +
     kpi(vediCosti() ? eur(b.margReale) : num(b.oreFatte, 1) + " h", vediCosti() ? "Margine atteso" : "Ore registrate", vediCosti() ? "pianificato " + eur(b.margPian) : "su " + num(b.oreStim, 0) + " stimate") + "</div>";
@@ -804,7 +805,7 @@ function vCommessa() {
   h += '<div class="card"><h3 style="margin-bottom:12px">Economics</h3><table><tbody>' +
     row2("Imponibile servizi", eur(c.imp)) +
     (b.extra ? row2("Varianti approvate", eur(b.extra)) : "") +
-    row2("<b>Valore commessa</b>", "<b>" + eur(b.ricavo) + "</b>") +
+    row2("<b>Valore del lavoro</b>", "<b>" + eur(b.ricavo) + "</b>") +
     (vediCosti() ? row2("Costo pianificato", eur(b.costoPian)) + row2("Costo reale (ore)", eur(b.costoReale)) +
       row2("Margine pianificato", eur(b.margPian) + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margPian / b.ricavo * 100) : 0) + "%)</span>") +
       row2("<b>Margine atteso</b>", "<b>" + eur(b.margReale) + "</b>" + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margReale / b.ricavo * 100) : 0) + "%)</span>") : "") +
@@ -1072,7 +1073,7 @@ function vCarico() {
     return { p: p, stim: stim, fatte: fatte, tk: tk.length, sc: scadute.length, residuo: Math.max(0, stim - fatte) };
   }).filter(function (r) { return r.stim || r.fatte || r.tk; }).sort(function (a, b) { return b.residuo - a.residuo; });
   var mx = Math.max.apply(null, rows.map(function (r) { return r.residuo; }).concat([1]));
-  h += '<div class="card"><div class="cardhead"><h2>Ore residue stimate sulle commesse attive</h2></div><div class="bars">' +
+  h += '<div class="card"><div class="cardhead"><h2>Ore residue stimate sui lavori attivi</h2></div><div class="bars">' +
     rows.map(function (r) { return bar(r.p.nome, r.residuo, mx, num(r.residuo, 0) + " h"); }).join("") + "</div></div>";
   h += '<div class="card"><table><thead><tr><th>Professionista</th><th>Ruolo</th><th class="num">Ore stimate</th><th class="num">Tue ore</th><th class="num">Residuo</th><th class="num">Attività aperte</th><th class="num">Scadute</th></tr></thead><tbody>' +
     rows.map(function (r) {
@@ -1115,7 +1116,7 @@ function vCliente() {
     kpi(pl ? (pl.attivo ? "Attivo" : "Sospeso") : accesso ? "Con account" : "No", "Accesso al portale", pl ? (pl.pwd_hash ? "link con password" : "manca la password") : accesso ? esc(accesso.email || "") : "nessun accesso") + "</div>";
 
   h += '<div class="grid g32" style="margin-top:16px"><div>';
-  h += '<div class="card"><div class="cardhead"><h2>Commesse</h2></div>' + (com.length ? tblCom(com) : vuoto("Nessuna commessa.")) + "</div>";
+  h += '<div class="card"><div class="cardhead"><h2>Preventivi e lavori</h2></div>' + (com.length ? tblCom(com) : vuoto("Nessun preventivo.")) + "</div>";
   h += '<div class="card"><div class="cardhead"><h2>Scadenze di pagamento</h2></div>' + (pg.length ? '<table><thead><tr><th>Voce</th><th>Commessa</th><th>Scadenza</th><th class="num">Importo</th><th>Stato</th></tr></thead><tbody>' +
     pg.slice().sort(function (a, b) { return (a.scadenza || "") < (b.scadenza || "") ? -1 : 1; }).map(function (p) {
       return "<tr><td>" + esc(p.nome) + "</td><td>" + esc(nameOf(D.com, p.commessa_id, "titolo")) + "</td><td>" + dt(p.scadenza) + '</td><td class="num">' + eur(p.importo) + '</td><td><span class="badge ' + (p.stato === "Incassato" ? "b-green" : "b-amber") + '">' + esc(p.stato) + "</span></td></tr>";
@@ -1401,7 +1402,7 @@ function vProgetto() {
         '<button class="btn sm ghost" data-open-lav="' + l.id + '">Apri</button>' +
         '<button class="btn sm ghost" data-edit="lav:' + l.id + '">Modifica</button></span></div>' +
         (aperte.length ? '<div class="checklist" style="margin-top:10px">' + aperte.slice(0, 4).map(function (x) { return riga(x, lt); }).join("") + "</div>" : "") +
-        '<form class="qadd" data-qadd-lav="' + l.id + '"><button class="ck" type="button" disabled></button><input name="titolo" placeholder="Aggiungi un attività a questa lavorazione" autocomplete="off"></form>' +
+        '<form class="qadd" data-qadd-lav="' + l.id + '"><button class="ck" type="button" disabled></button><input name="titolo" placeholder="Aggiungi un\'attività a questa lavorazione" autocomplete="off"></form>' +
         "</div>";
     }).join("") : vuoto("Nessuna lavorazione: qui dentro spezzi il progetto nei lavori veri (es. Programmazione backend).", '<button class="lnk" data-new="lav" data-ctx-prog="' + p.id + '">Crea la prima</button>');
   }
