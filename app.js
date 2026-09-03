@@ -3,6 +3,7 @@
 
 
 
+
 (function () {
 "use strict";
 
@@ -297,8 +298,7 @@ function calc(k) {
   var fee = Math.round(imp * (+k.fee || 0) / 100);
   var tot = imp + fee;
   var iva = Math.round(tot * (k.iva == null ? 22 : +k.iva) / 100);
-  var prov = Math.round(tot * (+k.provvigione || 0) / 100);
-  return { imp: imp, cost: cost, fee: fee, tot: tot, iva: iva, lordo: tot + iva, margine: tot - cost, mio: mio, prov: prov, opz: opz, mrr: mrr, sconto: sconto, spese: spese };
+  return { imp: imp, cost: cost, fee: fee, tot: tot, iva: iva, lordo: tot + iva, margine: tot - cost, mio: mio, opz: opz, mrr: mrr, sconto: sconto, spese: spese };
 }
 function avanzamento(k) {
   var f = fasiOf(k); if (!f.length) return null;
@@ -359,8 +359,7 @@ function navFor() {
     { k: "commesse", t: "I miei preventivi", c: function () { return fcom().length; } },
     { k: "progetti", t: "Progetti", c: function () { return progVisibili().length; } },
     { g: "Clienti" }, { k: "clienti", t: "I miei clienti", c: function () { return fcli().length; } },
-    { g: "Soldi" }, { k: "provvigioni", t: "Provvigioni" },
-    { k: "compensi", t: "I miei compensi" },
+    { g: "Soldi" }, { k: "compensi", t: "I miei compensi" },
     { g: "Studio" }, { k: "impostazioni", t: "Impostazioni" }
   ];
   if (isPro()) return [
@@ -384,7 +383,7 @@ function navFor() {
     { k: "pool", t: "Pool professionisti", c: function () { return D.pros.length; } },
     { k: "servizi", t: "Servizi & listino" },
     { g: "Soldi" }, { k: "fatture", t: "Fatturazione", c: function () { return fmov().filter(function (m) { return m.stato !== "Pagata"; }).length; } },
-    { k: "compensi", t: "Compensi" }, { k: "provvigioni", t: "Provvigioni PR" }, { k: "report", t: "Report" },
+    { k: "compensi", t: "Compensi" }, { k: "report", t: "Report" },
     { g: "Studio" }, { k: "carico", t: "Carico di lavoro" }, { k: "spazi", t: "Spazi & ufficio" }, { k: "impostazioni", t: "Impostazioni" }
   ];
 }
@@ -490,7 +489,7 @@ function vDash() {
     return '<button class="frow" ' + (f.task ? 'data-open-task="' + f.task + '"' : f.act ? 'data-new="' + f.act + '"' : 'data-open-com="' + f.k + '"') + '><span class="fdot ' + (f.c || "b-blue") + '"></span><span class="ftxt"><b>' + esc(f.t) + '</b><span class="faint">' + esc(f.s) + "</span></span><span class=\"fgo\">›</span></button>";
   }).join("") : '<div class="empty">Nessuna urgenza: puoi lavorare sereno.</div>';
   h += "</div><div>";
-  h += '<div class="card ringcard">' + ring(avgAv, 104) + '<div><h2>Avanzamento medio</h2><p class="faint" style="margin-top:4px">' + attive.length + " commesse attive<br>" + (isPR() ? eur(sum(com, function (k) { return calc(k).prov; })) + " di provvigioni" : eur(pipeline) + " di pipeline") + "</p></div></div>";
+  h += '<div class="card ringcard">' + ring(avgAv, 104) + '<div><h2>Avanzamento medio</h2><p class="faint" style="margin-top:4px">' + attive.length + " commesse attive<br>" + (eur(pipeline) + " di pipeline") + "</p></div></div>";
   h += '<div class="card"><div class="cardhead"><h2>Ore, ultime 8 settimane</h2><span class="faint">' + num(wk[wk.length - 1], 1) + " h questa settimana</span></div>" + spark(wk) + "</div>";
   h += "</div></div>";
 
@@ -538,7 +537,7 @@ function listCom(list) {
       '<span class="cring">' + ring(av == null ? 0 : av, 44) + "</span>" +
       '<span class="cmain"><b>' + esc(k.titolo) + '</b><span class="faint">' + esc(nameOf(D.cli, k.cliente_id)) + " · " + esc(k.stato) + (k.scadenza ? " · consegna " + dshort(k.scadenza) : "") + "</span></span>" +
       '<span class="cav">' + avatars(proDi(k.id), 24) + "</span>" +
-      '<span class="cval"><b>' + (isPR() ? eur(calc(k).prov) : eur(b.ricavo)) + '</b><span class="badge ' + sal.c + '">' + sal.t + "</span></span></button>";
+      '<span class="cval"><b>' + eur(b.ricavo) + '</b><span class="badge ' + sal.c + '">' + sal.t + "</span></span></button>";
   }).join("");
 }
 function boardCom(list) {
@@ -571,7 +570,7 @@ function tblCom(list) {
       '<td><span class="badge ' + sal.c + '">' + sal.t + "</span></td>" +
       "<td>" + (av == null ? '<span class="faint">—</span>' : '<span class="faint">' + av + "%</span>" + prog(av)) + "</td>" +
       "<td>" + (k.scadenza ? (k.scadenza < today() && ["Chiusa", "Persa"].indexOf(k.stato) < 0 ? '<span class="badge b-red">' + dshort(k.scadenza) + "</span>" : dt(k.scadenza)) : "—") + "</td>" +
-      '<td class="num"><b>' + (isPR() ? eur(c.prov) : eur(b.ricavo)) + "</b></td>" +
+      '<td class="num"><b>' + eur(b.ricavo) + "</b></td>" +
       '<td class="num"><button class="lnk" data-duplica="' + k.id + '">Duplica</button></td></tr>';
     if (ap) {
       var px = prossimo(k);
@@ -640,7 +639,7 @@ function vCommessa() {
     kpi(eur(b.ricavo), "Valore commessa", c.mrr ? eur(c.mrr) + " al mese ricorrenti" : b.extra ? eur(k.budget_importo || c.tot) + " + " + eur(b.extra) + " di varianti" : "imponibile " + eur(c.imp) + " · IVA " + eur(c.iva)) +
     kpi(av == null ? "—" : av + " %", "Avanzamento", fs.length + " fasi") +
     kpi('<span class="badge ' + sal.c + '" style="font-size:.9rem;padding:5px 12px">' + sal.t + "</span>", "Salute", sal.d) +
-    kpi(vediCosti() ? eur(b.margReale) : eur(c.prov), vediCosti() ? "Margine atteso" : "La mia provvigione", vediCosti() ? "pianificato " + eur(b.margPian) : (k.provvigione || 0) + "% del totale") + "</div>";
+    kpi(vediCosti() ? eur(b.margReale) : num(b.oreFatte, 1) + " h", vediCosti() ? "Margine atteso" : "Ore registrate", vediCosti() ? "pianificato " + eur(b.margPian) : "su " + num(b.oreStim, 0) + " stimate") + "</div>";
 
   if (vediCosti()) {
     var bo = b.burnOre == null ? 0 : b.burnOre, bc = b.burnCosto;
@@ -790,7 +789,7 @@ function vCommessa() {
     row2("Cliente", '<button class="lnk" data-open-cli="' + k.cliente_id + '">' + esc(nameOf(D.cli, k.cliente_id)) + "</button>") +
     row2("Owner", esc(nameOf(D.pros, k.owner_id))) +
     row2("Regia (PM)", esc(nameOf(D.pros, k.pm_id))) +
-    (k.pr_id ? row2("PR", esc(nameOf(D.pros, k.pr_id)) + " · " + (k.provvigione || 0) + "%") : "") +
+    (k.pr_id ? row2("Portato da", esc(nameOf(D.pros, k.pr_id))) : "") +
     row2("Stato", '<span class="badge ' + (STATO_COL[k.stato] || "") + '">' + esc(k.stato) + "</span>") +
     row2("Probabilità", (k.probabilita == null ? 50 : k.probabilita) + " %") +
     row2("Fatturazione", esc(k.modello || "—")) +
@@ -804,7 +803,7 @@ function vCommessa() {
     (vediCosti() ? row2("Costo pianificato", eur(b.costoPian)) + row2("Costo reale (ore)", eur(b.costoReale)) +
       row2("Margine pianificato", eur(b.margPian) + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margPian / b.ricavo * 100) : 0) + "%)</span>") +
       row2("<b>Margine atteso</b>", "<b>" + eur(b.margReale) + "</b>" + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margReale / b.ricavo * 100) : 0) + "%)</span>") : "") +
-    (k.pr_id ? row2("Provvigione PR", eur(c.prov)) : "") +
+
     (me.pro_id ? row2("Il mio compenso", eur(c.mio)) : "") +
     row2("Ore stimate / fatte", num(b.oreStim, 0) + " h / " + num(b.oreFatte, 1) + " h") +
     (b.oreFatte ? row2("€/h reale sul valore", eur(b.ricavo / b.oreFatte)) : "") +
@@ -1197,24 +1196,6 @@ function vFatture() {
     if (pk.length) h += '<div class="card"><div class="cardhead"><h2>Chi fattura quanto</h2></div><div class="bars">' + pk.map(function (id) { return bar(nameOf(D.pros, id), perPro[id], perPro[pk[0]], eur(perPro[id])); }).join("") + "</div></div>";
   }
   h += '<div class="card"><div class="cardhead"><h2>Movimenti</h2></div>' + tblMov(list) + "</div>";
-  return h;
-}
-
-/* ---------------- provvigioni ---------------- */
-function vProvvigioni() {
-  var list = D.com.filter(function (k) { return k.pr_id && (isAdmin() || k.pr_id === me.pro_id); });
-  var maturate = list.filter(function (k) { return ["In corso", "Consegna", "Chiusa"].indexOf(k.stato) > -1; });
-  var h = head("Provvigioni", isPR() ? "Le tue segnalazioni e quanto ti spetta" : "Provvigioni riconosciute ai PR",
-    isAdmin() ? "" : '<button class="btn sm" data-new="com">+ Nuova segnalazione</button>');
-  h += '<div class="grid g3">' +
-    kpi(String(list.length), "Commesse con PR", maturate.length + " già partite") +
-    kpi(eur(sum(list, function (k) { return calc(k).prov; })), "Totale potenziale", "se si chiude tutto") +
-    kpi(eur(sum(maturate, function (k) { return calc(k).prov; })), "Maturato", "su commesse partite") + "</div>";
-  h += '<div class="card"><div class="cardhead"><h2>Dettaglio</h2></div>' + (list.length ? '<table><thead><tr><th>Commessa</th><th>Cliente</th><th>PR</th><th>Stato</th><th class="num">Totale</th><th class="num">%</th><th class="num">Provvigione</th></tr></thead><tbody>' +
-    list.map(function (k) {
-      var c = calc(k);
-      return '<tr><td><button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button></td><td>" + esc(nameOf(D.cli, k.cliente_id)) + "</td><td>" + esc(nameOf(D.pros, k.pr_id)) + '</td><td><span class="badge ' + (STATO_COL[k.stato] || "") + '">' + esc(k.stato) + '</span></td><td class="num">' + eur(c.tot) + '</td><td class="num">' + (k.provvigione || 0) + '%</td><td class="num">' + eur(c.prov) + "</td></tr>";
-    }).join("") + "</tbody></table>" : vuoto("Nessuna commessa con provvigione PR.")) + "</div>";
   return h;
 }
 
@@ -1633,7 +1614,7 @@ var FORMS = {
     return fld("titolo", "Titolo", "text", r.titolo, true) +
       '<div class="row2">' + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) + selField("stato", "Stato", sel(STATI, r.stato || "Bozza")) + "</div>" +
       '<div class="row2">' + selField("owner_id", "Owner (chi ha il rapporto)", opt(D.pros, r.owner_id || me.pro_id)) + selField("pm_id", "Regia / PM", opt(D.pros, r.pm_id)) + "</div>" +
-      '<div class="row2">' + selField("pr_id", "PR che ha portato il cliente", opt(PROS_PR(), r.pr_id)) + fld("provvigione", "Provvigione PR (%)", "number", r.provvigione == null ? 0 : r.provvigione) + "</div>" +
+      selField("pr_id", "Chi ha portato il cliente", opt(PROS_PR(), r.pr_id)) +
       '<div class="row2">' + selField("modello", "Modello di fatturazione", sel(MODELLI, r.modello)) + fld("fee", "Fee coordinamento (%)", "number", r.fee == null ? SET.fee_default : r.fee) + "</div>" +
       '<div class="row2">' + selField("tipo_prezzo", "Tipo di commessa", sel(["Fisso", "Tempo e materiali", "Retainer"], r.tipo_prezzo || "Fisso")) + fld("budget_importo", "Budget concordato (€)", "number", r.budget_importo) + "</div>" +
       '<div class="row2">' + fld("retainer_mensile", "Retainer mensile (€, se ricorrente)", "number", r.retainer_mensile) + fld("budget_ore", "Budget ore", "number", r.budget_ore) + "</div>" +
@@ -1917,7 +1898,7 @@ function render() {
     return;
   }
   buildNav();
-  var V = { dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, provvigioni: vProvvigioni, report: vReport, carico: vCarico, spazi: vSpazi, compensi: vCompensi, impostazioni: vSettings };
+  var V = { dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, report: vReport, carico: vCarico, spazi: vSpazi, compensi: vCompensi, impostazioni: vSettings };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
