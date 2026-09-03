@@ -2,6 +2,7 @@
 
 
 
+
 (function () {
 "use strict";
 
@@ -10,8 +11,9 @@ var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "" };
 var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [] };
 var CAL = 0;
+var PLINK = null;
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", liq: "liquidazioni", port: "portali" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
@@ -358,6 +360,7 @@ function navFor() {
     { k: "progetti", t: "Progetti", c: function () { return progVisibili().length; } },
     { g: "Clienti" }, { k: "clienti", t: "I miei clienti", c: function () { return fcli().length; } },
     { g: "Soldi" }, { k: "provvigioni", t: "Provvigioni" },
+    { k: "compensi", t: "I miei compensi" },
     { g: "Studio" }, { k: "impostazioni", t: "Impostazioni" }
   ];
   if (isPro()) return [
@@ -381,7 +384,7 @@ function navFor() {
     { k: "pool", t: "Pool professionisti", c: function () { return D.pros.length; } },
     { k: "servizi", t: "Servizi & listino" },
     { g: "Soldi" }, { k: "fatture", t: "Fatturazione", c: function () { return fmov().filter(function (m) { return m.stato !== "Pagata"; }).length; } },
-    { k: "provvigioni", t: "Provvigioni PR" }, { k: "report", t: "Report" },
+    { k: "compensi", t: "Compensi" }, { k: "provvigioni", t: "Provvigioni PR" }, { k: "report", t: "Report" },
     { g: "Studio" }, { k: "carico", t: "Carico di lavoro" }, { k: "spazi", t: "Spazi & ufficio" }, { k: "impostazioni", t: "Impostazioni" }
   ];
 }
@@ -445,6 +448,21 @@ function focusItems(com, tk) {
   return f.sort(function (a, b) { return a.p - b.p; }).slice(0, 5);
 }
 function can(kid) { return !!by(D.com, kid); }
+function bannerProfilo() {
+  if (me.ruolo !== "professionista" && me.ruolo !== "admin") return "";
+  var p = me.pro_id ? by(D.pros, me.pro_id) : null;
+  if (!p) return "";
+  var mancano = [];
+  if (!p.tariffa_oraria) mancano.push("tariffa oraria");
+  if (!p.competenze) mancano.push("competenze");
+  if (!p.piva) mancano.push("partita IVA");
+  if (!D.serv.some(function (x) { return x.pro_id === p.id; })) mancano.push("i tuoi servizi nel listino");
+  if (!mancano.length) return "";
+  return '<div class="card" style="border-left:3px solid var(--terra);margin-bottom:16px"><div class="cardhead"><h2>Completa il tuo profilo</h2>' +
+    '<button class="btn sm ghost" data-edit="pros:' + p.id + '">Apri il profilo</button></div>' +
+    '<p class="faint">Manca ancora: ' + mancano.join(", ") + ". Serve per calcolare i compensi e per farti trovare dai colleghi." +
+    (mancano.indexOf("i tuoi servizi nel listino") > -1 ? ' <button class="lnk" data-go="servizi">Aggiungi un servizio</button>' : "") + "</p></div>";
+}
 function vDash() {
   var com = fcom(), cli = fcli(), ore = fore(), tk = ftask(), mov = fmov();
   var aperte = com.filter(function (k) { return ["Preventivo", "Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1; });
@@ -461,7 +479,7 @@ function vDash() {
   var wk = settimane(ore, 8), foc = focusItems(com, tk);
   var oggi = new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
 
-  var h = '<div class="top"><h1>Ciao ' + esc((me.nome || "").split(" ")[0]) + '<span class="sub">' + esc(oggi.charAt(0).toUpperCase() + oggi.slice(1)) + '</span></h1><div class="tools">' +
+  var h = bannerProfilo() + '<div class="top"><h1>Ciao ' + esc((me.nome || "").split(" ")[0]) + '<span class="sub">' + esc(oggi.charAt(0).toUpperCase() + oggi.slice(1)) + '</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-pal="1">⌘K  Cerca</button>' +
     '<button class="btn sm" data-new="com">+ Nuova commessa</button>' + (isPR() ? "" : '<button class="btn sm ghost" data-new="ore">+ Registra ore</button>') +
     perspSel() + "</div></div>";
@@ -917,6 +935,78 @@ function vOre() {
   return h;
 }
 
+/* ---------------- compensi ---------------- */
+function compensoDi(proId) {
+  var righeAss = D.righe.filter(function (r) {
+    var k = by(D.com, r.commessa_id); if (!k) return false;
+    if (["Approvata", "In corso", "Consegna", "Chiusa"].indexOf(k.stato) < 0) return false;
+    if (r.opzionale || r.tipo === "Sconto") return false;
+    var cc = rigaCalc(r);
+    return cc.pro === proId;
+  });
+  var maturato = 0, atteso = 0;
+  righeAss.forEach(function (r) {
+    var cc = rigaCalc(r), k = by(D.com, r.commessa_id);
+    if (["Consegna", "Chiusa"].indexOf(k.stato) > -1) maturato += cc.costo; else atteso += cc.costo;
+  });
+  var mieOre = D.ore.filter(function (o) { return o.pro_id === proId; });
+  var liq = D.liq.filter(function (l) { return l.pro_id === proId; });
+  var liquidato = sum(liq.filter(function (l) { return l.stato === "Liquidato"; }), function (l) { return l.importo; });
+  return {
+    righe: righeAss, maturato: maturato, atteso: atteso,
+    ore: sum(mieOre, function (o) { return o.ore; }),
+    valoreOre: sum(mieOre, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); }),
+    liquidato: liquidato, saldo: maturato - liquidato, liq: liq
+  };
+}
+function vCompensi() {
+  var admin = me.ruolo === "admin";
+  var lista = admin ? D.pros.filter(function (p) { return p.tipo !== "PR"; }) : (me.pro_id ? [by(D.pros, me.pro_id)].filter(Boolean) : []);
+  var h = head(admin ? "Compensi" : "I miei compensi",
+    admin ? "Quanto lo studio deve a ciascun professionista, e cosa è già stato liquidato" : "Il tuo maturato, quello che è già stato liquidato e il saldo",
+    admin ? '<button class="btn sm" data-new="liq">+ Registra liquidazione</button>' : "");
+  if (!lista.length) return h + '<div class="card">' + vuoto("Nessun professionista collegato.") + "</div>";
+
+  var tot = { maturato: 0, atteso: 0, liquidato: 0, saldo: 0 };
+  lista.forEach(function (p) { var c = compensoDi(p.id); tot.maturato += c.maturato; tot.atteso += c.atteso; tot.liquidato += c.liquidato; tot.saldo += c.saldo; });
+  h += '<div class="grid g4">' +
+    kpi(eur(tot.saldo), admin ? "Da liquidare adesso" : "Il tuo saldo", "su " + eur(tot.maturato) + " maturati") +
+    kpi(eur(tot.atteso), "In lavorazione", "diventa maturato alla consegna") +
+    kpi(eur(tot.liquidato), "Già liquidato", "somma delle liquidazioni registrate") +
+    kpi(eur(tot.maturato + tot.atteso), "Totale assegnato", "righe di preventivo su commesse attive") + "</div>";
+
+  h += '<div class="card" style="margin-top:18px"><div class="cardhead"><h2>' + (admin ? "Per persona" : "Il tuo riepilogo") + '</h2><span class="faint">maturato = righe su commesse in consegna o chiuse</span></div>';
+  h += '<table><thead><tr><th>Persona</th><th class="num">Maturato</th><th class="num">In lavorazione</th><th class="num">Liquidato</th><th class="num">Saldo</th><th class="num">Ore</th><th></th></tr></thead><tbody>';
+  lista.slice().sort(function (a, b) { return compensoDi(b.id).saldo - compensoDi(a.id).saldo; }).forEach(function (p) {
+    var c = compensoDi(p.id);
+    h += "<tr><td>" + avatar(p.id, 22) + " " + esc(p.nome) + '<div class="faint">' + esc(p.ruolo || "—") + "</div></td>" +
+      '<td class="num">' + eur(c.maturato) + '</td><td class="num faint">' + eur(c.atteso) + '</td><td class="num">' + eur(c.liquidato) + '</td>' +
+      '<td class="num"><b class="' + (c.saldo > 0 ? "neg" : "") + '">' + eur(c.saldo) + "</b></td>" +
+      '<td class="num faint">' + num(c.ore, 1) + " h</td>" +
+      '<td class="num">' + (admin && c.saldo > 0 ? '<button class="lnk" data-liquida="' + p.id + '|' + c.saldo + '">Liquida</button>' : "") + "</td></tr>";
+  });
+  h += "</tbody></table></div>";
+
+  var dett = lista.length === 1 ? lista[0] : null;
+  if (dett) {
+    var c2 = compensoDi(dett.id);
+    h += '<div class="grid g2" style="margin-top:16px"><div class="card"><div class="cardhead"><h2>Righe assegnate</h2></div>';
+    h += c2.righe.length ? '<table><thead><tr><th>Voce</th><th>Commessa</th><th>Stato</th><th class="num">Compenso</th></tr></thead><tbody>' +
+      c2.righe.map(function (r) {
+        var cc = rigaCalc(r), k = by(D.com, r.commessa_id);
+        return "<tr><td>" + esc(cc.nome) + "</td><td>" + esc(k.titolo) + '</td><td><span class="badge ' + (STATO_COL[k.stato] || "") + '">' + esc(k.stato) + '</span></td><td class="num">' + eur(cc.costo) + "</td></tr>";
+      }).join("") + "</tbody></table>" : vuoto("Nessuna riga assegnata.");
+    h += "</div>";
+    h += '<div class="card"><div class="cardhead"><h2>Liquidazioni</h2></div>';
+    h += c2.liq.length ? '<table><thead><tr><th>Periodo</th><th class="num">Importo</th><th>Stato</th><th>Pagato il</th></tr></thead><tbody>' +
+      c2.liq.slice().sort(function (a, b) { return (a.periodo || "") < (b.periodo || "") ? 1 : -1; }).map(function (l) {
+        return "<tr><td>" + esc(l.periodo || "—") + '</td><td class="num">' + eur(l.importo) + '</td><td><span class="badge ' + (l.stato === "Liquidato" ? "b-green" : "b-amber") + '">' + esc(l.stato) + "</span></td><td>" + dt(l.pagato_il) + "</td></tr>";
+      }).join("") + "</tbody></table>" : vuoto("Nessuna liquidazione registrata.");
+    h += "</div></div>";
+  }
+  return h;
+}
+
 /* ---------------- carico di lavoro ---------------- */
 function vCarico() {
   var h = head("Carico di lavoro", "Solo le persone che lavorano sulle tue commesse");
@@ -961,6 +1051,7 @@ function vCliente() {
   var inter = D.inter.filter(function (i) { return i.cliente_id === c.id; }).sort(function (a, b) { return a.data < b.data ? 1 : -1; });
   var pg = D.pag.filter(function (p) { return com.some(function (k) { return k.id === p.commessa_id; }); });
   var accesso = D.membri.filter(function (m) { return m.cliente_id === c.id; })[0];
+  var pl = D.port.filter(function (x) { return x.cliente_id === c.id; })[0];
 
   var h = '<div class="top"><h1>' + esc(c.nome) + '<span class="sub">' + esc(c.settore || "—") + " · " + esc(c.stato || "Lead") + '</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-go="clienti">← Clienti</button>' +
@@ -972,7 +1063,7 @@ function vCliente() {
     kpi(eur(valoreCliente(c.id)), "Valore totale", com.length + " commesse") +
     kpi(eur(sum(pg.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; })), "Incassato", eur(sum(pg.filter(function (p) { return p.stato !== "Incassato"; }), function (p) { return p.importo; })) + " da incassare") +
     kpi(String(inter.length), "Interazioni", inter[0] ? "ultima " + dt(inter[0].data) : "—") +
-    kpi(accesso ? "Sì" : "No", "Accesso al portale", accesso ? esc(accesso.email || "") : "nessun utente collegato") + "</div>";
+    kpi(pl ? (pl.attivo ? "Attivo" : "Sospeso") : accesso ? "Con account" : "No", "Accesso al portale", pl ? (pl.pwd_hash ? "link con password" : "manca la password") : accesso ? esc(accesso.email || "") : "nessun accesso") + "</div>";
 
   h += '<div class="grid g32" style="margin-top:16px"><div>';
   h += '<div class="card"><div class="cardhead"><h2>Commesse</h2></div>' + (com.length ? tblCom(com) : vuoto("Nessuna commessa.")) + "</div>";
@@ -988,6 +1079,20 @@ function vCliente() {
     row2("Sito", c.sito ? '<a href="' + esc(c.sito) + '" target="_blank" rel="noopener">' + esc(c.sito) + "</a>" : "—") +
     row2("P. IVA", esc(c.piva || "—")) + row2("Indirizzo", esc(c.indirizzo || "—")) +
     row2("Owner", esc(nameOf(D.pros, c.owner_id))) + row2("Note", esc(c.note || "—")) + "</tbody></table></div>";
+  h += '<div class="card"><div class="cardhead"><h2>Accesso al portale</h2></div>';
+  if (!pl) {
+    h += '<p class="faint" style="margin-bottom:10px">Crei un link con password da mandare al cliente: vedrà solo i suoi progetti, le fasi condivise, i materiali e le scadenze. Nessun account da registrare.</p>' +
+      '<button class="btn sm" data-portnew="' + c.id + '">Crea il link di accesso</button>';
+  } else {
+    var url = location.origin + location.pathname + "#/p/" + pl.token;
+    h += '<div class="field"><label>Link per il cliente</label><input readonly value="' + esc(url) + '" onclick="this.select()"></div>' +
+      '<p class="faint" style="margin:-6px 0 12px">' + (pl.pwd_hash ? "Password impostata" : '<b class="neg">Password non impostata: il link non funziona</b>') +
+      (pl.ultimo_accesso ? " · ultimo accesso " + dshort(pl.ultimo_accesso) : " · mai usato") + "</p>" +
+      '<div class="tools"><button class="btn sm ghost" data-portcopy="' + esc(url) + '">Copia link</button>' +
+      '<button class="btn sm ghost" data-portpwd="' + pl.id + '">' + (pl.pwd_hash ? "Cambia password" : "Imposta password") + "</button>" +
+      '<button class="btn sm ghost" data-portoff="' + pl.id + '|' + (pl.attivo ? "0" : "1") + '">' + (pl.attivo ? "Sospendi" : "Riattiva") + "</button></div>";
+  }
+  h += "</div>";
   h += '<div class="card"><div class="cardhead"><h2>Diario</h2><button class="btn sm ghost" data-new="inter" data-ctx-cli="' + c.id + '">+ Aggiungi</button></div>';
   h += inter.length ? '<ul class="timeline">' + inter.map(function (i) {
     return "<li><b>" + esc(i.tipo || "Nota") + "</b> · " + esc(i.testo || "") + '<div class="when">' + dt(i.data) + " · " + esc(nameOf(D.pros, i.pro_id)) + ' · <button class="lnk" data-del="inter:' + i.id + '">elimina</button></div></li>';
@@ -1445,9 +1550,11 @@ function buildNavCliente() {
 async function apprRispondi(id, esito) {
   var nota = esito === "Modifiche richieste" ? prompt("Cosa vuoi far modificare?") : null;
   if (esito === "Modifiche richieste" && nota === null) return;
-  var r = await sb.rpc("portale_rispondi", { a: id, esito: esito, nota: nota });
+  var r = PLINK
+    ? await sb.rpc("portale_link_rispondi", { tok: PLINK.tok, pwd: PLINK.pwd, a: id, esito: esito, nota: nota })
+    : await sb.rpc("portale_rispondi", { a: id, esito: esito, nota: nota });
   if (r.error) { toast(r.error.message, true); return; }
-  PORT = r.data || PORT;
+  PORT = (PLINK ? (r.data && r.data.progetti) : r.data) || PORT;
   toast(esito === "Approvata" ? "Approvato, grazie!" : "Richiesta inviata allo studio");
   render();
 }
@@ -1661,6 +1768,12 @@ var FORMS = {
       '<div class="row2">' + fld("data", "Data", "date", r.data || today()) + selField("slot", "Slot", sel(["Giornata", "Mattina", "Pomeriggio", "Sala riunioni"], r.slot || "Giornata")) + "</div>" +
       fld("note", "Note", "text", r.note);
   }},
+  liq: { t: "Liquidazione", tb: "liq", f: function (r) {
+    return '<div class="row2">' + selField("pro_id", "A chi", opt(D.pros, r.pro_id)) + fld("periodo", "Periodo (es. 2026-09)", "text", r.periodo || (new Date().toISOString().slice(0, 7))) + "</div>" +
+      '<div class="row2">' + fld("importo", "Importo (€)", "number", r.importo) + selField("stato", "Stato", sel(["Da liquidare", "Liquidato"], r.stato || "Da liquidare")) + "</div>" +
+      '<div class="row2">' + fld("pagato_il", "Pagato il", "date", r.pagato_il) + fld("metodo", "Metodo", "text", r.metodo) + "</div>" +
+      fld("note", "Note", "text", r.note);
+  }},
   membri: { t: "Accesso", tb: "membri", key: "user_id", f: function (r) {
     return fld("user_id", "User UID (da Supabase → Authentication)", "text", r.user_id, true) +
       fld("email", "Email", "email", r.email) +
@@ -1804,7 +1917,7 @@ function render() {
     return;
   }
   buildNav();
-  var V = { dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, provvigioni: vProvvigioni, report: vReport, carico: vCarico, spazi: vSpazi, impostazioni: vSettings };
+  var V = { dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, provvigioni: vProvvigioni, report: vReport, carico: vCarico, spazi: vSpazi, compensi: vCompensi, impostazioni: vSettings };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search"); if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
@@ -1900,6 +2013,45 @@ document.addEventListener("click", async function (e) {
   if (d.avvia) { await avviaLavoro(d.avvia); return; }
   if (d.fattpag) { await fatturaScadenza(d.fattpag); return; }
   if (d.fattore) { await fatturaOre(d.fattore); return; }
+  if (d.portnew) {
+    var tok = "";
+    var alfa = "abcdefghijkmnopqrstuvwxyz23456789";
+    for (var ti = 0; ti < 22; ti++) tok += alfa[Math.floor(Math.random() * alfa.length)];
+    var rp = await sb.from("portali").insert({ cliente_id: d.portnew, token: tok, attivo: true }).select();
+    if (rp.error) { toast(rp.error.message, true); return; }
+    await reload(["port"]);
+    toast("Link creato: ora imposta la password");
+    render();
+    var pwd0 = prompt("Scegli la password da comunicare al cliente (almeno 6 caratteri):");
+    if (pwd0) {
+      var rq = await sb.rpc("portale_pwd", { pid: rp.data[0].id, pwd: pwd0 });
+      if (rq.error) toast(rq.error.message, true); else { await reload(["port"]); toast("Password impostata"); render(); }
+    }
+    return;
+  }
+  if (d.portpwd) {
+    var pwd1 = prompt("Nuova password del portale (almeno 6 caratteri):");
+    if (!pwd1) return;
+    var rr = await sb.rpc("portale_pwd", { pid: d.portpwd, pwd: pwd1 });
+    if (rr.error) { toast(rr.error.message, true); return; }
+    await reload(["port"]); toast("Password aggiornata"); render(); return;
+  }
+  if (d.portoff) {
+    var pp = d.portoff.split("|");
+    var ro = await sb.from("portali").update({ attivo: pp[1] === "1" }).eq("id", pp[0]);
+    if (ro.error) { toast(ro.error.message, true); return; }
+    await reload(["port"]); toast(pp[1] === "1" ? "Accesso riattivato" : "Accesso sospeso"); render(); return;
+  }
+  if (d.portcopy) {
+    try { await navigator.clipboard.writeText(d.portcopy); toast("Link copiato"); }
+    catch (e) { toast("Copia manualmente dal campo", true); }
+    return;
+  }
+  if (d.liquida) {
+    var lq = d.liquida.split("|");
+    openForm("liq", null, { pro_id: lq[0], importo: Math.round(+lq[1]), periodo: new Date().toISOString().slice(0, 7), stato: "Liquidato", pagato_il: today() });
+    return;
+  }
   if (d.incassa) {
     var pgm = by(D.pag, d.incassa);
     var r3 = await sb.from("pagamenti").update({ stato: "Incassato", pagato_il: today() }).eq("id", d.incassa);
@@ -2227,7 +2379,7 @@ document.addEventListener("change", async function (e) {
   if (e.target.id === "fileinp" && e.target.files && e.target.files.length) {
     var dz = el("#drop");
     await uploadFile(e.target.files, dz ? dz.dataset.kid : current);
-  }
+}
 });
 
 document.addEventListener("dragover", function (e) {
@@ -2302,7 +2454,37 @@ async function doLogin(f) {
   if (r.error) { err.textContent = r.error.message; err.classList.remove("hide"); return; }
   await start();
 }
+async function portaleDaLink(tok) {
+  var box = el("#login");
+  box.classList.remove("hide");
+  el("#splash").classList.add("hide");
+  box.innerHTML = '<form class="authcard" id="portform">' +
+    '<div class="brandmark"><i class="mark"></i></div>' +
+    "<h2>Area cliente</h2><p>Inserisci la password che ti ha dato lo studio.</p>" +
+    '<div class="field"><label>Password</label><input type="password" name="pwd" required autocomplete="current-password"></div>' +
+    '<div class="err hide" id="porterr"></div>' +
+    '<button class="btn" style="width:100%;padding:12px" type="submit">Entra</button></form>';
+  el("#portform").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var pwd = e.target.pwd.value, err = el("#porterr"), btn = e.target.querySelector("button");
+    err.classList.add("hide"); btn.disabled = true; btn.textContent = "Verifico…";
+    var r = await sb.rpc("portale_link", { tok: tok, pwd: pwd });
+    if (r.error) {
+      err.textContent = /Password/.test(r.error.message) ? "Password errata." : "Link non valido o scaduto.";
+      err.classList.remove("hide"); btn.disabled = false; btn.textContent = "Entra"; return;
+    }
+    PLINK = { tok: tok, pwd: pwd };
+    PORT = (r.data && r.data.progetti) || [];
+    me.ruolo = "cliente";
+    me.nome = (r.data && r.data.cliente && r.data.cliente.nome) || "Area cliente";
+    me.email = "";
+    view = "progetti";
+    show("app"); render();
+  });
+}
 async function start() {
+  var pm = /^#\/p\/([a-z0-9]+)/i.exec(location.hash || "");
+  if (pm) { await portaleDaLink(pm[1]); return; }
   var s = await sb.auth.getSession();
   if (!s.data.session) { show("login"); return; }
   user = s.data.session.user;
@@ -2313,7 +2495,10 @@ async function start() {
 async function init() {
   if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) { show("setup"); return; }
   sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  el("#logout").addEventListener("click", async function () { await sb.auth.signOut(); location.reload(); });
+  el("#logout").addEventListener("click", async function () {
+    if (PLINK) { location.hash = ""; location.reload(); return; }
+    await sb.auth.signOut(); location.reload();
+  });
   var ham = el("#ham"), scrim = el("#scrim");
   if (ham) ham.addEventListener("click", function () { document.body.classList.toggle("navopen"); });
   if (scrim) scrim.addEventListener("click", function () { document.body.classList.remove("navopen"); });
