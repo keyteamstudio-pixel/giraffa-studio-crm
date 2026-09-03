@@ -1825,7 +1825,7 @@ function countUp() {
 
 /* ---------------- eventi ---------------- */
 document.addEventListener("click", async function (e) {
-  var t = e.target.closest("button, [data-open-task], [data-open-com], [data-close]");
+  var t = e.target.closest("button, [data-open-task], [data-open-com], [data-open-prog], [data-open-lav], [data-day], [data-close]");
   if (!t) return;
   var d = t.dataset || {};
   if (t.hasAttribute("data-close")) { closeModal(); return; }
