@@ -2215,4 +2215,11 @@ async function start() {
 async function init() {
   if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) { show("setup"); return; }
   sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  el("#logout").addEventListener("click", async function () { await sb.auth.signOut(); location.reload();
+  el("#logout").addEventListener("click", async function () { await sb.auth.signOut(); location.reload(); });
+  var ham = el("#ham"), scrim = el("#scrim");
+  if (ham) ham.addEventListener("click", function () { document.body.classList.toggle("navopen"); });
+  if (scrim) scrim.addEventListener("click", function () { document.body.classList.remove("navopen"); });
+  await start();
+}
+init();
+})();
