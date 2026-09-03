@@ -9,6 +9,7 @@
 
 
 
+
 <html lang="it">
 <head>
 <meta charset="UTF-8" />
@@ -256,6 +257,27 @@ textarea{min-height:86px;resize:vertical;line-height:1.5}
 }
 .tabs button:hover{color:var(--ink)}
 .tabs button.on{color:var(--ink);background:var(--card);font-weight:550;box-shadow:var(--sh-1)}
+.tabs button .cnt{margin-left:7px;font-size:.72rem;font-variant-numeric:tabular-nums;opacity:.62}
+
+/* percorso di navigazione */
+.crumbs{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:.78rem;color:var(--soft);margin:0 0 12px;letter-spacing:.01em}
+.crumbs button.cr{background:none;border:0;font:inherit;color:var(--soft);cursor:pointer;padding:0;border-radius:4px}
+.crumbs button.cr:hover{color:var(--terra-deep);text-decoration:underline;text-underline-offset:3px}
+.crumbs .sep{opacity:.42}
+.crumbs .qui{color:var(--ink);font-weight:500}
+
+/* pagine di compilazione */
+.formpage{max-width:960px}
+.formpage .top{margin-bottom:20px}
+.fpage .card{padding:26px 28px}
+.fpage .actionbar{
+  position:sticky;bottom:14px;z-index:6;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  margin-top:16px;padding:13px 16px;background:var(--card);border:1px solid var(--line);
+  border-radius:16px;box-shadow:var(--sh-2);
+}
+.fpage .actionbar .grow{flex:1}
+.fpage .actionbar .danger{order:-1}
+@media(max-width:640px){.fpage .actionbar{bottom:0;border-radius:14px}.fpage .card{padding:20px}}
 
 .kanban{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
 @media(max-width:1000px){.kanban{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -407,7 +429,6 @@ tr.expr td{background:rgba(120,110,95,.045);padding-top:4px;padding-bottom:20px}
 .step .sn{width:23px;height:23px;border-radius:99px;background:var(--terra-soft);color:var(--terra-deep);font-size:.76rem;font-weight:600;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
 .step div{display:flex;flex-direction:column;gap:2px;min-width:0}
 .step b{font-weight:550;color:var(--ink);font-size:.9rem;letter-spacing:-.012em}
-
 /* ---------- kanban drag ---------- */
 .tsktop{display:flex;align-items:flex-start;justify-content:space-between;gap:9px;font-weight:450;color:var(--ink)}
 .tsk{user-select:none}
@@ -722,6 +743,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=18"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>
