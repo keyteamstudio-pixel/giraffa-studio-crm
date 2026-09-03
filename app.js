@@ -11,6 +11,7 @@
 
 
 
+
 (function () {
 "use strict";
 
@@ -482,6 +483,48 @@ function etichettaDi(v) {
   for (var i = 0; i < n.length; i++) if (n[i].k === v) return n[i].t;
   return "";
 }
+/* ---- barra unica di viste e filtri, uguale in tutte le sezioni ---- */
+var FS = {
+  com: { stato: "", salute: "", cli: "", cerca: "" },
+  prog: { stato: "", cli: "", pro: "", cerca: "" },
+  cli: { stato: "", owner: "", cerca: "" },
+  mov: { tipo: "", stato: "", anno: "", cerca: "" },
+  serv: { cat: "", chi: "", cerca: "" },
+  forn: { cat: "", cerca: "" },
+  pool: { cat: "", cerca: "" }
+};
+function opzioni(list, val) {
+  return list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (val === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("");
+}
+function fsel(amb, campo, list) { return '<select data-f="' + amb + "|" + campo + '">' + opzioni(list, FS[amb][campo]) + "</select>"; }
+function fcerca(amb, ph) { return '<input id="fcerca" data-f="' + amb + '|cerca" placeholder="' + esc(ph || "Cerca…") + '" value="' + esc(FS[amb].cerca) + '">'; }
+function fchip(attr, on, label) { return '<button class="chipbtn' + (on ? " on" : "") + '" ' + attr + ">" + esc(label) + "</button>"; }
+/* tabs: [chiave, etichetta] · rotta: vista da usare nel percorso */
+function barraViste(tabs, attiva, rotta, filtri) {
+  return '<div class="vbar">' +
+    (tabs && tabs.length ? '<div class="vtabs">' + tabs.map(function (v) {
+      return '<button data-route="' + esc(rotta + "|-|" + v[0]) + '" class="' + (attiva === v[0] ? "on" : "") + '">' + esc(v[1]) + "</button>";
+    }).join("") + "</div>" : "") +
+    (filtri ? '<div class="vfilt">' + filtri + "</div>" : "") + "</div>";
+}
+function elencoCat(list, campo) {
+  var c = {};
+  list.forEach(function (x) { if (x[campo]) c[x[campo]] = 1; });
+  return Object.keys(c).sort().map(function (x) { return [x, x]; });
+}
+/* riga di elenco uguale ovunque: titolo, sottotitolo, badge, azione */
+function rigaEl(rotta, titolo, sub, meta) {
+  return '<div class="trow">' +
+    '<button class="ttit" data-route="' + esc(rotta) + '"><b>' + esc(titolo) + "</b>" + (sub ? '<span class="faint"> · ' + sub + "</span>" : "") + "</button>" +
+    '<span class="tmeta">' + (meta || "") + "</span></div>";
+}
+/* campo che si salva appena lo cambi */
+function qcampo(tb, id, campo, etichetta, controllo) {
+  return '<div class="qfield"><label>' + esc(etichetta) + "</label>" + controllo + "</div>";
+}
+function qsel(tb, id, campo, list, val) { return '<select data-qset="' + tb + "|" + campo + "|" + id + '">' + list + "</select>"; }
+function qinput(tb, id, campo, tipo, val, extra) { return '<input type="' + tipo + '" data-qset="' + tb + "|" + campo + "|" + id + '" value="' + esc(val == null ? "" : val) + '"' + (extra || "") + ">"; }
+
 /* schede interne di una scheda: [chiave, etichetta, conteggio] */
 function schede(list, attiva, vista, id) {
   return '<div class="tabs">' + list.map(function (x) {
@@ -517,7 +560,7 @@ function focusItems(com, tk) {
     f.push({ p: t.scadenza < today() ? 1 : 2, c: t.scadenza < today() ? "b-red" : "b-amber", t: t.titolo, s: (t.commessa_id ? nameOf(D.com, t.commessa_id, "titolo") + " · " : "") + (t.scadenza < today() ? "scaduta il " : "scade ") + dt(t.scadenza), task: t.id });
   });
   com.filter(function (k) { return salute(k).c === "b-red"; }).forEach(function (k) {
-    f.push({ p: 2, c: "b-red", t: "Commessa a rischio: " + k.titolo, s: salute(k).d, k: k.id, tab: "fasi" });
+    f.push({ p: 2, c: "b-red", t: "Lavoro a rischio: " + k.titolo, s: salute(k).d, k: k.id, tab: "fasi" });
   });
   var d = new Date(), dow = d.getDay();
   if (dow > 0 && dow < 6 && !fore().some(function (o) { return o.data === today(); })) {
@@ -559,7 +602,7 @@ function vDash() {
 
   var h = bannerProfilo() + '<div class="top"><h1>Ciao ' + esc((me.nome || "").split(" ")[0]) + '<span class="sub">' + esc(oggi.charAt(0).toUpperCase() + oggi.slice(1)) + '</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-pal="1">⌘K  Cerca</button>' +
-    '<button class="btn sm" data-new="com">+ Nuova commessa</button>' + (isPR() ? "" : '<button class="btn sm ghost" data-new="ore">+ Registra ore</button>') +
+    '<button class="btn sm" data-new="com">+ Nuovo preventivo</button>' + (isPR() ? "" : '<button class="btn sm ghost" data-new="ore">+ Registra ore</button>') +
     perspSel() + "</div></div>";
 
   h += '<div class="grid g32">';
@@ -629,7 +672,7 @@ function boardCom(list) {
   return h + "</div>";
 }
 function tblCom(list) {
-  var h = '<table class="rich"><thead><tr><th style="width:26px"></th><th>Commessa</th><th>Cliente</th><th>Team</th><th>Stato</th><th>Salute</th><th style="width:104px">Avanz.</th><th>Consegna</th><th class="num">' + (isPR() ? "Provvigione" : "Valore") + "</th><th></th></tr></thead><tbody>";
+  var h = '<table class="rich"><thead><tr><th style="width:26px"></th><th>Preventivo</th><th>Cliente</th><th>Chi ci lavora</th><th>Stato</th><th>Salute</th><th style="width:104px">Avanz.</th><th>Consegna</th><th class="num">' + (isPR() ? "Valore" : "Valore") + "</th><th></th></tr></thead><tbody>";
   list.forEach(function (k) {
     var c = calc(k), av = avanzamento(k.id), sal = salute(k), b = budget(k), ap = EXP[k.id];
     h += '<tr class="' + (ap ? "expon" : "") + '"><td><button class="caret' + (ap ? " on" : "") + '" data-exp="' + k.id + '">›</button></td>' +
@@ -656,33 +699,51 @@ function tblCom(list) {
 }
 /* ---------------- commesse ---------------- */
 function vCommesse() {
+  var vista = tab || "lista";
   var tutte = fcom();
-  var list = tutte.slice();
-  if (search) list = list.filter(function (k) { return (k.titolo + " " + nameOf(D.cli, k.cliente_id)).toLowerCase().indexOf(search.toLowerCase()) > -1; });
-  if (FSTATO) list = list.filter(function (k) { return k.stato === FSTATO; });
-  if (FSAL) list = list.filter(function (k) { return salute(k).c === FSAL; });
+  var f = FS.com;
+  var list = tutte.filter(function (k) {
+    if (f.stato && k.stato !== f.stato) return false;
+    if (f.salute && salute(k).c !== f.salute) return false;
+    if (f.cli && k.cliente_id !== f.cli) return false;
+    if (f.cerca && (k.titolo + " " + nameOf(D.cli, k.cliente_id)).toLowerCase().indexOf(f.cerca.toLowerCase()) === -1) return false;
+    return true;
+  });
   var val = sum(list, function (k) { return budget(k).ricavo; });
-
   var h = head("Preventivi", list.length + " preventivi · " + eur(val) + " di valore",
-    '<input id="search" placeholder="Cerca…" style="width:180px" value="' + esc(search) + '"><button class="btn sm" data-new="com">+ Nuovo preventivo</button>');
+    '<button class="btn sm" data-new="com">+ Nuovo preventivo</button>');
+  h += barraViste([["lista", "Lista"], ["bacheca", "Bacheca"], ["timeline", "Timeline"]], vista, "commesse",
+    fcerca("com", "Cerca un preventivo o un cliente…") +
+    fsel("com", "stato", [["", "Ogni stato"]].concat(STATI.map(function (s) { return [s, s]; }))) +
+    fsel("com", "salute", [["", "Ogni salute"], ["b-green", "In linea"], ["b-amber", "Da tenere d'occhio"], ["b-red", "A rischio"]]) +
+    fsel("com", "cli", [["", "Ogni cliente"]].concat(fcli().map(function (c) { return [c.id, c.nome]; }))) +
+    (f.stato || f.salute || f.cli || f.cerca ? '<button class="lnk mini" data-f-reset="com">azzera</button>' : ""));
 
-  h += '<div class="filters">';
-  h += '<div class="chips"><button class="fc' + (FSTATO ? "" : " on") + '" data-fs="">Tutti gli stati</button>' +
-    STATI.map(function (s) {
-      var n = tutte.filter(function (k) { return k.stato === s; }).length;
-      return n ? '<button class="fc' + (FSTATO === s ? " on" : "") + '" data-fs="' + s + '">' + s + "<span>" + n + "</span></button>" : "";
-    }).join("") + "</div>";
-  h += '<div class="chips"><button class="fc' + (FSAL ? "" : " on") + '" data-fh="">Tutte</button>' +
-    [["b-red", "A rischio"], ["b-amber", "Da tenere d'occhio"], ["b-green", "In linea"]].map(function (x) {
-      var n = tutte.filter(function (k) { return salute(k).c === x[0]; }).length;
-      return n ? '<button class="fc' + (FSAL === x[0] ? " on" : "") + '" data-fh="' + x[0] + '"><i class="dot ' + x[0] + '"></i>' + x[1] + "<span>" + n + "</span></button>" : "";
-    }).join("") + "</div>";
-  h += '<div class="seg"><button class="' + (VISTA === "tabella" ? "on" : "") + '" data-vista="tabella">Tabella</button><button class="' + (VISTA === "board" ? "on" : "") + '" data-vista="board">Board</button></div>';
-  h += "</div>";
-
-  if (!list.length) return h + '<div class="card">' + vuoto("Nessun preventivo con questi filtri.", '<button class="lnk" data-fs="">Azzera i filtri</button>') + "</div>";
-  h += VISTA === "board" ? boardCom(list) : '<div class="card">' + tblCom(list.slice().sort(function (a, b) { return STATI.indexOf(a.stato) - STATI.indexOf(b.stato); })) + "</div>";
-  return h;
+  if (!list.length) return h + '<div class="card">' + vuoto("Nessun preventivo con questi filtri.", '<button class="lnk" data-f-reset="com">Azzera i filtri</button>') + "</div>";
+  if (vista === "bacheca") return h + boardCom(list);
+  if (vista === "timeline") {
+    var conDate = list.filter(function (k) { return k.inizio || k.scadenza; });
+    if (!conDate.length) return h + '<div class="card">' + vuoto("Nessun preventivo con date: metti inizio e consegna per vederli sulla timeline.") + "</div>";
+    var tutteD = conDate.map(function (k) { return k.inizio || k.scadenza; }).concat(conDate.map(function (k) { return k.scadenza || k.inizio; })).sort();
+    var da = new Date(tutteD[0]), a = new Date(tutteD[tutteD.length - 1]);
+    da.setDate(da.getDate() - 5); a.setDate(a.getDate() + 5);
+    var giorni = Math.max(14, Math.round((a - da) / 86400000));
+    var testa = [];
+    for (var i = 0; i <= giorni; i += Math.max(7, Math.round(giorni / 12))) {
+      var dd = new Date(da.getTime() + i * 86400000);
+      testa.push('<span style="left:' + (i / giorni * 100) + '%">' + dshort(iso(dd)) + "</span>");
+    }
+    return h + '<div class="card"><div class="cardhead"><h2>Timeline dei lavori</h2><span class="faint">da ' + dshort(iso(da)) + " a " + dshort(iso(a)) + '</span></div><div class="tlhead">' + testa.join("") + "</div>" +
+      conDate.slice().sort(function (x, y) { return (x.inizio || x.scadenza) < (y.inizio || y.scadenza) ? -1 : 1; }).map(function (k) {
+        var i1 = new Date(k.inizio || k.scadenza), i2 = new Date(k.scadenza || k.inizio);
+        var x = Math.max(0, (i1 - da) / 86400000 / giorni * 100);
+        var w = Math.max(2.5, ((i2 - i1) / 86400000 + 1) / giorni * 100);
+        var sal = salute(k);
+        return '<div class="tlrow"><div class="tlname" data-open-com="' + k.id + '">' + esc(k.titolo) + "</div>" +
+          '<div class="tltrack"><button class="tlbar ' + (k.stato === "Chiusa" ? "ok" : sal.c === "b-red" ? "bad" : "") + '" style="left:' + x + "%;width:" + w + '%" data-open-com="' + k.id + '">' + esc(nameOf(D.cli, k.cliente_id)) + "</button></div></div>";
+      }).join("") + "</div>";
+  }
+  return h + '<div class="card">' + tblCom(list.slice().sort(function (a, b) { return STATI.indexOf(a.stato) - STATI.indexOf(b.stato); })) + "</div>";
 }
 
 function vCommessa() {
@@ -733,7 +794,7 @@ function vCommessa() {
   h += '<div class="card">' + schede(TABS, t, "commessa", k.id);
 
   if (t === "note") {
-    h += '<div class="cardhead"><h2>Note della commessa</h2><div style="display:flex;gap:8px;align-items:center"><span class="faint" id="notestat"></span><button class="btn sm ghost" data-notedit="' + (NOTEDIT ? "0" : "1") + '">' + (NOTEDIT ? "Anteprima" : "Scrivi") + "</button></div></div>";
+    h += '<div class="cardhead"><h2>Note del lavoro</h2><div style="display:flex;gap:8px;align-items:center"><span class="faint" id="notestat"></span><button class="btn sm ghost" data-notedit="' + (NOTEDIT ? "0" : "1") + '">' + (NOTEDIT ? "Anteprima" : "Scrivi") + "</button></div></div>";
     if (NOTEDIT) {
       h += '<textarea id="notedoc" class="doc" placeholder="# Titolo&#10;Scrivi qui il brief, gli appunti, le decisioni.&#10;- elenco&#10;- [ ] cosa da fare">' + esc(k.note_doc || "") + "</textarea>" +
         '<p class="faint" style="margin-top:10px"># titolo · - elenco · - [ ] da fare · **grassetto** · i link diventano cliccabili. Si salva da solo.</p>';
@@ -743,7 +804,7 @@ function vCommessa() {
   }
   if (t === "discussione") {
     var cm = D.comm.filter(function (x) { return x.commessa_id === k.id; }).sort(function (a, b) { return a.created_at < b.created_at ? -1 : 1; });
-    h += '<div class="cardhead"><h2>Discussione</h2><span class="faint">visibile solo a chi lavora sulla commessa</span></div>';
+    h += '<div class="cardhead"><h2>Discussione</h2><span class="faint">la vede solo chi lavora su questo preventivo</span></div>';
     h += cm.length ? '<div class="chat">' + cm.map(function (c) {
       return '<div class="msg"><div>' + avatar(c.pro_id, 32) + '</div><div class="mbody"><div class="mhead"><b>' + esc(nameOf(D.pros, c.pro_id)) + '</b><span class="faint">' + dt(c.created_at) + "</span>" + (c.pro_id === me.pro_id ? ' <button class="lnk" data-del="comm:' + c.id + '">elimina</button>' : "") + "</div>" + md(c.testo) + "</div></div>";
     }).join("") + "</div>" : vuoto("Nessun messaggio. Scrivi il primo qui sotto.");
@@ -831,7 +892,7 @@ function vCommessa() {
     h += '<div class="cardhead"><h2>Ore registrate</h2><span>' + (daFatt.length && vediCosti() ? '<button class="btn sm ghost" data-fattore="' + k.id + '">Fattura ' + num(sum(daFatt, function (o) { return o.ore; }), 1) + " h · " + eur(valDaFatt) + "</button> " : "") + '<button class="btn sm ghost" data-new="ore" data-ctx="' + k.id + '">+ Registra ore</button></span></div>' + tblOre(ore);
   }
   if (t === "materiali") {
-    h += '<div class="cardhead"><h2>Materiali della commessa</h2><button class="btn sm ghost" data-new="mat" data-ctx="' + k.id + '">+ Aggiungi materiale</button></div>';
+    h += '<div class="cardhead"><h2>Materiali del lavoro</h2><button class="btn sm ghost" data-new="mat" data-ctx="' + k.id + '">+ Aggiungi materiale</button></div>';
     h += '<div class="drop" id="drop" data-kid="' + k.id + '"><b>Trascina qui i file</b><span class="faint">oppure <label class="lnk">scegli dal computer<input type="file" id="fileinp" multiple style="display:none"></label> · o aggiungi un link con il pulsante qui sopra</span></div>';
     h += mt.length ? '<table><thead><tr><th>Materiale</th><th>Tipo</th><th>Fase</th><th>Visibilità</th><th>Data</th><th></th></tr></thead><tbody>' + mt.slice().sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; }).map(function (m) {
       var nome = m.path ? '<button class="lnk" data-file="' + m.id + '">' + esc(m.nome) + "</button>" + (m.dim ? ' <span class="faint">' + (m.dim > 1048576 ? (m.dim / 1048576).toFixed(1) + " MB" : Math.round(m.dim / 1024) + " KB") + "</span>" : "") : m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome);
@@ -853,29 +914,36 @@ function vCommessa() {
   }
   if (t === "varianti") {
     h += '<div class="cardhead"><h2>Varianti e lavori extra</h2><button class="btn sm ghost" data-new="vari" data-ctx="' + k.id + '">+ Nuova variante</button></div>';
-    h += '<p class="faint" style="margin-bottom:12px">Ogni richiesta fuori preventivo si registra qui: quando è approvata entra nel valore della commessa e nel budget ore, così il margine resta vero.</p>';
+    h += '<p class="faint" style="margin-bottom:12px">Ogni richiesta fuori preventivo si registra qui: quando è approvata entra nel valore del lavoro e nel budget ore, così il margine resta vero.</p>';
     h += vr.length ? '<table><thead><tr><th>Variante</th><th>Data</th><th class="num">Importo</th><th class="num">Ore</th><th>Stato</th><th></th></tr></thead><tbody>' + vr.slice().sort(function (a, b) { return a.data < b.data ? 1 : -1; }).map(function (v) {
       return "<tr><td><b>" + esc(v.nome) + "</b>" + (v.descrizione ? '<div class="faint">' + esc(v.descrizione) + "</div>" : "") + "</td><td>" + dt(v.data) + '</td><td class="num">' + eur(v.importo) + '</td><td class="num">' + num(v.ore, 0) + '</td><td><span class="badge ' + (v.stato === "Approvata" ? "b-green" : v.stato === "Rifiutata" ? "b-red" : "b-amber") + '">' + esc(v.stato) + '</span></td><td class="num">' + (v.stato === "Proposta" ? '<button class="lnk" data-appr-var="' + v.id + '">Approva</button> ' : "") + '<button class="lnk" data-edit="vari:' + v.id + '">Modifica</button></td></tr>';
     }).join("") + '</tbody><tfoot><tr><td colspan="2"><b>Approvate</b></td><td class="num"><b>' + eur(b.extra) + '</b></td><td class="num"><b>' + num(sum(vr.filter(function (v) { return v.stato === "Approvata"; }), function (v) { return v.ore; }), 0) + "</b></td><td colspan=\"2\"></td></tr></tfoot></table>" : vuoto("Nessuna variante: il lavoro è ancora quello concordato.", '<button class="lnk" data-new="vari" data-ctx="' + k.id + '">Registra un extra</button>');
   }
   if (t === "log") {
     var evs = evOf(k.id);
-    h += '<div class="cardhead"><h2>Diario della commessa</h2><button class="btn sm ghost" data-new="ev" data-ctx="' + k.id + '">+ Aggiungi nota</button></div>';
+    h += '<div class="cardhead"><h2>Diario del lavoro</h2><button class="btn sm ghost" data-new="ev" data-ctx="' + k.id + '">+ Aggiungi nota</button></div>';
     h += evs.length ? '<ul class="timeline">' + evs.map(function (e) {
       return "<li>" + esc(e.testo) + '<div class="when">' + dt(e.created_at) + " · " + esc(e.pro_id ? nameOf(D.pros, e.pro_id) : "sistema") + "</div></li>";
     }).join("") + "</ul>" : vuoto("Nessun evento registrato.");
   }
   h += "</div></div><div>";
-  h += '<div class="card"><h3 style="margin-bottom:12px">Scheda</h3><table><tbody>' +
+  h += '<div class="card"><h3 style="margin-bottom:14px">Scheda</h3>' +
+    qcampo("com", k.id, "stato", "Stato", qsel("com", k.id, "stato", sel(STATI, k.stato || "Bozza"))) +
+    qcampo("com", k.id, "cliente_id", "Cliente", qsel("com", k.id, "cliente_id", opt(D.cli, k.cliente_id))) +
+    '<div class="row2">' +
+      qcampo("com", k.id, "inizio", "Inizio", qinput("com", k.id, "inizio", "date", k.inizio)) +
+      qcampo("com", k.id, "scadenza", "Consegna", qinput("com", k.id, "scadenza", "date", k.scadenza)) +
+    "</div>" +
+    '<div class="row2">' +
+      qcampo("com", k.id, "probabilita", "Probabilità (%)", qinput("com", k.id, "probabilita", "number", k.probabilita == null ? 50 : k.probabilita, ' step="5" min="0" max="100"')) +
+      qcampo("com", k.id, "owner_id", "Chi lo segue", qsel("com", k.id, "owner_id", opt(D.pros, k.owner_id))) +
+    "</div>" +
+    '<table><tbody>' +
     row2("Cliente", '<button class="lnk" data-open-cli="' + k.cliente_id + '">' + esc(nameOf(D.cli, k.cliente_id)) + "</button>") +
-    row2("Owner", esc(nameOf(D.pros, k.owner_id))) +
-    row2("Regia (PM)", esc(nameOf(D.pros, k.pm_id))) +
     (k.pr_id ? row2("Portato da", esc(nameOf(D.pros, k.pr_id))) : "") +
-    row2("Stato", '<span class="badge ' + (STATO_COL[k.stato] || "") + '">' + esc(k.stato) + "</span>") +
-    row2("Probabilità", (k.probabilita == null ? 50 : k.probabilita) + " %") +
     row2("Fatturazione", "Ognuno fattura la sua parte al cliente") +
-    row2("Periodo", dt(k.inizio) + " → " + dt(k.scadenza)) +
-    row2("Note", esc(k.note || "—")) + "</tbody></table></div>";
+    row2("Note", esc(k.note || "—")) + "</tbody></table>" +
+    '<div style="margin-top:12px"><button class="btn sm ghost" data-edit="com:' + k.id + '">Apri il modulo completo</button></div></div>';
 
   h += '<div class="card"><h3 style="margin-bottom:12px">Economics</h3><table><tbody>' +
     row2("Imponibile servizi", eur(c.imp)) +
@@ -1295,23 +1363,23 @@ function vAttivita() {
   h += "</div><div>";
 
   h += '<div class="card"><h3 style="margin-bottom:14px">Dettagli</h3>' +
-    campoRapido(t.id, "stato", "Stato", '<select data-tset="stato|' + t.id + '">' + sel(TASK_STATI, t.stato || "Da fare") + "</select>") +
-    campoRapido(t.id, "assegnato_id", "Assegnata a", '<select data-tset="assegnato_id|' + t.id + '"><option value="">— nessuno —</option>' + opt(D.pros, t.assegnato_id) + "</select>") +
-    campoRapido(t.id, "priorita", "Priorità", '<select data-tset="priorita|' + t.id + '">' + sel(["Bassa", "Media", "Alta"], t.priorita || "Media") + "</select>") +
+    campoRapido(t.id, "stato", "Stato", '<select data-qset="task|stato|' + t.id + '">' + sel(TASK_STATI, t.stato || "Da fare") + "</select>") +
+    campoRapido(t.id, "assegnato_id", "Assegnata a", '<select data-qset="task|assegnato_id|' + t.id + '"><option value="">— nessuno —</option>' + opt(D.pros, t.assegnato_id) + "</select>") +
+    campoRapido(t.id, "priorita", "Priorità", '<select data-qset="task|priorita|' + t.id + '">' + sel(["Bassa", "Media", "Alta"], t.priorita || "Media") + "</select>") +
     '<div class="row2">' +
-      campoRapido(t.id, "inizio", "Inizio", '<input type="date" data-tset="inizio|' + t.id + '" value="' + esc(t.inizio || "") + '">') +
-      campoRapido(t.id, "scadenza", "Scadenza", '<input type="date" data-tset="scadenza|' + t.id + '" value="' + esc(t.scadenza || "") + '">') +
+      campoRapido(t.id, "inizio", "Inizio", '<input type="date" data-qset="task|inizio|' + t.id + '" value="' + esc(t.inizio || "") + '">') +
+      campoRapido(t.id, "scadenza", "Scadenza", '<input type="date" data-qset="task|scadenza|' + t.id + '" value="' + esc(t.scadenza || "") + '">') +
     "</div>" +
     '<div class="row2">' +
-      campoRapido(t.id, "stimate", "Ore stimate", '<input type="number" step="0.5" data-tset="stimate|' + t.id + '" value="' + (t.stimate == null ? "" : t.stimate) + '">') +
-      campoRapido(t.id, "etichette", "Etichette", '<input type="text" data-tset="etichette|' + t.id + '" value="' + esc(t.etichette || "") + '" placeholder="urgente, cliente">') +
+      campoRapido(t.id, "stimate", "Ore stimate", '<input type="number" step="0.5" data-qset="task|stimate|' + t.id + '" value="' + (t.stimate == null ? "" : t.stimate) + '">') +
+      campoRapido(t.id, "etichette", "Etichette", '<input type="text" data-qset="task|etichette|' + t.id + '" value="' + esc(t.etichette || "") + '" placeholder="urgente, cliente">') +
     "</div>" +
-    campoRapido(t.id, "progetto_id", "Progetto", '<select data-tset="progetto_id|' + t.id + '"><option value="">— nessuno —</option>' +
+    campoRapido(t.id, "progetto_id", "Progetto", '<select data-qset="task|progetto_id|' + t.id + '"><option value="">— nessuno —</option>' +
       progVisibili().map(function (p) { return '<option value="' + p.id + '"' + (t.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + " · " + esc(nameOf(D.com, p.commessa_id, "titolo")) + "</option>"; }).join("") + "</select>") +
-    campoRapido(t.id, "lavorazione_id", "Lavorazione", '<select data-tset="lavorazione_id|' + t.id + '"><option value="">— nessuna —</option>' +
+    campoRapido(t.id, "lavorazione_id", "Lavorazione", '<select data-qset="task|lavorazione_id|' + t.id + '"><option value="">— nessuna —</option>' +
       D.lav.filter(function (l) { return !t.progetto_id || l.progetto_id === t.progetto_id; }).map(function (l) { return '<option value="' + l.id + '"' + (t.lavorazione_id === l.id ? " selected" : "") + ">" + esc(l.nome) + "</option>"; }).join("") + "</select>") +
-    campoRapido(t.id, "sezione", "Sezione", '<input type="text" data-tset="sezione|' + t.id + '" value="' + esc(t.sezione || "") + '" placeholder="es. Prima consegna">') +
-    campoRapido(t.id, "ricorrenza", "Si ripete", '<select data-tset="ricorrenza|' + t.id + '">' +
+    campoRapido(t.id, "sezione", "Sezione", '<input type="text" data-qset="task|sezione|' + t.id + '" value="' + esc(t.sezione || "") + '" placeholder="es. Prima consegna">') +
+    campoRapido(t.id, "ricorrenza", "Si ripete", '<select data-qset="task|ricorrenza|' + t.id + '">' +
       selKV([["", "no, una volta sola"], ["settimanale", "ogni settimana"], ["quindicinale", "ogni due settimane"], ["mensile", "ogni mese"]], t.ricorrenza || "") + "</select>") +
     (t.ricorrenza ? '<p class="faint">Quando la segni fatta, ne nasce subito la prossima con la scadenza spostata in avanti.</p>' : "") +
     "</div>";
@@ -1340,7 +1408,7 @@ function vAttivita() {
 /* ---------------- ore ---------------- */
 function tblOre(list) {
   if (!list.length) return vuoto("Nessuna ora registrata.", '<button class="lnk" data-new="ore">Registra le prime</button>');
-  var h = '<table><thead><tr><th>Data</th><th>Chi</th><th>Commessa</th><th>Descrizione</th><th class="num">Ore</th><th class="num">Valore</th><th></th></tr></thead><tbody>';
+  var h = '<table><thead><tr><th>Data</th><th>Chi</th><th>Preventivo</th><th>Descrizione</th><th class="num">Ore</th><th class="num">Valore</th><th></th></tr></thead><tbody>';
   list.slice().sort(function (a, b) { return a.data < b.data ? 1 : -1; }).forEach(function (o) {
     h += "<tr><td>" + dt(o.data) + "</td><td>" + esc(nameOf(D.pros, o.pro_id)) + "</td><td>" + esc(o.commessa_id ? nameOf(D.com, o.commessa_id, "titolo") : "—") + "</td><td>" + esc(o.descrizione || "—") + (o.fatturabile ? "" : ' <span class="badge">non fatturabile</span>') + '</td><td class="num">' + num(o.ore, 1) + '</td><td class="num">' + eur((+o.ore || 0) * (+o.tariffa || 0)) + '</td><td class="num"><button class="lnk" data-edit="ore:' + o.id + '">Modifica</button></td></tr>';
   });
@@ -1430,7 +1498,7 @@ function vOre() {
 
   var per = {}; list.forEach(function (o) { if (o.commessa_id) per[o.commessa_id] = (per[o.commessa_id] || 0) + (+o.ore || 0); });
   var pk = Object.keys(per).sort(function (a, b) { return per[b] - per[a]; });
-  h += '<div class="card" style="margin-top:16px"><div class="cardhead"><h2>Le tue ore per commessa</h2></div>';
+  h += '<div class="card" style="margin-top:16px"><div class="cardhead"><h2>Le tue ore per lavoro</h2></div>';
   h += pk.length ? '<div class="bars">' + pk.slice(0, 8).map(function (id) { return bar(nameOf(D.com, id, "titolo"), per[id], per[pk[0]], num(per[id], 1) + " h"); }).join("") + "</div>" : vuoto("—");
   h += "</div>";
   h += '<div class="card"><div class="cardhead"><h2>Registrazioni</h2></div>' + tblOre(list.slice(0, 60)) + "</div>";
@@ -1538,13 +1606,17 @@ function vStudio() {
 
 /* ---------------- fornitori condivisi ---------------- */
 function vFornitori() {
-  var q = (search || "").toLowerCase();
+  var ff = FS.forn, q = (ff.cerca || "").toLowerCase();
   var list = D.forn.filter(function (f) {
+    if (ff.cat && (f.categoria || "Altro") !== ff.cat) return false;
     return !q || (f.nome + " " + (f.categoria || "") + " " + (f.citta || "") + " " + (f.note || "")).toLowerCase().indexOf(q) > -1;
   });
   var h = head("Fornitori condivisi", "La rubrica dello studio: tipografie, stampatori, service, consulenti. Chi lo segnala risponde della segnalazione.",
     '<button class="btn sm" data-new="forn">+ Segnala fornitore</button>');
-  h += '<div class="card"><div class="filters"><input id="search" class="fc" placeholder="Cerca per nome, categoria, città…" value="' + esc(search || "") + '"></div></div>';
+  h += barraViste(null, "", "fornitori",
+    fcerca("forn", "Cerca per nome, categoria, città…") +
+    fsel("forn", "cat", [["", "Ogni categoria"]].concat(elencoCat(D.forn, "categoria"))) +
+    (ff.cat || ff.cerca ? '<button class="lnk mini" data-f-reset="forn">azzera</button>' : ""));
   var cats = {};
   list.forEach(function (f) { (cats[f.categoria || "Altro"] = cats[f.categoria || "Altro"] || []).push(f); });
   var ck = Object.keys(cats).sort();
@@ -1631,15 +1703,42 @@ function vCarico() {
 
 /* ---------------- clienti ---------------- */
 function vClienti() {
-  var list = fcli();
-  if (search) list = list.filter(function (c) { return (c.nome + " " + (c.settore || "")).toLowerCase().indexOf(search.toLowerCase()) > -1; });
+  var vista = tab || "lista";
+  var f = FS.cli;
+  var list = fcli().filter(function (c) {
+    if (f.stato && (c.stato || "Lead") !== f.stato) return false;
+    if (f.owner && c.owner_id !== (f.owner === "io" ? me.pro_id : f.owner)) return false;
+    if (f.cerca && (c.nome + " " + (c.settore || "") + " " + (c.referente || "")).toLowerCase().indexOf(f.cerca.toLowerCase()) === -1) return false;
+    return true;
+  });
   var h = head("Clienti", list.length + " clienti · " + eur(sum(list, function (c) { return valoreCliente(c.id); })) + " di valore",
-    '<input id="search" placeholder="Cerca…" style="width:160px" value="' + esc(search) + '"><button class="btn sm" data-new="cli">+ Nuovo cliente</button>');
-  h += '<div class="card">' + (list.length ? '<table><thead><tr><th>Cliente</th><th>Settore</th><th>Referente</th><th>Owner</th><th>Stato</th><th class="num">Commesse</th><th class="num">Valore</th></tr></thead><tbody>' +
-    list.slice().sort(function (a, b) { return valoreCliente(b.id) - valoreCliente(a.id); }).map(function (c) {
-      return '<tr><td><button class="lnk" data-open-cli="' + c.id + '">' + esc(c.nome) + "</button></td><td>" + esc(c.settore || "—") + "</td><td>" + esc(c.referente || "—") + "</td><td>" + esc(nameOf(D.pros, c.owner_id)) + '</td><td><span class="badge ' + (c.stato === "Attivo" ? "b-green" : c.stato === "Lead" ? "b-amber" : "") + '">' + esc(c.stato || "Lead") + '</span></td><td class="num">' + comOfCliente(c.id).length + '</td><td class="num">' + eur(valoreCliente(c.id)) + "</td></tr>";
-    }).join("") + "</tbody></table>" : vuoto("Nessun cliente.", '<button class="lnk" data-new="cli">Aggiungine uno</button>')) + "</div>";
-  return h;
+    '<button class="btn sm" data-new="cli">+ Nuovo cliente</button>');
+  h += barraViste([["lista", "Lista"], ["schede", "Schede"]], vista, "clienti",
+    fcerca("cli", "Cerca un cliente…") +
+    fsel("cli", "stato", [["", "Ogni stato"], ["Lead", "Lead"], ["Attivo", "Attivo"], ["Dormiente", "Dormiente"], ["Chiuso", "Chiuso"]]) +
+    fsel("cli", "owner", [["", "Ogni owner"], ["io", "Miei"]].concat(D.pros.map(function (p) { return [p.id, p.nome]; }))) +
+    (f.stato || f.owner || f.cerca ? '<button class="lnk mini" data-f-reset="cli">azzera</button>' : ""));
+  if (!list.length) return h + '<div class="card">' + vuoto("Nessun cliente con questi filtri.", '<button class="lnk" data-new="cli">Aggiungine uno</button>') + "</div>";
+
+  var ordinati = list.slice().sort(function (a, b) { return valoreCliente(b.id) - valoreCliente(a.id); });
+  if (vista === "schede") {
+    return h + '<div class="grid g3">' + ordinati.map(function (c) {
+      var com = comOfCliente(c.id);
+      var att = com.filter(function (k) { return ["Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1; });
+      return '<div class="card pcard" data-route="cliente|' + c.id + '|anagrafica">' +
+        '<div class="cardhead"><h2>' + esc(c.nome) + '</h2><span class="badge ' + (c.stato === "Attivo" ? "b-green" : c.stato === "Lead" ? "b-amber" : "") + '">' + esc(c.stato || "Lead") + "</span></div>" +
+        '<p class="faint">' + esc(c.settore || "—") + (c.referente ? " · " + esc(c.referente) : "") + "</p>" +
+        "<table><tbody>" + row2("Preventivi", com.length + (att.length ? " · " + att.length + " attivi" : "")) +
+        row2("Valore", eur(valoreCliente(c.id))) + row2("Owner", esc(nameOf(D.pros, c.owner_id))) + "</tbody></table></div>";
+    }).join("") + "</div>";
+  }
+  return h + '<div class="card tlist">' + ordinati.map(function (c) {
+    return rigaEl("cliente|" + c.id + "|anagrafica", c.nome,
+      esc(c.settore || "—") + (c.referente ? " · " + esc(c.referente) : ""),
+      '<span class="faint">' + comOfCliente(c.id).length + " preventivi</span>" +
+      '<span class="badge ' + (c.stato === "Attivo" ? "b-green" : c.stato === "Lead" ? "b-amber" : "") + '">' + esc(c.stato || "Lead") + "</span>" +
+      "<b>" + eur(valoreCliente(c.id)) + "</b>" + (c.owner_id ? avatar(c.owner_id, 22) : ""));
+  }).join("") + "</div>";
 }
 function vCliente() {
   var c = by(D.cli, current);
@@ -1655,10 +1754,10 @@ function vCliente() {
     '<button class="btn sm ghost" data-go="clienti">← Clienti</button>' +
     '<button class="btn sm ghost" data-edit="cli:' + c.id + '">Modifica</button>' +
     '<button class="btn sm ghost" data-new="inter" data-ctx-cli="' + c.id + '">+ Nota</button>' +
-    '<button class="btn sm" data-new="com" data-ctx-cli="' + c.id + '">+ Commessa</button></div></div>';
+    '<button class="btn sm" data-new="com" data-ctx-cli="' + c.id + '">+ Preventivo</button></div></div>';
 
   h += '<div class="grid g4">' +
-    kpi(eur(valoreCliente(c.id)), "Valore totale", com.length + " commesse") +
+    kpi(eur(valoreCliente(c.id)), "Valore totale", com.length + " preventivi") +
     kpi(eur(sum(pg.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; })), "Incassato", eur(sum(pg.filter(function (p) { return p.stato !== "Incassato"; }), function (p) { return p.importo; })) + " da incassare") +
     kpi(String(inter.length), "Interazioni", inter[0] ? "ultima " + dt(inter[0].data) : "—") +
     kpi(pl ? (pl.attivo ? "Attivo" : "Sospeso") : accesso ? "Con account" : "No", "Accesso al portale", pl ? (pl.pwd_hash ? "link con password" : "manca la password") : accesso ? esc(accesso.email || "") : "nessun accesso") + "</div>";
@@ -1686,6 +1785,12 @@ function vCliente() {
       row2("Settore", esc(c.settore || "—")) + row2("Stato", '<span class="badge">' + esc(c.stato || "Lead") + "</span>") +
       row2("Owner", esc(nameOf(D.pros, c.owner_id))) + row2("Note", esc(c.note || "—")) +
       '</tbody></table><div style="margin-top:14px"><button class="btn sm ghost" data-edit="cli:' + c.id + '">Modifica l\'anagrafica</button></div></div>' +
+      '<div class="card"><h3 style="margin-bottom:14px">Cambia al volo</h3>' +
+      qcampo("cli", c.id, "stato", "Stato", qsel("cli", c.id, "stato", sel(["Lead", "Attivo", "Dormiente", "Chiuso"], c.stato || "Lead"))) +
+      qcampo("cli", c.id, "owner_id", "Owner", qsel("cli", c.id, "owner_id", opt(D.pros, c.owner_id))) +
+      qcampo("cli", c.id, "referente", "Referente", qinput("cli", c.id, "referente", "text", c.referente)) +
+      '<div class="row2">' + qcampo("cli", c.id, "email", "Email", qinput("cli", c.id, "email", "email", c.email)) +
+      qcampo("cli", c.id, "telefono", "Telefono", qinput("cli", c.id, "telefono", "text", c.telefono)) + "</div></div>" +
       '<div class="card"><h3 style="margin-bottom:12px">In sintesi</h3><table><tbody>' +
       row2("Preventivi", com.length + " · " + com.filter(function (k) { return ["In corso", "Approvata"].indexOf(k.stato) > -1; }).length + " attivi") +
       row2("Progetti", prg.length) +
@@ -1743,10 +1848,20 @@ function vCliente() {
 
 /* ---------------- pool ---------------- */
 function vPool() {
-  var h = head("Pool professionisti", D.pros.length + " persone · " + D.pros.filter(function (p) { return p.vetting === "Attivo"; }).length + " attive",
-    '<button class="btn sm" data-new="pros">+ Nuova persona</button>');
+  var f = FS.pool, q = (f.cerca || "").toLowerCase();
+  var elenco = D.pros.filter(function (p) {
+    if (f.cat && !D.serv.some(function (s) { return s.pro_id === p.id && (s.cat || "Altro") === f.cat; })) return false;
+    return !q || (p.nome + " " + (p.ruolo || "") + " " + (p.competenze || "") + " " + (p.citta || "")).toLowerCase().indexOf(q) > -1;
+  });
+  var h = head("Professionisti", elenco.length + " persone · " + D.pros.filter(function (p) { return p.vetting === "Attivo"; }).length + " attive",
+    (puo("accessi") ? '<button class="btn sm" data-new="pros">+ Nuova persona</button>' : ""));
+  h += barraViste(null, "", "pool",
+    fcerca("pool", "Cerca per nome, competenza, città…") +
+    fsel("pool", "cat", [["", "Ogni categoria di servizio"]].concat(elencoCat(D.serv, "cat"))) +
+    (f.cat || f.cerca ? '<button class="lnk mini" data-f-reset="pool">azzera</button>' : ""));
+  if (!elenco.length) return h + '<div class="card">' + vuoto("Nessun professionista con questi filtri.", '<button class="lnk" data-f-reset="pool">Azzera i filtri</button>') + "</div>";
   h += '<div class="grid g3">';
-  D.pros.forEach(function (p) {
+  elenco.forEach(function (p) {
     var srv = D.serv.filter(function (s) { return s.pro_id === p.id; });
     var ore = D.ore.filter(function (o) { return o.pro_id === p.id; });
     var com = D.com.filter(function (k) { return k.owner_id === p.id || k.pm_id === p.id || k.pr_id === p.id || righeOf(k.id).some(function (r) { var s = by(D.serv, r.serv_id); return r.assegnato_id === p.id || (s && s.pro_id === p.id); }); });
@@ -1838,21 +1953,35 @@ function tblServ(list) {
   return h + "</tbody></table>";
 }
 function vServizi() {
-  var list = isPro() || persp === "me" ? D.serv.filter(function (s) { return s.pro_id === me.pro_id; }) : D.serv;
+  var f = FS.serv;
+  if (!f.chi) f.chi = "io";
+  var base = f.chi === "io" ? D.serv.filter(function (s) { return s.pro_id === me.pro_id; })
+    : f.chi === "altri" ? D.serv.filter(function (s) { return s.pro_id !== me.pro_id; }) : D.serv;
+  var list = base.filter(function (s) {
+    if (f.cat && (s.cat || "Altro") !== f.cat) return false;
+    if (f.cerca && (s.nome + " " + (s.cat || "") + " " + (s.descrizione || "")).toLowerCase().indexOf(f.cerca.toLowerCase()) === -1) return false;
+    return true;
+  });
+  var h = head("I miei servizi", list.length + " servizi · " + (f.chi === "io" ? "il tuo listino" : "quello che sanno fare gli altri"),
+    '<button class="btn sm" data-new="serv">+ Nuovo servizio</button>');
+  h += barraViste(null, "", "servizi",
+    fcerca("serv", "Cerca un servizio…") +
+    fsel("serv", "chi", [["io", "I miei"], ["altri", "Dei colleghi"], ["tutti", "Tutti"]]) +
+    fsel("serv", "cat", [["", "Ogni categoria"]].concat(elencoCat(D.serv, "cat"))) +
+    (f.cat || f.cerca ? '<button class="lnk mini" data-f-reset="serv">azzera</button>' : ""));
+  if (!list.length) return h + '<div class="card">' + vuoto(f.chi === "io" ? "Nessun servizio a listino: è così che i colleghi ti trovano." : "Nessun servizio con questi filtri.", '<button class="lnk" data-new="serv">Crea il primo</button>') + "</div>";
   var cats = {};
   list.forEach(function (s) { cats[s.cat || "Altro"] = (cats[s.cat || "Altro"] || []).concat([s]); });
-  var h = head(isPro() ? "I miei servizi" : "Servizi & listino", list.length + " servizi", '<button class="btn sm" data-new="serv">+ Nuovo servizio</button>');
   Object.keys(cats).sort().forEach(function (c) {
     h += '<div class="card"><div class="cardhead"><h2>' + esc(c) + '</h2><span class="faint">' + cats[c].length + " servizi</span></div>" + tblServ(cats[c]) + "</div>";
   });
-  if (!list.length) h += '<div class="card">' + vuoto("Nessun servizio a listino.", '<button class="lnk" data-new="serv">Crea il primo</button>') + "</div>";
   return h;
 }
 
 /* ---------------- fatturazione ---------------- */
 function tblMov(list) {
   if (!list.length) return vuoto("Nessun movimento.", '<button class="lnk" data-new="mov">Registrane uno</button>');
-  var h = '<table><thead><tr><th>Numero</th><th>Tipo</th><th>Cliente</th><th>Commessa</th><th>Emessa da</th><th>Data</th><th>Scadenza</th><th class="num">Importo</th><th>Stato</th><th></th></tr></thead><tbody>';
+  var h = '<table><thead><tr><th>Numero</th><th>Tipo</th><th>Cliente</th><th>Preventivo</th><th>Emessa da</th><th>Data</th><th>Scadenza</th><th class="num">Importo</th><th>Stato</th><th></th></tr></thead><tbody>';
   list.slice().sort(function (a, b) { return a.data < b.data ? 1 : -1; }).forEach(function (m) {
     var late = m.stato !== "Pagata" && m.scadenza && m.scadenza < today();
     h += "<tr><td>" + esc(m.numero || "—") + '</td><td><span class="badge ' + (m.tipo === "Attiva" ? "b-green" : "b-amber") + '">' + esc(m.tipo) + "</span></td><td>" + esc(m.cliente_id ? nameOf(D.cli, m.cliente_id) : "—") + "</td><td>" + esc(m.commessa_id ? nameOf(D.com, m.commessa_id, "titolo") : "—") + "</td><td>" + esc(nameOf(D.pros, m.pro_id)) + "</td><td>" + dt(m.data) + "</td><td>" + (late ? '<span class="badge b-red">' + dt(m.scadenza) + "</span>" : dt(m.scadenza)) + '</td><td class="num">' + eur(m.importo) + '</td><td><span class="badge ' + (MOV_COL[m.stato] || "") + '">' + esc(m.stato) + '</span></td><td class="num">' + (m.stato !== "Pagata" ? '<button class="lnk" data-pay="' + m.id + '">Incassata</button> ' : "") + '<button class="lnk" data-edit="mov:' + m.id + '">Modifica</button></td></tr>';
@@ -1865,13 +1994,29 @@ function vFatture() {
   var inc = sum(att.filter(function (m) { return m.stato === "Pagata"; }), function (m) { return m.importo; });
   var da = sum(att.filter(function (m) { return m.stato !== "Pagata"; }), function (m) { return m.importo; });
   var scad = att.filter(function (m) { return m.stato !== "Pagata" && m.scadenza && m.scadenza < today(); });
-  var h = head(isPro() ? "Le mie fatture" : "Fatturazione", "Movimenti attivi e passivi", '<button class="btn sm" data-new="mov">+ Nuovo movimento</button>');
+  var f = FS.mov;
+  var filtrate = list.filter(function (m) {
+    if (f.tipo && m.tipo !== f.tipo) return false;
+    if (f.stato && m.stato !== f.stato) return false;
+    if (f.anno && (m.data || "").slice(0, 4) !== f.anno) return false;
+    if (f.cerca && ((m.numero || "") + " " + nameOf(D.cli, m.cliente_id) + " " + nameOf(D.com, m.commessa_id, "titolo")).toLowerCase().indexOf(f.cerca.toLowerCase()) === -1) return false;
+    return true;
+  });
+  var anni = {}; list.forEach(function (m) { if (m.data) anni[m.data.slice(0, 4)] = 1; });
+  var h = head("Le mie fatture", "Movimenti attivi e passivi: sono tuoi e li vedi solo tu", '<button class="btn sm" data-new="mov">+ Nuovo movimento</button>');
+  h += barraViste(null, "", "fatture",
+    fcerca("mov", "Cerca numero, cliente, preventivo…") +
+    fsel("mov", "tipo", [["", "Entrate e uscite"], ["Attiva", "Solo entrate"], ["Passiva", "Solo uscite"]]) +
+    fsel("mov", "stato", [["", "Ogni stato"], ["Da emettere", "Da emettere"], ["Emessa", "Emessa"], ["Pagata", "Pagata"], ["Insoluta", "Insoluta"]]) +
+    fsel("mov", "anno", [["", "Ogni anno"]].concat(Object.keys(anni).sort().reverse().map(function (a) { return [a, a]; }))) +
+    (f.tipo || f.stato || f.anno || f.cerca ? '<button class="lnk mini" data-f-reset="mov">azzera</button>' : ""));
   h += '<div class="grid g4">' +
     kpi(eur(inc), "Incassato", att.filter(function (m) { return m.stato === "Pagata"; }).length + " fatture pagate") +
     kpi(eur(da), "Da incassare", att.filter(function (m) { return m.stato !== "Pagata"; }).length + " aperte") +
     kpi(eur(sum(scad, function (m) { return m.importo; })), "Scaduto", scad.length + " oltre la scadenza") +
     kpi(eur(sum(pas, function (m) { return m.importo; })), "Uscite", pas.length + " movimenti passivi") + "</div>";
-  h += '<div class="card"><div class="cardhead"><h2>Movimenti</h2></div>' + tblMov(list) + "</div>";
+  h += '<div class="card"><div class="cardhead"><h2>Movimenti</h2><span class="faint">' + filtrate.length + " di " + list.length + "</span></div>" +
+    (filtrate.length ? tblMov(filtrate) : vuoto("Nessun movimento con questi filtri.", '<button class="lnk" data-f-reset="mov">Azzera i filtri</button>')) + "</div>";
   return h;
 }
 
@@ -1891,14 +2036,14 @@ function vReport() {
   h += '<div class="grid g4">' +
     kpi(conv + " %", "Conversione", vinte.length + " vinte / " + perse.length + " perse") +
     kpi(totOre ? Math.round(fattOre / totOre * 100) + " %" : "—", "Ore fatturabili", num(fattOre, 1) + " h su " + num(totOre, 1) + " h") +
-    kpi(eur(com.length ? sum(com, function (k) { return calc(k).tot; }) / com.length : 0), "Valore medio commessa", com.length + " commesse") +
-    kpi(eur(sum(com.filter(function (k) { return k.stato !== "Persa"; }), function (k) { return calc(k).margine; })), "Margine complessivo", "su commesse non perse") + "</div>";
+    kpi(eur(com.length ? sum(com, function (k) { return calc(k).tot; }) / com.length : 0), "Valore medio", com.length + " preventivi") +
+    kpi(eur(sum(com.filter(function (k) { return k.stato !== "Persa"; }), function (k) { return calc(k).margine; })), "Margine complessivo", "sui lavori non persi") + "</div>";
   h += '<div class="grid g2" style="margin-top:16px"><div class="card"><div class="cardhead"><h2>Fatturato per mese</h2></div>';
   h += mk.length ? '<div class="bars">' + mk.map(function (kk) { return bar(kk, mesi[kk], Math.max.apply(null, mk.map(function (x) { return mesi[x]; })), eur(mesi[kk])); }).join("") + "</div>" : vuoto("—");
   h += '</div><div class="card"><div class="cardhead"><h2>Top clienti</h2></div>';
   h += topCli.length ? '<div class="bars">' + topCli.map(function (c) { return bar(c.nome, valoreCliente(c.id), valoreCliente(topCli[0].id) || 1, eur(valoreCliente(c.id))); }).join("") + "</div>" : vuoto("—");
   h += "</div></div>";
-  h += '<div class="card"><div class="cardhead"><h2>Marginalità per commessa</h2></div><table><thead><tr><th>Commessa</th><th>Cliente</th><th class="num">Totale</th><th class="num">Costo</th><th class="num">Margine</th><th class="num">%</th><th class="num">Ore</th><th class="num">€/h reale</th></tr></thead><tbody>';
+  h += '<div class="card"><div class="cardhead"><h2>Marginalità per lavoro</h2></div><table><thead><tr><th>Preventivo</th><th>Cliente</th><th class="num">Totale</th><th class="num">Costo</th><th class="num">Margine</th><th class="num">%</th><th class="num">Ore</th><th class="num">€/h reale</th></tr></thead><tbody>';
   com.slice().sort(function (a, b) { return calc(b).margine - calc(a).margine; }).forEach(function (k) {
     var c = calc(k), o = oreTot(k.id);
     h += '<tr><td><button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button></td><td>" + esc(nameOf(D.cli, k.cliente_id)) + '</td><td class="num">' + eur(c.tot) + '</td><td class="num">' + eur(c.cost) + '</td><td class="num">' + eur(c.margine) + '</td><td class="num">' + (c.tot ? Math.round(c.margine / c.tot * 100) : 0) + '%</td><td class="num">' + num(o, 1) + '</td><td class="num">' + (o ? eur(c.tot / o) : "—") + "</td></tr>";
@@ -1971,11 +2116,50 @@ function vSettings() {
 }
 /* ---------------- progetti ---------------- */
 function vProgetti() {
-  var list = progVisibili();
-  if (search) list = list.filter(function (p) { return (p.nome + " " + nameOf(D.com, p.commessa_id, "titolo")).toLowerCase().indexOf(search.toLowerCase()) > -1; });
+  var vista = tab || "schede";
+  var f = FS.prog;
+  var list = progVisibili().filter(function (p) {
+    var k = by(D.com, p.commessa_id);
+    if (f.stato && (p.stato || "") !== f.stato) return false;
+    if (f.cli && (!k || k.cliente_id !== f.cli)) return false;
+    if (f.pro && p.pro_id !== (f.pro === "io" ? me.pro_id : f.pro)) return false;
+    if (f.cerca && (p.nome + " " + nameOf(D.com, p.commessa_id, "titolo")).toLowerCase().indexOf(f.cerca.toLowerCase()) === -1) return false;
+    return true;
+  });
   var h = head("Progetti", list.length + " progetti in cui sei dentro",
-    '<input id="search" placeholder="Cerca…" style="width:170px" value="' + esc(search) + '"><button class="btn sm" data-new="prog">+ Nuovo progetto</button>');
-  if (!list.length) return h + '<div class="card">' + vuoto("Nessun progetto: si creano dentro un preventivo.", '<button class="lnk" data-go="commesse">Vai ai preventivi</button>') + "</div>";
+    '<button class="btn sm" data-new="prog">+ Nuovo progetto</button>');
+  h += barraViste([["schede", "Schede"], ["lista", "Lista"], ["bacheca", "Bacheca"]], vista, "progetti",
+    fcerca("prog", "Cerca un progetto…") +
+    fsel("prog", "stato", [["", "Ogni stato"], ["Da iniziare", "Da iniziare"], ["In corso", "In corso"], ["In attesa cliente", "In attesa cliente"], ["Completato", "Completato"]]) +
+    fsel("prog", "cli", [["", "Ogni cliente"]].concat(fcli().map(function (c) { return [c.id, c.nome]; }))) +
+    fsel("prog", "pro", [["", "Chiunque"], ["io", "Seguiti da me"]].concat(D.pros.map(function (p) { return [p.id, p.nome]; }))) +
+    (f.stato || f.cli || f.pro || f.cerca ? '<button class="lnk mini" data-f-reset="prog">azzera</button>' : ""));
+  if (!list.length) return h + '<div class="card">' + vuoto("Nessun progetto con questi filtri: i progetti nascono dentro un preventivo.", '<button class="lnk" data-go="commesse">Vai ai preventivi</button>') + "</div>";
+
+  if (vista === "lista") {
+    return h + '<div class="card tlist">' + list.map(function (p) {
+      var k = by(D.com, p.commessa_id), lv = lavOf(p.id);
+      var tk = taskOfProg(p.id).filter(function (t) { return t.stato !== "Fatto"; });
+      return rigaEl("progetto|" + p.id + "|lavorazioni", p.nome,
+        esc(k ? nameOf(D.cli, k.cliente_id) : "—") + " · " + lv.length + " lavorazioni · " + tk.length + " attività aperte",
+        '<span class="faint">' + num(avanzProg(p), 0) + "%</span>" +
+        '<span class="badge ' + (p.stato === "Completato" ? "b-green" : p.stato === "In corso" ? "b-terra" : "") + '">' + esc(p.stato || "—") + "</span>" +
+        (p.fine ? '<span class="badge ' + (p.fine < today() && p.stato !== "Completato" ? "b-red" : "") + '">' + dshort(p.fine) + "</span>" : "") +
+        (p.pro_id ? avatar(p.pro_id, 22) : ""));
+    }).join("") + "</div>";
+  }
+  if (vista === "bacheca") {
+    var stati = ["Da iniziare", "In corso", "In attesa cliente", "Completato"];
+    return h + '<div class="card"><div class="kanban">' + stati.map(function (s) {
+      var items = list.filter(function (p) { return (p.stato || "Da iniziare") === s; });
+      return '<div class="kcol"><h3>' + s + "<span>" + items.length + "</span></h3>" + items.map(function (p) {
+        var k = by(D.com, p.commessa_id);
+        return '<div class="tsk" data-open-prog="' + p.id + '"><div class="tsktop">' + esc(p.nome) + (p.pro_id ? avatar(p.pro_id, 22) : "") + "</div>" +
+          '<div class="meta"><span class="faint">' + esc(k ? nameOf(D.cli, k.cliente_id) : "") + "</span><span>" + (p.fine ? dshort(p.fine) : "") + "</span></div>" +
+          prog(avanzProg(p)) + "</div>";
+      }).join("") + "</div>";
+    }).join("") + "</div></div>";
+  }
   h += '<div class="grid g3">';
   list.forEach(function (p) {
     var k = by(D.com, p.commessa_id), lv = lavOf(p.id);
@@ -2063,13 +2247,19 @@ function vProgetto() {
   }
   h += "</div></div><div>";
 
-  h += '<div class="card"><h3 style="margin-bottom:12px">Scheda</h3><table><tbody>' +
+  h += '<div class="card"><h3 style="margin-bottom:14px">Scheda</h3>' +
+    qcampo("prog", p.id, "stato", "Stato", qsel("prog", p.id, "stato", sel(["Da iniziare", "In corso", "In attesa cliente", "Completato"], p.stato || "Da iniziare"))) +
+    qcampo("prog", p.id, "pro_id", "Chi lo segue", qsel("prog", p.id, "pro_id", opt(D.pros, p.pro_id))) +
+    '<div class="row2">' +
+      qcampo("prog", p.id, "inizio", "Inizio", qinput("prog", p.id, "inizio", "date", p.inizio)) +
+      qcampo("prog", p.id, "fine", "Consegna", qinput("prog", p.id, "fine", "date", p.fine)) +
+    "</div>" +
+    qcampo("prog", p.id, "visibile_cliente", "Il cliente lo vede", qsel("prog", p.id, "visibile_cliente", sel(["si", "no"], p.visibile_cliente === false ? "no" : "si"))) +
+    "<table><tbody>" +
     row2("Cliente", esc(k ? nameOf(D.cli, k.cliente_id) : "—")) +
     row2("Preventivo", k ? '<button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button>" : "—") +
-    row2("Chi lo segue", p.pro_id ? avatar(p.pro_id, 24) + " " + esc(nameOf(D.pros, p.pro_id)) : "—") +
-    row2("Periodo", dt(p.inizio) + " → " + dt(p.fine)) +
-    row2("Condivisione", '<button class="lnk" data-visprog="' + p.id + '">' + (p.visibile_cliente ? '<span class="badge b-blue">il cliente lo vede</span>' : '<span class="badge">interno</span>') + "</button>") +
-    row2("Descrizione", esc(p.descrizione || "—")) + "</tbody></table></div>";
+    row2("Descrizione", esc(p.descrizione || "—")) + "</tbody></table>" +
+    '<div style="margin-top:12px"><button class="btn sm ghost" data-edit="prog:' + p.id + '">Apri il modulo completo</button></div></div>';
 
   h += '<div class="card"><h3 style="margin-bottom:12px">Chi ci lavora</h3>';
   var perPro = {};
@@ -2100,11 +2290,44 @@ function vLavorazione() {
     kpi(String(lt.filter(function (x) { return x.stato !== "Fatto"; }).length), "Attività aperte", lt.length + " in totale") +
     kpi(esc(l.stato), "Stato", l.pro_id ? nameOf(D.pros, l.pro_id) : "—") +
     kpi(dt(l.fine), "Consegna", l.inizio ? "dal " + dt(l.inizio) : "") + "</div>";
-  h += '<div class="grid g32" style="margin-top:18px"><div class="card"><div class="cardhead"><h2>Attività</h2><button class="btn sm ghost" data-new="task" data-ctx-lav="' + l.id + '">Nuova in dettaglio</button></div>' +
-    '<div class="checklist">' + lt.filter(function (x) { return !x.padre_id; }).map(function (x) { return riga(x, lt); }).join("") +
-    '<form class="qadd" data-qadd-lav="' + l.id + '"><button class="ck" type="button" disabled></button><input name="titolo" placeholder="Aggiungi un attività e premi invio" autocomplete="off"></form></div></div>';
-  h += '<div class="card"><div class="cardhead"><h2>Ore</h2><button class="btn sm ghost" data-new="ore" data-ctx-lav="' + l.id + '">+ Registra</button></div>' + tblOre(lo) + "</div></div>";
-  return h;
+  var t = tab || "attivita";
+  h += schede([["attivita", "Attività", lt.filter(function (x) { return x.stato !== "Fatto"; }).length], ["ore", "Ore", num(ore, 1)], ["materiali", "Materiali", D.mat.filter(function (m) { return m.lavorazione_id === l.id; }).length]], t, "lavorazione", l.id);
+
+  h += '<div class="grid g32"><div>';
+  if (t === "attivita") {
+    h += '<div class="card"><div class="cardhead"><h2>Attività</h2><button class="btn sm ghost" data-new="task" data-ctx-lav="' + l.id + '">Nuova in dettaglio</button></div>' +
+      '<div class="tlist">' + lt.filter(function (x) { return !x.padre_id; }).map(rigaTaskLista).join("") + "</div>" +
+      '<form class="qadd" data-qadd-lav="' + l.id + '"><button class="ck" type="button" disabled></button><input name="titolo" placeholder="Aggiungi un\'attività a questa lavorazione" autocomplete="off"></form></div>';
+  }
+  if (t === "ore") {
+    h += '<div class="card"><div class="cardhead"><h2>Ore su questa lavorazione</h2><button class="btn sm ghost" data-new="ore" data-ctx-lav="' + l.id + '">+ Registra</button></div>' +
+      '<p class="faint" style="margin-bottom:12px">Vedi solo le tue: le ore di chi altro ci lavora restano sue.</p>' + tblOre(lo) + "</div>";
+  }
+  if (t === "materiali") {
+    var ml = D.mat.filter(function (m) { return m.lavorazione_id === l.id; });
+    h += '<div class="card"><div class="cardhead"><h2>Materiali</h2><button class="btn sm ghost" data-new="mat" data-ctx-lav="' + l.id + '">+ Aggiungi</button></div>' +
+      (ml.length ? "<table><tbody>" + ml.map(function (m) {
+        return "<tr><td>" + (m.path ? '<button class="lnk" data-file="' + m.id + '">' + esc(m.nome) + "</button>" : esc(m.nome)) + '</td><td class="faint">' + dshort(m.created_at) + "</td></tr>";
+      }).join("") + "</tbody></table>" : vuoto("Nessun materiale su questa lavorazione.")) + "</div>";
+  }
+  h += "</div><div>";
+
+  h += '<div class="card"><h3 style="margin-bottom:14px">Scheda</h3>' +
+    qcampo("lav", l.id, "stato", "Stato", qsel("lav", l.id, "stato", sel(["Da iniziare", "In corso", "In attesa", "Completata"], l.stato || "Da iniziare"))) +
+    qcampo("lav", l.id, "pro_id", "Chi la esegue", qsel("lav", l.id, "pro_id", opt(D.pros, l.pro_id))) +
+    '<div class="row2">' +
+      qcampo("lav", l.id, "inizio", "Inizio", qinput("lav", l.id, "inizio", "date", l.inizio)) +
+      qcampo("lav", l.id, "fine", "Consegna", qinput("lav", l.id, "fine", "date", l.fine)) +
+    "</div>" +
+    qcampo("lav", l.id, "ore_stimate", "Ore stimate", qinput("lav", l.id, "ore_stimate", "number", l.ore_stimate, ' step="0.5"')) +
+    "<table><tbody>" +
+    row2("Progetto", p ? '<button class="lnk" data-open-prog="' + p.id + '">' + esc(p.nome) + "</button>" : "—") +
+    row2("Preventivo", k ? '<button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button>" : "—") +
+    row2("Consumo", l.ore_stimate ? perc + "% delle ore stimate" : "—") +
+    row2("Descrizione", esc(l.descrizione || "—")) + "</tbody></table>" +
+    '<div style="margin-top:12px"><button class="btn sm ghost" data-edit="lav:' + l.id + '">Apri il modulo completo</button></div></div>';
+  if (l.ore_stimate) h += '<div class="card"><h3 style="margin-bottom:10px">Stima contro consuntivo</h3>' + prog(perc) + '<p class="faint" style="margin-top:8px">' + num(ore, 1) + " h fatte su " + num(l.ore_stimate, 0) + " stimate" + (ore > l.ore_stimate ? " · sforato di " + num(ore - l.ore_stimate, 1) + " h" : " · restano " + num(l.ore_stimate - ore, 1) + " h") + "</p></div>";
+  return h + "</div></div>";
 }
 
 /* ---------------- calendario ---------------- */
@@ -2299,13 +2522,13 @@ var PROS_PRO = function () { return D.pros; };
 var PROS_PR = function () { return D.pros; };
 
 var FORMS = {
-  com: { t: "Commessa", tb: "com", f: function (r) {
+  com: { t: "Preventivo", tb: "com", f: function (r) {
     return fld("titolo", "Titolo", "text", r.titolo, true) +
       '<div class="row2">' + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) + selField("stato", "Stato", sel(STATI, r.stato || "Bozza")) + "</div>" +
       '<div class="row2">' + selField("owner_id", "Owner (chi ha il rapporto)", opt(D.pros, r.owner_id || me.pro_id)) + selField("pm_id", "Regia / PM", opt(D.pros, r.pm_id)) + "</div>" +
       selField("pr_id", "Chi ha portato il cliente", opt(D.pros, r.pr_id)) +
 
-      '<div class="row2">' + selField("tipo_prezzo", "Tipo di commessa", sel(["Fisso", "Tempo e materiali", "Retainer"], r.tipo_prezzo || "Fisso")) + fld("budget_importo", "Budget concordato (€)", "number", r.budget_importo) + "</div>" +
+      '<div class="row2">' + selField("tipo_prezzo", "Come si paga il lavoro", sel(["Fisso", "Tempo e materiali", "Retainer"], r.tipo_prezzo || "Fisso")) + fld("budget_importo", "Budget concordato (€)", "number", r.budget_importo) + "</div>" +
       '<div class="row2">' + fld("retainer_mensile", "Retainer mensile (€, se ricorrente)", "number", r.retainer_mensile) + fld("budget_ore", "Budget ore", "number", r.budget_ore) + "</div>" +
       '<div class="row2">' + fld("inizio", "Inizio", "date", r.inizio) + fld("scadenza", "Consegna prevista", "date", r.scadenza) + "</div>" +
       '<div class="row2">' + fld("sconto", "Sconto commerciale (%)", "number", r.sconto || 0) + fld("iva", "IVA (%)", "number", r.iva == null ? 22 : r.iva) + "</div>" +
@@ -2315,13 +2538,13 @@ var FORMS = {
   }},
   vari: { t: "Variante", tb: "vari", f: function (r) {
     return fld("nome", "Cosa cambia", "text", r.nome, true) +
-      selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) +
+      selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) +
       '<div class="row2">' + fld("importo", "Importo aggiuntivo (€)", "number", r.importo) + fld("ore", "Ore aggiuntive", "number", r.ore) + "</div>" +
       '<div class="row2">' + selField("stato", "Stato", sel(["Proposta", "Approvata", "Rifiutata"], r.stato || "Proposta")) + fld("data", "Data", "date", r.data || today()) + "</div>" +
       fld("descrizione", "Descrizione", "textarea", r.descrizione);
   }},
   ev: { t: "Nota di diario", tb: "ev", f: function (r) {
-    return selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) +
+    return selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) +
       fld("testo", "Cosa è successo", "textarea", r.testo);
   }},
   cli: { t: "Cliente", tb: "cli", f: function (r) {
@@ -2398,7 +2621,7 @@ var FORMS = {
   }},
   mov: { t: "Movimento", tb: "mov", f: function (r) {
     return '<div class="row2">' + selField("tipo", "Tipo", sel(["Attiva", "Passiva"], r.tipo || "Attiva")) + selField("stato", "Stato", sel(["Da emettere", "Emessa", "Pagata", "Insoluta"], r.stato || "Da emettere")) + "</div>" +
-      '<div class="row2">' + selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) + "</div>" +
+      '<div class="row2">' + selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) + "</div>" +
       selField("pro_id", "Emessa da", opt(D.pros, r.pro_id || me.pro_id)) +
       '<div class="row2">' + fld("numero", "Numero", "text", r.numero) + fld("importo", "Importo (€)", "number", r.importo) + "</div>" +
       '<div class="row2">' + fld("data", "Data", "date", r.data || today()) + fld("scadenza", "Scadenza", "date", r.scadenza) + "</div>" +
@@ -2411,7 +2634,7 @@ var FORMS = {
   }},
   fasi: { t: "Fase", tb: "fasi", f: function (r) {
     return fld("nome", "Nome della fase", "text", r.nome, true) +
-      selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) +
+      selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) +
       '<div class="row2">' + selField("stato", "Stato", sel(FASE_STATI, r.stato || "Da iniziare")) + fld("avanzamento", "Avanzamento (%)", "number", r.avanzamento == null ? 0 : r.avanzamento) + "</div>" +
       '<div class="row2">' + fld("inizio", "Inizio", "date", r.inizio) + fld("fine", "Fine", "date", r.fine) + "</div>" +
       '<div class="row2">' + fld("ordine", "Ordine", "number", r.ordine == null ? 1 : r.ordine) + selField("visibile_cliente", "Visibile al cliente", sel(["si", "no"], r.visibile_cliente === false ? "no" : "si")) + "</div>" +
@@ -2421,19 +2644,19 @@ var FORMS = {
   mat: { t: "Materiale", tb: "mat", f: function (r) {
     return fld("nome", "Nome", "text", r.nome, true) + fld("url", "Link (Drive, Dropbox, WeTransfer…)", "text", r.url) +
       '<div class="row2">' + selField("tipo", "Tipo", sel(TIPI_MAT, r.tipo || "Materiale")) + selField("fase_id", "Fase", opt(fasiOf(r.commessa_id || current), r.fase_id)) + "</div>" +
-      '<div class="row2">' + selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) + selField("visibile_cliente", "Visibile al cliente", sel(["no", "si"], r.visibile_cliente ? "si" : "no")) + "</div>" +
+      '<div class="row2">' + selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) + selField("visibile_cliente", "Visibile al cliente", sel(["no", "si"], r.visibile_cliente ? "si" : "no")) + "</div>" +
       selField("progetto_id", "Progetto", '<option value="">— nessuno —</option>' + progOf(r.commessa_id || current).map(function (p) { return '<option value="' + p.id + '"' + (r.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + "</option>"; }).join("")) +
       fld("note", "Note per chi lavora", "textarea", r.note);
   }},
   pag: { t: "Scadenza di pagamento", tb: "pag", f: function (r) {
     return fld("nome", "Voce (es. Acconto 40%)", "text", r.nome, true) +
-      selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) +
+      selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) +
       '<div class="row2">' + fld("importo", "Importo (€)", "number", r.importo) + fld("scadenza", "Scadenza", "date", r.scadenza) + "</div>" +
       '<div class="row2">' + selField("stato", "Stato", sel(["Da incassare", "Incassato"], r.stato || "Da incassare")) + fld("pagato_il", "Incassato il", "date", r.pagato_il) + "</div>" +
       fld("note", "Note", "text", r.note);
   }},
   appr: { t: "Richiesta di approvazione", tb: "appr", f: function (r) {
-    return selField("commessa_id", "Commessa", opt(D.com, r.commessa_id, "titolo")) +
+    return selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) +
       '<div class="row2">' + selField("tipo", "Cosa deve approvare", sel(["Preventivo", "Bozza", "Consegna", "Fase"], r.tipo || "Bozza")) + selField("fase_id", "Fase", opt(fasiOf(r.commessa_id || current), r.fase_id)) + "</div>" +
       '<div class="row2">' + fld("richiesta_il", "Richiesta il", "date", r.richiesta_il || today()) + selField("stato", "Stato", sel(["In attesa", "Approvata", "Modifiche richieste"], r.stato || "In attesa")) + "</div>" +
       fld("note", "Messaggio per il cliente", "textarea", r.note);
@@ -2578,7 +2801,7 @@ async function saveForm(f) {
 }
 async function duplica(id) {
   var k = by(D.com, id); if (!k) return;
-  var titolo = prompt("Titolo della nuova commessa", k.titolo + " (copia)");
+  var titolo = prompt("Titolo del nuovo preventivo", k.titolo + " (copia)");
   if (!titolo) return;
   var nuovo = { titolo: titolo, cliente_id: k.cliente_id, owner_id: me.pro_id || k.owner_id, pm_id: k.pm_id, stato: "Bozza", tipo_prezzo: k.tipo_prezzo, budget_ore: k.budget_ore, probabilita: 50, note: k.note, inizio: today() };
   var r = await sb.from("commesse").insert(nuovo).select().single();
@@ -2600,9 +2823,9 @@ async function duplica(id) {
       ricorrente: x.ricorrente, periodo: x.periodo, cicli: x.cicli, ore_stimate: x.ore_stimate, assegnato_id: x.assegnato_id, stato: "Da iniziare" };
   });
   if (rg.length) await sb.from("righe").insert(rg);
-  await logEv(nid, "Commessa creata dal modello “" + k.titolo + "”");
+  await logEv(nid, "Preventivo creato dal modello “" + k.titolo + "”");
   await reload(["com", "fasi", "righe", "ev"]);
-  toast("Commessa duplicata"); go("commessa", nid, "fasi");
+  toast("Preventivo duplicato"); go("commessa", nid, "fasi");
 }
 async function delRow(entity, id) {
   var F = FORMS[entity], tbk = F ? F.tb : entity, key = (F && F.key) || "id";
@@ -2655,14 +2878,14 @@ function vRiga() {
 function openPalette() {
   if (isCliente()) return;
   PAL = [];
-  D.com.forEach(function (k) { PAL.push({ t: k.titolo, s: "Commessa · " + nameOf(D.cli, k.cliente_id), i: "◧", go: ["commessa", k.id, "note"] }); });
+  D.com.forEach(function (k) { PAL.push({ t: k.titolo, s: "Preventivo · " + nameOf(D.cli, k.cliente_id), i: "◧", go: ["commessa", k.id, "note"] }); });
   D.cli.forEach(function (c) { PAL.push({ t: c.nome, s: "Cliente", i: "◐", go: ["cliente", c.id] }); });
   D.pros.forEach(function (p) { PAL.push({ t: p.nome, s: "Professionista" + (p.ruolo ? " · " + p.ruolo : ""), i: "◍", go: ["pro", p.id] }); });
   navFor().forEach(function (n) { if (n.k) PAL.push({ t: n.t, s: "Vai a", i: "→", go: [n.k] }); });
-  [["com", "Nuova commessa"], ["ore", "Registra ore"], ["task", "Nuova attività"], ["cli", "Nuovo cliente"], ["mov", "Nuovo movimento"]].forEach(function (a) {
+  [["com", "Nuovo preventivo"], ["ore", "Registra ore"], ["task", "Nuova attività"], ["cli", "Nuovo cliente"], ["mov", "Nuovo movimento"]].forEach(function (a) {
     PAL.push({ t: a[1], s: "Azione", i: "+", act: a[0] });
   });
-  modal('<div class="box pal"><input id="palq" placeholder="Cerca una commessa, un cliente, una persona… o un\'azione" autocomplete="off" spellcheck="false"><div id="palres"></div><div class="palfoot"><span><kbd>↑</kbd><kbd>↓</kbd> muoviti</span><span><kbd>↵</kbd> apri</span><span><kbd>esc</kbd> chiudi</span></div></div>');
+  modal('<div class="box pal"><input id="palq" placeholder="Cerca un preventivo, un cliente, una persona… o un\'azione" autocomplete="off" spellcheck="false"><div id="palres"></div><div class="palfoot"><span><kbd>↑</kbd><kbd>↓</kbd> muoviti</span><span><kbd>↵</kbd> apri</span><span><kbd>esc</kbd> chiudi</span></div></div>');
   renderPal("");
   var q = el("#palq"); if (q) q.focus();
 }
@@ -2703,7 +2926,7 @@ function render() {
   var V = { attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
-  var s = el("#search") || el("#tcerca");
+  var s = el("#search") || el("#tcerca") || el("#fcerca");
   if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
   countUp();
 }
@@ -2891,6 +3114,12 @@ document.addEventListener("click", async function (e) {
     var rtt = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: tk9.commessa_id, progetto_id: tk9.progetto_id, lavorazione_id: tk9.lavorazione_id, task_id: tk9.id, iniziato: new Date().toISOString() });
     if (rtt.error) { toast(rtt.error.message, true); return; }
     await reload(["tmr"]); toast("Timer avviato"); render(); return;
+  }
+  if (d.fReset) {
+    var vuoto0 = { com: { stato: "", salute: "", cli: "", cerca: "" }, prog: { stato: "", cli: "", pro: "", cerca: "" }, cli: { stato: "", owner: "", cerca: "" },
+      mov: { tipo: "", stato: "", anno: "", cerca: "" }, serv: { cat: "", chi: "io", cerca: "" }, forn: { cat: "", cerca: "" }, pool: { cat: "", cerca: "" } };
+    if (vuoto0[d.fReset]) FS[d.fReset] = vuoto0[d.fReset];
+    render(); return;
   }
   if (d.tfScadute) { TF.scadute = !TF.scadute; render(); return; }
   if (d.tfReset) { TF = { stato: "aperte", pro: "", prog: "", prio: "", cerca: "", scadute: false }; render(); return; }
@@ -3224,6 +3453,7 @@ document.addEventListener("input", function (e) {
     }, 800);
   }
   if (e.target.id === "tcerca") { TF.cerca = e.target.value; render(); }
+  if (e.target.id === "fcerca" && e.target.dataset.f) { var fq = e.target.dataset.f.split("|"); if (FS[fq[0]]) { FS[fq[0]].cerca = e.target.value; render(); } }
   if (e.target.id === "noteprog") {
     var valp = e.target.value, pid = current, stp = el("#notestat");
     if (stp) stp.textContent = "scrivo…";
@@ -3249,19 +3479,29 @@ document.addEventListener("input", function (e) {
 });
 
 document.addEventListener("change", async function (e) {
-  /* modifica rapida di un campo dell'attività: si salva subito */
-  if (e.target.dataset && e.target.dataset.tset) {
-    var pz = e.target.dataset.tset.split("|"), campo = pz[0], tid = pz[1];
+  /* campo a modifica immediata su qualsiasi scheda: tabella|campo|id */
+  if (e.target.dataset && e.target.dataset.qset) {
+    var pz = e.target.dataset.qset.split("|"), tbk = pz[0], campo = pz[1], rid = pz[2];
     var val = e.target.value;
-    if (val === "") val = null;
+    var BOOLQ = ["visibile_cliente", "fatturabile", "opzionale", "ricorrente"];
+    if (BOOLQ.indexOf(campo) > -1) val = (val === "si");
+    else if (val === "") val = null;
     else if (e.target.type === "number") val = +val;
     var patch = {}; patch[campo] = val;
-    if (campo === "progetto_id" && val) { var pg9 = by(D.prog, val); if (pg9) patch.commessa_id = pg9.commessa_id; }
-    if (campo === "lavorazione_id" && val) { var lv9 = by(D.lav, val); if (lv9) { patch.progetto_id = lv9.progetto_id; patch.commessa_id = lv9.commessa_id; } }
-    if (campo === "stato" && val === "Fatto") patch.completata_il = new Date().toISOString();
-    var rq = await sb.from("task").update(patch).eq("id", tid);
+    if (tbk === "task") {
+      if (campo === "progetto_id" && val) { var pg9 = by(D.prog, val); if (pg9) patch.commessa_id = pg9.commessa_id; }
+      if (campo === "lavorazione_id" && val) { var lv9 = by(D.lav, val); if (lv9) { patch.progetto_id = lv9.progetto_id; patch.commessa_id = lv9.commessa_id; } }
+      if (campo === "stato" && val === "Fatto") patch.completata_il = new Date().toISOString();
+    }
+    var rq = await sb.from(TB[tbk]).update(patch).eq("id", rid);
     if (rq.error) { toast(rq.error.message, true); return; }
-    await reload(["task"]); toast("Salvato"); render(); return;
+    await reload([tbk]); toast("Salvato"); render(); return;
+  }
+  /* filtri di sezione: ambito|campo */
+  if (e.target.dataset && e.target.dataset.f) {
+    var fz = e.target.dataset.f.split("|");
+    if (FS[fz[0]]) { FS[fz[0]][fz[1]] = e.target.value; render(); }
+    return;
   }
   if (e.target.dataset && e.target.dataset.tf) { TF[e.target.dataset.tf] = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tg) { TGROUP = e.target.value; render(); return; }
