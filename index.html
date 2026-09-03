@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 
+
 <html lang="it">
 <head>
 <meta charset="UTF-8" />
@@ -77,10 +78,8 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
   box-shadow:var(--sh-3);animation:pop .5s var(--ease);
 }
 @keyframes pop{from{opacity:0;transform:translateY(14px) scale(.985)}to{opacity:1;transform:none}}
-.authcard .brandmark{display:flex;align-items:center;gap:13px}
-.authcard .brandmark .mark{height:46px}
-.authcard .brandmark b{font-size:1.5rem;font-weight:600;color:var(--ink);line-height:1.05;letter-spacing:-.03em}
-.authcard .brandmark small{display:block;font-size:.58rem;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--terra-deep);margin-top:5px}
+.authcard .brandmark{display:flex;align-items:center}
+.authcard .brandmark .mark{height:54px}
 .authcard h2{font-size:1.32rem;font-weight:600;letter-spacing:-.02em;color:var(--ink);margin:30px 0 5px}
 .authcard p{color:var(--soft);font-size:.92rem;margin-bottom:22px}
 .err{color:var(--red);font-size:.86rem;margin:10px 0}
@@ -97,10 +96,8 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
   background:var(--glass);-webkit-backdrop-filter:saturate(180%) blur(22px);backdrop-filter:saturate(180%) blur(22px);
   border-right:1px solid var(--line);
 }
-.brand{display:flex;align-items:center;gap:10px;padding:2px 10px 0}
-.brand .mark{height:30px}
-.brand b{font-size:1.1rem;font-weight:600;color:var(--ink);line-height:1.05;letter-spacing:-.03em}
-.brand small{display:block;font-size:.53rem;font-weight:600;letter-spacing:.24em;text-transform:uppercase;color:var(--terra-deep);margin-top:4px}
+.brand{display:flex;align-items:center;padding:2px 12px 4px}
+.brand .mark{height:34px}
 .navgroup{font-size:.66rem;font-weight:600;letter-spacing:.06em;color:var(--faint);padding:20px 12px 7px}
 .nav{margin-top:18px;display:flex;flex-direction:column;gap:1px}
 .nav button{
@@ -429,10 +426,8 @@ table.rich td{padding:12px}
 /* ---------- splash ---------- */
 #splash{position:fixed;inset:0;background:var(--paper);z-index:99;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:22px}
 #splash.hide{display:none!important}
-.splashmark{display:flex;flex-direction:column;align-items:center;gap:15px;text-align:center;animation:rise .6s var(--ease) both}
-.splashmark .mark{height:62px}
-.splashmark b{font-size:1.35rem;font-weight:600;color:var(--ink);letter-spacing:-.03em;line-height:1.1}
-.splashmark small{display:block;font-size:.58rem;font-weight:600;letter-spacing:.26em;text-transform:uppercase;color:var(--terra-deep);margin-top:6px}
+.splashmark{display:flex;align-items:center;justify-content:center;animation:rise .6s var(--ease) both}
+.splashmark .mark{height:70px}
 .shimmer{width:150px;height:4px;border-radius:99px;background:var(--sand);overflow:hidden;position:relative}
 .shimmer:after{content:"";position:absolute;top:0;bottom:0;width:45%;border-radius:99px;background:var(--terra);animation:sh 1.2s var(--ease) infinite}
 @keyframes sh{0%{left:-45%}100%{left:100%}}
@@ -555,8 +550,8 @@ table.ts td:first-child{min-width:210px}
 .scrim{display:none}
 @media(max-width:900px){
   .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;position:sticky;top:0;z-index:40;padding:10px 12px;background:var(--glass);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid var(--line)}
-  .tbrand{display:flex;align-items:center;gap:8px;font-size:1rem;font-weight:600;color:var(--ink);letter-spacing:-.03em}
-  .tbrand .mark{height:22px}
+  .tbrand{display:flex;align-items:center}
+  .tbrand .mark{height:26px}
   .ham{width:40px;height:40px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--ink);font-size:1rem;cursor:pointer;display:flex;align-items:center;justify-content:center}
   .app{display:block}
   .side{position:fixed;top:0;left:0;bottom:0;width:272px;transform:translateX(-101%);transition:transform .32s var(--ease);z-index:60;padding-top:20px}
@@ -611,13 +606,13 @@ table.ts td:first-child{min-width:210px}
 <body>
 
 <div id="splash">
-  <div class="splashmark"><i class="mark"></i><span><b>Giraffa Studio</b><small>CRM</small></span></div>
+  <div class="splashmark"><i class="mark"></i></div>
   <div class="shimmer"></div>
 </div>
 
 <div id="setup" class="center hide">
   <div class="authcard">
-    <div class="brandmark"><i class="mark"></i><span><b>Giraffa Studio</b><small>CRM</small></span></div>
+    <div class="brandmark"><i class="mark"></i></div>
     <h2>Configurazione mancante</h2>
     <p>Manca la configurazione Supabase in <code>config.js</code>.</p>
   </div>
@@ -625,7 +620,7 @@ table.ts td:first-child{min-width:210px}
 
 <div id="login" class="center hide">
   <form class="authcard" id="loginform">
-    <div class="brandmark"><i class="mark"></i><span><b>Giraffa Studio</b><small>CRM</small></span></div>
+    <div class="brandmark"><i class="mark"></i></div>
     <h2>Accedi</h2>
     <p>Area riservata ai membri dello studio.</p>
     <div class="field"><label>Email</label><input type="email" name="email" required autocomplete="username" /></div>
@@ -638,12 +633,12 @@ table.ts td:first-child{min-width:210px}
 <div id="app" class="app hide">
   <div class="topbar">
     <button class="ham" id="ham" aria-label="Menu">☰</button>
-    <div class="tbrand"><i class="mark"></i>Giraffa Studio</div>
+    <div class="tbrand"><i class="mark"></i></div>
     <button class="ham" data-pal="1" aria-label="Cerca">⌕</button>
   </div>
   <div class="scrim" id="scrim"></div>
   <aside class="side">
-    <div class="brand"><i class="mark"></i><span><b>Giraffa Studio</b><small>CRM</small></span></div>
+    <div class="brand"><i class="mark"></i></div>
     <nav class="nav" id="nav"></nav>
     <div class="sidefoot">
       <b id="mename">—</b>
