@@ -11,6 +11,7 @@
 
 
 
+
 <html lang="it">
 <head>
 <meta charset="UTF-8" />
@@ -282,6 +283,53 @@ textarea{min-height:86px;resize:vertical;line-height:1.5}
 .fgroup h3{font-size:.82rem;text-transform:uppercase;letter-spacing:.07em;color:var(--soft);margin-bottom:14px;font-weight:550}
 .fgroup h3 .badge{text-transform:none;letter-spacing:0;margin-left:8px}
 .fgroup.priv{background:var(--cream);border:1px solid var(--line);border-radius:14px;padding:18px 18px 6px;margin-top:20px}
+
+/* barra delle viste (attività) */
+.vbar{margin-bottom:18px}
+.vtabs{display:flex;gap:3px;background:var(--cream);padding:4px;border-radius:13px;width:fit-content;max-width:100%;flex-wrap:wrap}
+.vtabs button{background:none;border:0;font:inherit;font-size:.855rem;color:var(--soft);padding:7px 15px;border-radius:9px;cursor:pointer;transition:all .16s var(--ease)}
+.vtabs button:hover{color:var(--ink)}
+.vtabs button.on{background:var(--card);color:var(--ink);font-weight:550;box-shadow:var(--sh-1)}
+.vfilt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px}
+.vfilt select,.vfilt input{width:auto;min-width:120px;padding:7px 11px;font-size:.84rem}
+.vfilt input#tcerca{min-width:220px}
+.vsep{width:1px;height:22px;background:var(--line)}
+.chipbtn{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:7px 14px;font:inherit;font-size:.82rem;color:var(--soft);cursor:pointer}
+.chipbtn.on{background:var(--terra-soft);border-color:transparent;color:var(--terra-deep);font-weight:550}
+
+/* elenco attività */
+.tgroup{margin-bottom:14px}
+.tlist{display:flex;flex-direction:column}
+.trow{display:flex;align-items:center;gap:12px;padding:11px 4px;border-bottom:1px solid var(--line-soft)}
+.trow:last-child{border-bottom:0}
+.trow.fatta .ttit{text-decoration:line-through;color:var(--faint)}
+.trow .ttit{flex:1;text-align:left;background:none;border:0;font:inherit;font-size:.92rem;color:var(--ink);cursor:pointer;padding:0}
+.trow .ttit:hover{color:var(--terra-deep)}
+.tmeta{display:flex;align-items:center;gap:8px;flex-shrink:0}
+.av.vuoto{background:var(--sand);color:var(--faint)}
+
+/* le mie cose */
+.grid.g4-1{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+@media(max-width:1100px){.grid.g4-1{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:640px){.grid.g4-1{grid-template-columns:1fr}}
+.mcol.over{outline:2px dashed var(--terra);outline-offset:3px}
+
+/* timeline */
+.tlhead{position:relative;height:22px;margin:0 0 8px 190px;font-size:.72rem;color:var(--soft)}
+.tlhead span{position:absolute;transform:translateX(-50%)}
+.tlrow{display:flex;align-items:center;gap:12px;padding:5px 0}
+.tlname{width:178px;flex-shrink:0;font-size:.86rem;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tlname:hover{color:var(--terra-deep)}
+.tltrack{position:relative;flex:1;height:26px;background:var(--cream);border-radius:8px}
+.tlbar{position:absolute;top:3px;height:20px;border:0;border-radius:6px;background:var(--terra);color:#fff;font:inherit;font-size:.7rem;padding:0 8px;cursor:pointer;overflow:hidden;white-space:nowrap}
+.tlbar.ok{background:var(--green)}
+.tlbar.bad{background:var(--red)}
+
+/* campi a modifica immediata */
+.qfield{margin-bottom:12px}
+.qfield label{display:block;font-size:.76rem;color:var(--soft);margin-bottom:5px}
+.qfield select,.qfield input{width:100%}
+h1.done{text-decoration:line-through;color:var(--faint)}
 .fpage .actionbar .danger{order:-1}
 @media(max-width:640px){.fpage .actionbar{bottom:0;border-radius:14px}.fpage .card{padding:20px}}
 
@@ -749,6 +797,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=20"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>
