@@ -9,17 +9,18 @@
 
 
 
+
 (function () {
 "use strict";
 
 var cfg = window.GS_CONFIG || {};
 var sb = null, user = null;
-var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "" };
-var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [] };
+var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
+var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [] };
 var CAL = 0;
 var PLINK = null;
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
@@ -73,8 +74,10 @@ window.addEventListener("hashchange", function () {
   if (!leggiHash()) return;
   FDIRTY = false; search = ""; window.scrollTo(0, 0); render();
 });
-function isAdmin() { return me.ruolo === "admin"; }
-function isPR() { return me.ruolo === "pr"; }
+/* Non esiste più una regia che vede tutto: solo responsabilità sulle aree comuni */
+function puo(p) { return !!(me.perm && me.perm[p]); }
+function isAdmin() { return puo("accessi"); }
+function isPR() { return false; }
 function isPro() { return me.ruolo === "professionista"; }
 function isCliente() { return me.ruolo === "cliente"; }
 function vediCosti() { return !isPR(); }
@@ -366,8 +369,10 @@ function fmov() { return D.mov.filter(function (m) { return mio(m, "mov"); }); }
 async function loadAll() {
   me.email = user.email;
   var m = await sb.from("membri").select("*").eq("user_id", user.id).maybeSingle();
-  if (m.data) { me.ruolo = m.data.ruolo || "professionista"; me.pro_id = m.data.pro_id; me.cliente_id = m.data.cliente_id; }
-  else { me.ruolo = ""; }
+  if (m.data) {
+    me.ruolo = m.data.ruolo || "professionista"; me.pro_id = m.data.pro_id; me.cliente_id = m.data.cliente_id;
+    me.perm = { spazi: !!m.data.perm_spazi, studio: !!m.data.perm_studio, accessi: !!m.data.perm_accessi };
+  } else { me.ruolo = ""; me.perm = { spazi: false, studio: false, accessi: false }; }
   if (isCliente()) { var p = await sb.rpc("portale"); PORT = p.data || []; me.nome = "Area cliente"; return; }
   var keys = Object.keys(TB);
   var res = await Promise.all(keys.map(function (k) { return sb.from(TB[k]).select("*"); }));
@@ -376,6 +381,7 @@ async function loadAll() {
   if (s.data) SET = s.data;
   var st = await sb.rpc("studio_stats");
   STATS = st.data || null;
+  mieiDatiPersonali();
   var pr = me.pro_id ? by(D.pros, me.pro_id) : null;
   me.nome = pr ? pr.nome : user.email;
 }
@@ -383,7 +389,16 @@ async function reload(keys) {
   await Promise.all(keys.map(async function (k) {
     var r = await sb.from(TB[k]).select("*"); if (!r.error) D[k] = r.data || [];
   }));
+  if (keys.indexOf("pros") > -1 || keys.indexOf("priv") > -1) mieiDatiPersonali();
 }
+/* La tariffa oraria e le note personali vivono in una tabella che vede solo il proprietario.
+   Le riattacco alla mia scheda così il resto dell'app le trova dove se le aspetta. */
+function mieiDatiPersonali() {
+  var pr = me.pro_id ? by(D.pros, me.pro_id) : null;
+  var pv = (D.priv || []).filter(function (x) { return x.pro_id === me.pro_id; })[0];
+  if (pr) { pr.tariffa_oraria = pv ? pv.tariffa_oraria : null; pr.note = pv ? pv.note : null; }
+}
+
 /* ---------------- nav ---------------- */
 function navFor() {
   return [
@@ -393,6 +408,7 @@ function navFor() {
     { k: "progetti", t: "Progetti", c: function () { return progVisibili().filter(function (p) { return p.stato !== "Completato"; }).length; } },
     { k: "task", t: "Attività", c: function () { return ftask().filter(function (t) { return t.stato !== "Fatto"; }).length; } },
     { k: "ore", t: "Ore & timesheet" },
+    { k: "carico", t: "Il mio carico" },
     { g: "Profilo" },
     { k: "profilo", t: "Il mio profilo" },
     { k: "servizi", t: "I miei servizi", c: function () { return D.serv.filter(function (x) { return x.pro_id === me.pro_id; }).length; } },
@@ -407,11 +423,17 @@ function navFor() {
     { k: "pool", t: "Professionisti", c: function () { return D.pros.length; } },
     { k: "fornitori", t: "Fornitori", c: function () { return D.forn.length; } },
     { k: "spazi", t: "Coworking & spazi" },
-    { k: "carico", t: "Carico di lavoro" },
     { k: "impostazioni", t: "Impostazioni" }
   ];
 }
-var RUOLO_ET = { admin: "Regia", professionista: "Professionista", pr: "PR", cliente: "Cliente" };
+var RUOLO_ET = { admin: "Professionista", professionista: "Professionista", pr: "Professionista", cliente: "Cliente" };
+function permEt() {
+  var l = [];
+  if (puo("spazi")) l.push("spazi");
+  if (puo("studio")) l.push("studio");
+  if (puo("accessi")) l.push("accessi");
+  return l.length ? "cura: " + l.join(" · ") : "";
+}
 function buildNav() {
   var vv = view;
   if (vv === "nuovo" || vv === "mod") { var fs = FSEZ[current]; vv = fs ? fs[0] : "dash"; }
@@ -433,7 +455,8 @@ function buildNav() {
     Array.prototype.forEach.call(document.querySelectorAll("#timerlbl"), function (n) { n.textContent = durata(t2.iniziato); });
   }, 15000);
   el("#mename").textContent = me.nome;
-  el("#meemail").innerHTML = esc(me.email) + '<br><span class="badge" style="margin-top:6px">' + esc(RUOLO_ET[me.ruolo] || "—") + "</span>";
+  el("#meemail").innerHTML = esc(me.email) + '<br><span class="badge" style="margin-top:6px">' + esc(RUOLO_ET[me.ruolo] || "—") + "</span>" +
+    (permEt() ? '<br><span class="faint" style="font-size:.72rem">' + esc(permEt()) + "</span>" : "");
 }
 function perspSel() {
   if (isCliente()) return "";
@@ -503,7 +526,7 @@ function focusItems(com, tk) {
 }
 function can(kid) { return !!by(D.com, kid); }
 function bannerProfilo() {
-  if (me.ruolo !== "professionista" && me.ruolo !== "admin") return "";
+  if (isCliente() || !me.ruolo) return "";
   var p = me.pro_id ? by(D.pros, me.pro_id) : null;
   if (!p) return "";
   var mancano = [];
@@ -573,15 +596,6 @@ function vDash() {
       '<div class="legend"><span><i class="s1"></i>Incassato ' + eur(inc) + "</span><span><i class=\"s2\"></i>Da incassare " + eur(da - sc) + "</span>" + (sc ? '<span><i class="s3"></i>Scaduto ' + eur(sc) + "</span>" : "") + "</div></div>";
   }
   h += "</div></div>";
-  if (STATS) {
-    h += '<div class="card" style="margin-top:16px;background:var(--cream)"><div class="cardhead"><h2>Lo studio in numeri</h2><span class="badge">anonimo</span></div>' +
-      '<div class="grid g4">' +
-      kpi(String(STATS.membri || 0), "Professionisti attivi") +
-      kpi(String(STATS.commesse_attive || 0), "Commesse attive nello studio") +
-      kpi(String(STATS.progetti_condivisi || 0), "Progetti condivisi") +
-      kpi(num(STATS.ore_mese, 1) + " h", "Ore registrate questo mese") +
-      '</div><p class="faint" style="margin-top:12px">Numeri complessivi dello studio, senza nomi e senza importi per persona: nessuno vede quanto fatturano gli altri.</p></div>';
-  }
   return h;
 }
 
@@ -1054,14 +1068,17 @@ function vProfilo() {
 
 /* ---------------- bacheca dello studio ---------------- */
 function vStudio() {
-  var h = head("Bacheca dello studio", "Quello che condividiamo: persone, fornitori, spazi");
+  var h = head("Bacheca dello studio", "Quello che condividiamo davvero: persone, competenze, fornitori, spazi");
   var attivi = D.pros.filter(function (x) { return x.vetting !== "Sospeso"; });
   var conServizi = D.pros.filter(function (x) { return D.serv.some(function (s) { return s.pro_id === x.id; }); });
   h += '<div class="grid g4">' +
     kpi(String(attivi.length), "Professionisti", conServizi.length + " con servizi a listino") +
     kpi(String(D.serv.filter(function (s) { return s.attivo !== false; }).length), "Servizi disponibili", "da usare nei tuoi preventivi") +
     kpi(String(D.forn.length), "Fornitori segnalati", "consigliati dai colleghi") +
-    kpi(String(D.spazi.length), "Spazi", "coworking e sale") + "</div>";
+    kpi(String((STATS && STATS.categorie) || 0), "Categorie coperte", "competenze diverse nello studio") + "</div>";
+  h += '<div class="card" style="background:var(--cream);margin-top:16px"><div class="cardhead"><h2>Cosa resta tuo</h2><span class="badge">applicato dal database</span></div>' +
+    '<p class="faint">Clienti, preventivi, fatture, ore e tariffe sono dentro il tuo spazio: nessun collega li vede, nemmeno chi cura le aree comuni. ' +
+    'Un collega entra solo nel singolo lavoro in cui lo coinvolgi, e vede quel lavoro, non il resto del tuo studio. Qui sopra c\'è tutto ciò che invece è di tutti.</p></div>';
 
   h += '<div class="grid g32" style="margin-top:18px"><div>';
   h += '<div class="card"><div class="cardhead"><h2>Cosa sanno fare i colleghi</h2><button class="btn sm ghost" data-go="servizi">Vai al listino</button></div>';
@@ -1118,28 +1135,70 @@ function vFornitori() {
 }
 
 /* ---------------- carico di lavoro ---------------- */
+/* Il mio carico: solo il mio lavoro. Le ore e le stime degli altri non passano di qui. */
 function vCarico() {
-  var h = head("Carico di lavoro", "Ore stimate e attività aperte di chi lavora sulle tue commesse. Le ore registrate restano private: vedi solo le tue.");
-  var rows = D.pros.filter(function (p) { return p.tipo !== "PR"; }).map(function (p) {
-    var stim = 0;
-    D.righe.forEach(function (r) {
-      var s = by(D.serv, r.serv_id); var pid = r.assegnato_id || (s && s.pro_id);
-      var k = by(D.com, r.commessa_id);
-      if (pid === p.id && k && ["Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1) stim += (+r.ore_stimate || 0);
-    });
-    var fatte = p.id === me.pro_id ? sum(D.ore.filter(function (o) { return o.pro_id === p.id; }), function (o) { return o.ore; }) : 0;
-    var tk = D.task.filter(function (t) { return t.assegnato_id === p.id && t.stato !== "Fatto"; });
-    var scadute = tk.filter(function (t) { return t.scadenza && t.scadenza < today(); });
-    return { p: p, stim: stim, fatte: fatte, tk: tk.length, sc: scadute.length, residuo: Math.max(0, stim - fatte) };
-  }).filter(function (r) { return r.stim || r.fatte || r.tk; }).sort(function (a, b) { return b.residuo - a.residuo; });
-  var mx = Math.max.apply(null, rows.map(function (r) { return r.residuo; }).concat([1]));
-  h += '<div class="card"><div class="cardhead"><h2>Ore residue stimate sui lavori attivi</h2></div><div class="bars">' +
-    rows.map(function (r) { return bar(r.p.nome, r.residuo, mx, num(r.residuo, 0) + " h"); }).join("") + "</div></div>";
-  h += '<div class="card"><table><thead><tr><th>Professionista</th><th>Ruolo</th><th class="num">Ore stimate</th><th class="num">Tue ore</th><th class="num">Residuo</th><th class="num">Attività aperte</th><th class="num">Scadute</th></tr></thead><tbody>' +
-    rows.map(function (r) {
-      return '<tr><td><button class="lnk" data-open-pro="' + r.p.id + '">' + esc(r.p.nome) + "</button></td><td>" + esc(r.p.ruolo || "—") + '</td><td class="num">' + num(r.stim, 0) + '</td><td class="num">' + num(r.fatte, 1) + '</td><td class="num">' + num(r.residuo, 0) + '</td><td class="num">' + r.tk + '</td><td class="num">' + (r.sc ? '<span class="badge b-red">' + r.sc + "</span>" : "0") + "</td></tr>";
-    }).join("") + "</tbody></table></div>";
-  return h;
+  var mieLav = D.lav.filter(function (l) { return l.pro_id === me.pro_id && l.stato !== "Completata"; });
+  var mieRighe = D.righe.filter(function (r) {
+    var s = by(D.serv, r.serv_id);
+    var k = by(D.com, r.commessa_id);
+    return (r.assegnato_id === me.pro_id || (s && s.pro_id === me.pro_id)) && k && ["Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1;
+  });
+  var stim = sum(mieLav, function (l) { return l.ore_stimate; });
+  var stimRighe = sum(mieRighe, function (r) { return r.ore_stimate; });
+  var fatte = sum(D.ore.filter(function (o) { return o.pro_id === me.pro_id; }), function (o) { return o.ore; });
+  var fatteAttive = sum(D.ore.filter(function (o) { return o.pro_id === me.pro_id && mieLav.some(function (l) { return l.id === o.lavorazione_id; }); }), function (o) { return o.ore; });
+  var residuo = Math.max(0, stim - fatteAttive);
+  var mieTask = D.task.filter(function (t) { return t.assegnato_id === me.pro_id && t.stato !== "Fatto"; });
+  var scadute = mieTask.filter(function (t) { return t.scadenza && t.scadenza < today(); });
+  var settimana = iso(new Date(Date.now() + 7 * 86400000));
+
+  var h = head("Il mio carico", "Quanto lavoro hai davanti nelle prossime settimane. Solo il tuo: il carico degli altri è loro.");
+  h += '<div class="grid g4">' +
+    kpi(num(residuo, 0) + " h", "Ore ancora da fare", num(fatteAttive, 1) + " h fatte su " + num(stim, 0) + " h stimate") +
+    kpi(String(mieLav.length), "Lavorazioni aperte", mieRighe.length + " voci di preventivo assegnate a te") +
+    kpi(String(mieTask.length), "Attività aperte", scadute.length ? scadute.length + " già scadute" : "nessuna scaduta") +
+    kpi(num(stimRighe, 0) + " h", "Stimate a preventivo", "sui lavori approvati e in corso") + "</div>";
+
+  var perProgetto = {};
+  mieLav.forEach(function (l) {
+    var fatteL = sum(oreOfLav(l.id), function (o) { return o.ore; });
+    var res = Math.max(0, (+l.ore_stimate || 0) - fatteL);
+    var pn = l.progetto_id ? nameOf(D.prog, l.progetto_id) : "Senza progetto";
+    perProgetto[pn] = (perProgetto[pn] || 0) + res;
+  });
+  var pk = Object.keys(perProgetto).filter(function (x) { return perProgetto[x] > 0; }).sort(function (a, b) { return perProgetto[b] - perProgetto[a]; });
+  var mx = Math.max.apply(null, pk.map(function (x) { return perProgetto[x]; }).concat([1]));
+
+  h += '<div class="grid g32" style="margin-top:18px"><div>';
+  h += '<div class="card"><div class="cardhead"><h2>Ore residue per progetto</h2></div>' +
+    (pk.length ? '<div class="bars">' + pk.map(function (x) { return bar(x, perProgetto[x], mx, num(perProgetto[x], 0) + " h"); }).join("") + "</div>"
+      : vuoto("Nessuna stima aperta: aggiungi le ore stimate alle tue lavorazioni per vedere il carico.")) + "</div>";
+
+  h += '<div class="card"><div class="cardhead"><h2>Le tue lavorazioni aperte</h2><button class="btn sm ghost" data-go="progetti">Vai ai progetti</button></div>';
+  h += mieLav.length ? '<table><thead><tr><th>Lavorazione</th><th>Progetto</th><th>Consegna</th><th class="num">Stimate</th><th class="num">Fatte</th><th class="num">Residuo</th></tr></thead><tbody>' +
+    mieLav.slice().sort(function (a, b) { return (a.fine || "9999") < (b.fine || "9999") ? -1 : 1; }).map(function (l) {
+      var f = sum(oreOfLav(l.id), function (o) { return o.ore; });
+      var res = Math.max(0, (+l.ore_stimate || 0) - f);
+      var late = l.fine && l.fine < today();
+      return '<tr><td><button class="lnk" data-open-lav="' + l.id + '">' + esc(l.nome) + "</button></td><td>" + esc(l.progetto_id ? nameOf(D.prog, l.progetto_id) : "—") + "</td><td>" +
+        (late ? '<span class="badge b-red">' + dt(l.fine) + "</span>" : dt(l.fine)) + '</td><td class="num">' + num(l.ore_stimate, 0) + '</td><td class="num">' + num(f, 1) + '</td><td class="num">' + num(res, 0) + "</td></tr>";
+    }).join("") + "</tbody></table>" : vuoto("Nessuna lavorazione aperta assegnata a te.");
+  h += "</div></div><div>";
+
+  h += '<div class="card"><div class="cardhead"><h2>Nei prossimi 7 giorni</h2></div>';
+  var prossime = mieTask.filter(function (t) { return t.scadenza && t.scadenza <= settimana; }).sort(function (a, b) { return a.scadenza < b.scadenza ? -1 : 1; });
+  h += prossime.length ? '<div class="checklist">' + prossime.map(function (t) {
+    return '<div class="cri"><b>' + esc(t.titolo) + '</b><span class="faint"> · ' + (t.scadenza < today() ? "scaduta il " : "entro ") + dt(t.scadenza) + (t.commessa_id ? " · " + esc(nameOf(D.com, t.commessa_id, "titolo")) : "") + "</span></div>";
+  }).join("") + "</div>" : vuoto("Niente in scadenza questa settimana.");
+  h += "</div>";
+
+  h += '<div class="card"><h3 style="margin-bottom:12px">In sintesi</h3><table><tbody>' +
+    row2("Ore registrate in tutto", num(fatte, 1) + " h") +
+    row2("Media a settimana (12 sett.)", num(sum(settimane(D.ore.filter(function (o) { return o.pro_id === me.pro_id; }), 12), function (x) { return x; }) / 12, 1) + " h") +
+    row2("Attività scadute", scadute.length ? '<span class="badge b-red">' + scadute.length + "</span>" : "0") +
+    row2("Lavorazioni senza stima", mieLav.filter(function (l) { return !l.ore_stimate; }).length) +
+    '</tbody></table><p class="faint" style="margin-top:10px">Serve a te per tararti: nessun altro vede questi numeri.</p></div>';
+  return h + "</div></div>";
 }
 
 /* ---------------- clienti ---------------- */
@@ -1264,9 +1323,9 @@ function vPool() {
     var ore = D.ore.filter(function (o) { return o.pro_id === p.id; });
     var com = D.com.filter(function (k) { return k.owner_id === p.id || k.pm_id === p.id || k.pr_id === p.id || righeOf(k.id).some(function (r) { var s = by(D.serv, r.serv_id); return r.assegnato_id === p.id || (s && s.pro_id === p.id); }); });
     h += '<div class="card"><div class="cardhead"><h2>' + esc(p.nome) + '</h2><span class="badge ' + (p.vetting === "Attivo" ? "b-green" : "b-amber") + '">' + esc(p.vetting || "—") + "</span></div>" +
-      '<p class="muted" style="font-size:.88rem">' + esc(p.ruolo || "—") + ' <span class="badge">' + esc(p.tipo || "Professionista") + "</span></p>" +
+      '<p class="muted" style="font-size:.88rem">' + esc(p.ruolo || "—") + "</p>" +
       '<div style="margin:10px 0">' + (p.competenze || "").split(",").filter(Boolean).map(function (x) { return '<span class="chip">' + esc(x.trim()) + "</span>"; }).join("") + "</div>" +
-      "<table><tbody>" + (p.id === me.pro_id ? row2("Tariffa oraria", p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "—") : "") + row2("Servizi a listino", srv.length) + row2("Commesse", com.length) + (p.id === me.pro_id ? row2("Ore registrate", num(sum(ore, function (o) { return o.ore; }), 1) + " h") : "") + "</tbody></table>" +
+      "<table><tbody>" + (p.id === me.pro_id ? row2("Tariffa oraria", p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "—") : "") + row2("Servizi a listino", srv.length) + row2("Lavori insieme a te", com.length) + (p.id === me.pro_id ? row2("Ore registrate", num(sum(ore, function (o) { return o.ore; }), 1) + " h") : "") + "</tbody></table>" +
       '<div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm ghost" data-open-pro="' + p.id + '">Scheda</button><button class="btn sm ghost" data-edit="pros:' + p.id + '">Modifica</button></div></div>';
   });
   return h + "</div>";
@@ -1280,12 +1339,12 @@ function vPro() {
   var com = D.com.filter(function (k) { return k.owner_id === p.id || k.pm_id === p.id || k.pr_id === p.id || righeOf(k.id).some(function (r) { var s = by(D.serv, r.serv_id); return r.assegnato_id === p.id || (s && s.pro_id === p.id); }); });
   var h = (view === "profilo" ? crumbs([["Profilo"], ["Il mio profilo"]]) : crumbs([["Studio"], ["Professionisti", "pool"], [p.nome]]));
   h += '<div class="top"><h1>' + esc(p.nome) + '<span class="sub">' + esc(p.ruolo || "—") + '</span></h1><div class="tools">' + (view === "profilo" ? "" : '<button class="btn sm ghost" data-go="pool">← Professionisti</button>') + '<button class="btn sm ghost" data-edit="pros:' + p.id + '">Modifica</button></div></div>';
-  h += '<div class="grid g4">' +
-    kpi(String(com.length), "Commesse", D.cli.filter(function (c) { return c.owner_id === p.id; }).length + " clienti propri") +
-    kpi(num(sum(ore, function (o) { return o.ore; }), 1) + " h", "Ore registrate", ore.length + " registrazioni") +
-    kpi(p.id === me.pro_id ? eur(sum(ore, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); })) : "—", p.id === me.pro_id ? "Valore delle tue ore" : "Ore private", p.id === me.pro_id ? (p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "tariffa non impostata") : "le vede solo chi le registra") +
-    kpi(String(tk.filter(function (t) { return t.stato !== "Fatto"; }).length), "Attività aperte", tk.length + " totali") + "</div>";
   var mio = p.id === me.pro_id;
+  h += '<div class="grid g4">' +
+    kpi(String(com.length), mio ? "I tuoi lavori" : "Lavori insieme a te", mio ? D.cli.filter(function (c) { return c.owner_id === p.id; }).length + " clienti tuoi" : "solo quelli che condividete") +
+    kpi(mio ? num(sum(ore, function (o) { return o.ore; }), 1) + " h" : "—", mio ? "Ore registrate" : "Ore", mio ? ore.length + " registrazioni" : "private, le vede solo chi le registra") +
+    kpi(mio ? eur(sum(ore, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); })) : String(srv.length), mio ? "Valore delle tue ore" : "Servizi a listino", mio ? (p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "tariffa non impostata") : "puoi metterli nei tuoi preventivi") +
+    kpi(String(tk.filter(function (t) { return t.stato !== "Fatto"; }).length), "Attività aperte", "sui lavori che vedi") + "</div>";
   var t = tab || "scheda";
   var TP = [["scheda", "Scheda"], ["servizi", "Servizi", srv.length], ["lavori", "Lavori", com.length]];
   if (mio) TP.push(["ore", "Ore", num(sum(ore, function (o) { return o.ore; }), 1)]);
@@ -1293,7 +1352,6 @@ function vPro() {
 
   if (t === "scheda") {
     h += '<div class="grid g2"><div class="card"><h3 style="margin-bottom:12px">Anagrafica</h3><table><tbody>' +
-      row2("Tipo", esc(p.tipo || "Professionista")) +
       row2("Vetting", '<span class="badge ' + (p.vetting === "Attivo" ? "b-green" : "b-amber") + '">' + esc(p.vetting || "—") + "</span>") +
       row2("Email", esc(p.email || "—")) + row2("Telefono", esc(p.telefono || "—")) + row2("Città", esc(p.citta || "—")) +
       row2("P. IVA", esc(p.piva || "—")) + (mio ? row2("Tariffa oraria", p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "—") : "") +
@@ -1385,12 +1443,6 @@ function vFatture() {
     kpi(eur(da), "Da incassare", att.filter(function (m) { return m.stato !== "Pagata"; }).length + " aperte") +
     kpi(eur(sum(scad, function (m) { return m.importo; })), "Scaduto", scad.length + " oltre la scadenza") +
     kpi(eur(sum(pas, function (m) { return m.importo; })), "Uscite", pas.length + " movimenti passivi") + "</div>";
-  if (isAdmin()) {
-    var perPro = {};
-    att.forEach(function (m) { if (m.pro_id) perPro[m.pro_id] = (perPro[m.pro_id] || 0) + (+m.importo || 0); });
-    var pk = Object.keys(perPro).sort(function (a, b) { return perPro[b] - perPro[a]; });
-    if (pk.length) h += '<div class="card"><div class="cardhead"><h2>Chi fattura quanto</h2></div><div class="bars">' + pk.map(function (id) { return bar(nameOf(D.pros, id), perPro[id], perPro[pk[0]], eur(perPro[id])); }).join("") + "</div></div>";
-  }
   h += '<div class="card"><div class="cardhead"><h2>Movimenti</h2></div>' + tblMov(list) + "</div>";
   return h;
 }
@@ -1429,7 +1481,7 @@ function vReport() {
 /* ---------------- spazi ---------------- */
 function vSpazi() {
   var h = head("Spazi & ufficio", "La base fisica dello studio — in arrivo",
-    isAdmin() ? '<button class="btn sm ghost" data-new="spazi">+ Nuovo spazio</button><button class="btn sm" data-new="pren">+ Prenotazione</button>' : '<button class="btn sm" data-new="pren">+ Prenotazione</button>');
+    (puo("spazi") ? '<button class="btn sm ghost" data-new="spazi">+ Nuovo spazio</button>' : "") + '<button class="btn sm" data-new="pren">+ Prenotazione</button>');
   h += '<div class="card" style="background:var(--cream);border-style:dashed"><h2>Coming soon</h2><p class="muted" style="margin-top:6px">La sede è in fase di ricerca. Qui gestirai postazioni, sale riunioni e spazi partner: la struttura è già pronta, si accende quando apriamo.</p></div>';
   h += '<div class="grid g3" style="margin-top:16px">';
   D.spazi.forEach(function (s) {
@@ -1438,7 +1490,7 @@ function vSpazi() {
       row2("Indirizzo", esc(s.indirizzo || "—")) + row2("Tipo", esc(s.tipo || "—")) + row2("Opzioni", esc(s.opzioni || "—")) +
       row2("Costo", esc(s.costo || "—")) + row2("Capienza", s.capienza ? s.capienza + " postazioni" : "—") +
       row2("Partner", esc(s.partner || "interno")) + row2("Prenotazioni", pr.length) +
-      "</tbody></table>" + (isAdmin() ? '<div style="margin-top:12px"><button class="btn sm ghost" data-edit="spazi:' + s.id + '">Modifica</button></div>' : "") + "</div>";
+      "</tbody></table>" + (puo("spazi") ? '<div style="margin-top:12px"><button class="btn sm ghost" data-edit="spazi:' + s.id + '">Modifica</button></div>' : "") + "</div>";
   });
   h += "</div>";
   var pren = D.pren.slice().sort(function (a, b) { return a.data < b.data ? 1 : -1; });
@@ -1456,27 +1508,36 @@ function vSettings() {
   h += '<div class="card"><h2>Il mio profilo</h2>';
   if (me.pro_id) {
     var p = by(D.pros, me.pro_id);
-    h += '<table style="margin-top:12px"><tbody>' + row2("Nome", esc(p ? p.nome : "—")) + row2("Ruolo", esc(p ? p.ruolo : "—")) + row2("Permessi", esc(RUOLO_ET[me.ruolo] || "—")) + row2("Tariffa oraria", p && p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "—") + "</tbody></table>" +
-      '<div style="margin-top:12px"><button class="btn sm ghost" data-edit="pros:' + me.pro_id + '">Modifica anagrafica</button></div>';
-  } else h += '<p class="muted" style="margin-top:10px">Il tuo utente non è collegato a nessuna scheda del pool. Chiedi alla regia di collegarlo.</p>';
+    h += '<table style="margin-top:12px"><tbody>' + row2("Nome", esc(p ? p.nome : "—")) + row2("Ruolo", esc(p ? p.ruolo : "—")) +
+      row2("Tariffa oraria", p && p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h <span class=\"faint\">— la vedi solo tu</span>" : "—") +
+      row2("Aree comuni che curi", permEt() ? esc(permEt().replace("cura: ", "")) : "nessuna") + "</tbody></table>" +
+      '<div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm ghost" data-edit="pros:' + me.pro_id + '">Modifica la scheda</button><button class="btn sm ghost" data-go="profilo">Apri il profilo</button></div>';
+  } else h += '<p class="muted" style="margin-top:10px">Il tuo utente non è ancora collegato a una scheda. Chiedi a chi gestisce gli accessi di collegarlo.</p>';
   h += "</div>";
-  h += '<div class="card"><h2>Chi vede cosa</h2><table style="margin-top:12px"><tbody>' +
-    row2("Le tue commesse", "le vedi solo tu e chi ci lavora dentro") +
-    row2("Le commesse degli altri", "non le vedi: nessuno vede quanto fattura un altro") +
-    row2("Le tue fatture", "private, sempre e solo tue") +
-    row2("Listino servizi", "condiviso fra i membri, serve per fare preventivi insieme") +
-    row2("Numeri di studio", "solo aggregati e anonimi") +
-    row2("Clienti", "vedi i tuoi e quelli delle commesse condivise") +
-    '</tbody></table><p class="faint" style="margin-top:10px">Questi limiti sono applicati dal database, non dalla grafica: anche interrogando direttamente il sistema non si esce da quello che ti spetta.</p></div>';
+  h += '<div class="card"><h2>Il tuo spazio e quello comune</h2>' +
+    '<p class="faint" style="margin:8px 0 12px">Ogni professionista è un contenitore chiuso. Si apre solo sul singolo lavoro che decide di condividere.</p>' +
+    '<table><tbody>' +
+    row2("<b>Solo tuo</b>", "clienti, preventivi, progetti, fatture, ore, tariffa oraria, note personali") +
+    row2("<b>Condiviso su invito</b>", "il singolo lavoro in cui coinvolgi un collega: quel lavoro e basta, non il cliente né il resto") +
+    row2("<b>Di tutti</b>", "profili e competenze, servizi a listino, fornitori segnalati, spazi") +
+    row2("Le ore", "nessuno vede le tue, tu non vedi quelle di nessuno — nemmeno in aggregato") +
+    row2("Chi cura le aree comuni", "può modificare spazi, impostazioni o accessi, non può entrare nei dati di nessuno") +
+    '</tbody></table><p class="faint" style="margin-top:10px">Sono regole del database, non della grafica: anche interrogando il sistema direttamente non si esce da quello che ti spetta.</p></div>';
   h += '<div class="card"><h2>Cambia password</h2><form data-form="password" style="margin-top:14px"><div class="field"><label>Nuova password</label><input name="pw" type="password" placeholder="almeno 8 caratteri" autocomplete="new-password" /></div><button class="btn" type="submit">Aggiorna password</button></form><p class="faint" style="margin-top:8px">Utente connesso: ' + esc(me.email) + "</p></div>";
-  if (isAdmin()) {
-    h += '<div class="card"><h2>Studio</h2><form data-form="settings" style="margin-top:14px"><div class="field"><label>Fee di coordinamento predefinita (%)</label><input name="fee_default" type="number" step="1" value="' + (SET.fee_default || 0) + '" /></div><button class="btn" type="submit">Salva</button></form></div>';
-    h += '<div class="card"><div class="cardhead"><h2>Membri e accessi</h2><button class="btn sm ghost" data-new="membri">+ Collega utente</button></div>' +
-      '<table><thead><tr><th>Email</th><th>Ruolo</th><th>Collegato a</th><th></th></tr></thead><tbody>' +
+  if (puo("accessi")) {
+    h += '<div class="card"><div class="cardhead"><h2>Persone e accessi</h2><button class="btn sm ghost" data-new="membri">+ Collega utente</button></div>' +
+      '<table><thead><tr><th>Email</th><th>Tipo</th><th>Collegato a</th><th>Cura</th><th></th></tr></thead><tbody>' +
       D.membri.map(function (m) {
-        return "<tr><td>" + esc(m.email || "—") + '</td><td><span class="badge">' + esc(RUOLO_ET[m.ruolo] || m.ruolo || "—") + "</span></td><td>" + esc(m.pro_id ? nameOf(D.pros, m.pro_id) : m.cliente_id ? nameOf(D.cli, m.cliente_id) : "—") + '</td><td class="num"><button class="lnk" data-edit="membri:' + m.user_id + '">Modifica</button></td></tr>';
+        var pm = [];
+        if (m.perm_spazi) pm.push("spazi");
+        if (m.perm_studio) pm.push("studio");
+        if (m.perm_accessi) pm.push("accessi");
+        return "<tr><td>" + esc(m.email || "—") + '</td><td><span class="badge">' + esc(RUOLO_ET[m.ruolo] || m.ruolo || "—") + "</span></td><td>" +
+          esc(m.pro_id ? nameOf(D.pros, m.pro_id) : m.cliente_id ? nameOf(D.cli, m.cliente_id) : "—") + "</td><td>" +
+          (pm.length ? pm.map(function (x) { return '<span class="chip">' + x + "</span>"; }).join("") : '<span class="faint">—</span>') +
+          '</td><td class="num"><button class="lnk" data-edit="membri:' + m.user_id + '">Modifica</button></td></tr>';
       }).join("") + "</tbody></table>" +
-      '<p class="faint" style="margin-top:10px">Per creare un nuovo accesso: Supabase → Authentication → Users → Add user (con Auto Confirm), poi copia lo <b>User UID</b> e collegalo qui scegliendo il ruolo.</p></div>';
+      '<p class="faint" style="margin-top:10px">I permessi valgono solo sulle aree comuni: chi li ha può sistemare spazi, dati dello studio o accessi. Nessun permesso apre i dati di un altro professionista.</p></div>';
   }
   return h + "</div>";
 }
@@ -1806,15 +1867,15 @@ function fld(n, l, t, v, req) {
   return '<div class="field"><label>' + l + '</label><input name="' + n + '" type="' + t + '"' + (t === "number" ? ' step="any"' : "") + (req ? " required" : "") + ' value="' + esc(v == null ? "" : v) + '" /></div>';
 }
 function selField(n, l, html) { return '<div class="field"><label>' + l + "</label><select name=\"" + n + '">' + html + "</select></div>"; }
-var PROS_PRO = function () { return D.pros.filter(function (p) { return p.tipo !== "PR"; }); };
-var PROS_PR = function () { return D.pros.filter(function (p) { return p.tipo === "PR"; }); };
+var PROS_PRO = function () { return D.pros; };
+var PROS_PR = function () { return D.pros; };
 
 var FORMS = {
   com: { t: "Commessa", tb: "com", f: function (r) {
     return fld("titolo", "Titolo", "text", r.titolo, true) +
       '<div class="row2">' + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) + selField("stato", "Stato", sel(STATI, r.stato || "Bozza")) + "</div>" +
       '<div class="row2">' + selField("owner_id", "Owner (chi ha il rapporto)", opt(D.pros, r.owner_id || me.pro_id)) + selField("pm_id", "Regia / PM", opt(D.pros, r.pm_id)) + "</div>" +
-      selField("pr_id", "Chi ha portato il cliente", opt(PROS_PR(), r.pr_id)) +
+      selField("pr_id", "Chi ha portato il cliente", opt(D.pros, r.pr_id)) +
 
       '<div class="row2">' + selField("tipo_prezzo", "Tipo di commessa", sel(["Fisso", "Tempo e materiali", "Retainer"], r.tipo_prezzo || "Fisso")) + fld("budget_importo", "Budget concordato (€)", "number", r.budget_importo) + "</div>" +
       '<div class="row2">' + fld("retainer_mensile", "Retainer mensile (€, se ricorrente)", "number", r.retainer_mensile) + fld("budget_ore", "Budget ore", "number", r.budget_ore) + "</div>" +
@@ -1843,14 +1904,18 @@ var FORMS = {
       '<div class="row2">' + fld("piva", "P. IVA", "text", r.piva) + selField("owner_id", "Owner", opt(D.pros, r.owner_id || me.pro_id)) + "</div>" +
       fld("indirizzo", "Indirizzo", "text", r.indirizzo) + fld("note", "Note", "textarea", r.note);
   }},
-  pros: { t: "Persona del pool", tb: "pros", f: function (r) {
-    return fld("nome", "Nome", "text", r.nome, true) +
-      '<div class="row2">' + fld("ruolo", "Ruolo", "text", r.ruolo) + selField("tipo", "Tipo", sel(["Professionista", "PR"], r.tipo || "Professionista")) + "</div>" +
-      '<div class="row2">' + selField("vetting", "Vetting", sel(["In valutazione", "Attivo", "Sospeso"], r.vetting || "In valutazione")) + fld("tariffa_oraria", "Tariffa oraria (€)", "number", r.tariffa_oraria) + "</div>" +
+  pros: { t: "Professionista", tb: "pros", priv: ["tariffa_oraria", "note"], f: function (r) {
+    var mio = r.id === me.pro_id || !r.id;
+    return '<div class="fgroup"><h3>Scheda visibile ai colleghi</h3>' +
+      fld("nome", "Nome", "text", r.nome, true) +
+      '<div class="row2">' + fld("ruolo", "Cosa fai (es. Fotografo, Sviluppatore)", "text", r.ruolo) + selField("vetting", "Stato", sel(["In valutazione", "Attivo", "Sospeso"], r.vetting || "In valutazione")) + "</div>" +
       fld("competenze", "Competenze (separate da virgola)", "text", r.competenze) +
       '<div class="row2">' + fld("email", "Email", "email", r.email) + fld("telefono", "Telefono", "text", r.telefono) + "</div>" +
-      '<div class="row2">' + fld("citta", "Città", "text", r.citta) + fld("piva", "P. IVA", "text", r.piva) + "</div>" +
-      fld("note", "Note", "textarea", r.note);
+      '<div class="row2">' + fld("citta", "Città", "text", r.citta) + fld("piva", "P. IVA", "text", r.piva) + "</div></div>" +
+      (mio ? '<div class="fgroup priv"><h3>Solo tuo <span class="badge">privato</span></h3>' +
+        '<p class="faint" style="margin-bottom:12px">Questi due campi stanno in una tabella che risponde solo a te: nessun collega può leggerli, nemmeno interrogando il sistema.</p>' +
+        fld("tariffa_oraria", "Tariffa oraria (€)", "number", r.tariffa_oraria) +
+        fld("note", "Note personali", "textarea", r.note) + "</div>" : "");
   }},
   serv: { t: "Servizio", tb: "serv", f: function (r) {
     return fld("nome", "Nome", "text", r.nome, true) +
@@ -1958,10 +2023,16 @@ var FORMS = {
       selField("consigliato_da", "Segnalato da", opt(D.pros, r.consigliato_da || me.pro_id));
   }},
   membri: { t: "Accesso", tb: "membri", key: "user_id", f: function (r) {
-    return fld("user_id", "User UID (da Supabase → Authentication)", "text", r.user_id, true) +
+    return '<div class="fgroup"><h3>Chi entra</h3>' +
+      fld("user_id", "User UID (da Supabase → Authentication)", "text", r.user_id, true) +
       fld("email", "Email", "email", r.email) +
-      selField("ruolo", "Ruolo", selKV([["admin", "Regia (vede tutto)"], ["professionista", "Professionista"], ["pr", "PR"], ["cliente", "Cliente"]], r.ruolo || "professionista")) +
-      '<div class="row2">' + selField("pro_id", "Scheda del pool (professionista o PR)", opt(D.pros, r.pro_id)) + selField("cliente_id", "Cliente (solo per ruolo Cliente)", opt(D.cli, r.cliente_id)) + "</div>";
+      selField("ruolo", "Tipo di accesso", selKV([["professionista", "Professionista — ha il suo spazio di lavoro"], ["cliente", "Cliente — solo il portale del suo progetto"]], r.ruolo === "cliente" ? "cliente" : "professionista")) +
+      '<div class="row2">' + selField("pro_id", "Scheda del professionista", opt(D.pros, r.pro_id)) + selField("cliente_id", "Cliente (solo per accesso cliente)", opt(D.cli, r.cliente_id)) + "</div></div>" +
+      '<div class="fgroup"><h3>Aree comuni che può curare</h3>' +
+      '<p class="faint" style="margin-bottom:12px">Riguardano solo ciò che è di tutti. Nessuno di questi permessi apre i clienti, i preventivi, le fatture o le ore di un altro professionista.</p>' +
+      '<div class="row2">' + selField("perm_spazi", "Spazi e prenotazioni", sel(["no", "si"], r.perm_spazi ? "si" : "no")) +
+      selField("perm_studio", "Dati dello studio e fornitori", sel(["no", "si"], r.perm_studio ? "si" : "no")) + "</div>" +
+      selField("perm_accessi", "Accessi delle persone", sel(["no", "si"], r.perm_accessi ? "si" : "no")) + "</div>";
   }}
 };
 function modal(html) { el("#modal").innerHTML = '<div class="modal">' + html + "</div>"; }
@@ -2035,14 +2106,21 @@ function dopoSalva(entity, id) {
 async function saveForm(f) {
   var parts = f.dataset.save.split(":"), entity = parts[0], id = parts[1];
   var F = FORMS[entity], key = F.key || "id", obj = {};
+  var BOOL = ["fatturabile", "visibile_cliente", "perm_spazi", "perm_studio", "perm_accessi"];
   Array.prototype.forEach.call(f.elements, function (i) {
     if (!i.name) return;
     var v = i.value;
-    if (["fatturabile", "visibile_cliente"].indexOf(i.name) > -1) v = (v === "si");
+    if (BOOL.indexOf(i.name) > -1) v = (v === "si");
     else if (v === "") v = null;
     else if (i.type === "number") v = +v;
     obj[i.name] = v;
   });
+  /* I campi privati non passano dalla tabella condivisa */
+  var privati = null;
+  if (F.priv) {
+    privati = {};
+    F.priv.forEach(function (c) { if (c in obj) { privati[c] = obj[c]; delete obj[c]; } });
+  }
   if (entity === "ev" && !obj.pro_id) obj.pro_id = me.pro_id;
   var inPagina = !!f.dataset.page;
   var btn = f.querySelector('button[type="submit"]'), lbl = btn ? btn.textContent : "";
@@ -2050,6 +2128,12 @@ async function saveForm(f) {
   var r = id ? await sb.from(TB[F.tb]).update(obj).eq(key, id).select().single() : await sb.from(TB[F.tb]).insert(obj).select().single();
   if (r.error) { if (btn) { btn.disabled = false; btn.textContent = lbl; } toast(r.error.message, true); return; }
   var nid = (r.data && r.data[key]) || id;
+  if (privati && Object.keys(privati).length && nid === me.pro_id) {
+    privati.pro_id = nid; privati.aggiornato = new Date().toISOString();
+    var rp = await sb.from("pro_privato").upsert(privati, { onConflict: "pro_id" });
+    if (rp.error) toast("Scheda salvata, ma i dati personali no: " + rp.error.message, true);
+    else await reload(["priv"]);
+  }
   if (obj.commessa_id && entity !== "ev") await logEv(obj.commessa_id, (id ? "Modificato" : "Aggiunto") + ": " + F.t.toLowerCase() + (obj.nome ? " — " + obj.nome : obj.titolo ? " — " + obj.titolo : ""));
   await reload([F.tb, "ev"]);
   closeModal(); toast(F.t + (id ? " aggiornato" : " creato"));
@@ -2137,7 +2221,7 @@ function openPalette() {
   PAL = [];
   D.com.forEach(function (k) { PAL.push({ t: k.titolo, s: "Commessa · " + nameOf(D.cli, k.cliente_id), i: "◧", go: ["commessa", k.id, "note"] }); });
   D.cli.forEach(function (c) { PAL.push({ t: c.nome, s: "Cliente", i: "◐", go: ["cliente", c.id] }); });
-  D.pros.forEach(function (p) { PAL.push({ t: p.nome, s: (p.tipo === "PR" ? "PR" : "Professionista") + (p.ruolo ? " · " + p.ruolo : ""), i: "◍", go: ["pro", p.id] }); });
+  D.pros.forEach(function (p) { PAL.push({ t: p.nome, s: "Professionista" + (p.ruolo ? " · " + p.ruolo : ""), i: "◍", go: ["pro", p.id] }); });
   navFor().forEach(function (n) { if (n.k) PAL.push({ t: n.t, s: "Vai a", i: "→", go: [n.k] }); });
   [["com", "Nuova commessa"], ["ore", "Registra ore"], ["task", "Nuova attività"], ["cli", "Nuovo cliente"], ["mov", "Nuovo movimento"]].forEach(function (a) {
     PAL.push({ t: a[1], s: "Azione", i: "+", act: a[0] });
