@@ -900,6 +900,27 @@ table.dtab td{padding:9px 6px;border:0;border-bottom:1px solid #f0ece4;vertical-
 table.dtab tr:last-child td{border-bottom:0}
 table.dtab .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .dnota{font-size:.78rem;color:#6b665e;line-height:1.5}
+/* sezioni discorsive: quello che il preventivo promette, non quanto costa */
+.dsezt{margin:20px 0}
+.dsezt .dtx{color:#413d37;margin:8px 0 0;font-size:.88rem}
+.dsezt .dtx:empty{margin:0}
+ul.dul{margin:8px 0 0;padding:0 0 0 17px;font-size:.88rem;color:#413d37}
+ul.dul li{margin:0 0 3px;line-height:1.55;position:relative}
+ul.dul li .mini2{opacity:0;margin-left:6px;transition:opacity .12s var(--ease)}
+ul.dul li:hover .mini2,ul.dul li:focus-within .mini2{opacity:1}
+.dsezc{display:flex;gap:10px;align-items:center;flex-shrink:0}
+.dsezc select{height:26px;padding:0 22px 0 7px;font-size:.74rem;background-position:right 6px center}
+.dsezadd{margin:6px 0 22px}
+/* elenco delle sezioni nella conferma di importazione */
+.impsez{display:flex;flex-direction:column;gap:12px;margin:4px 0 0}
+.impsr{border:1px solid var(--line-soft);border-radius:var(--r-s);padding:12px 14px;background:var(--cream)}
+.impst{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.impst b{font-size:.9rem}
+.impsr p{margin:6px 0 0;font-size:.8rem;line-height:1.55}
+.impsr ul{margin:7px 0 0;padding:0 0 0 17px;font-size:.8rem;color:var(--soft)}
+.impsr ul li{margin-bottom:2px}
+.chk{display:inline-flex;align-items:center;gap:7px;font-size:.82rem;color:var(--soft);cursor:pointer}
+.chk input{width:16px;height:16px;margin:0;accent-color:var(--terra-piena)}
 table.dtot{width:auto;min-width:290px;margin:18px 0 0 auto;border-collapse:collapse}
 table.dtot td{padding:5px 0;border:0}
 table.dtot td:last-child{text-align:right;font-variant-numeric:tabular-nums;padding-left:34px}
@@ -1038,6 +1059,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=37"></script>
+<script src="app.js?v=38"></script>
 </body>
 </html>
