@@ -438,6 +438,25 @@ function applicaLocale(tbk, id, patch) {
   Object.keys(patch).forEach(function (c) { r[c] = patch[c]; });
   return true;
 }
+/* Il modo di far sembrare veloce una cosa che veloce non è: scrivo subito sullo
+   schermo e mando la modifica mentre tu continui a lavorare. Se il database
+   dice di no, rimetto com'era e te lo dico. */
+async function salvaSubito(tbk, id, patch) {
+  var riga = by(D[tbk] || [], id), prima = {};
+  if (riga) {
+    Object.keys(patch).forEach(function (c) { prima[c] = riga[c]; });
+    applicaLocale(tbk, id, patch);
+    render();
+  }
+  var r = await sb.from(TB[tbk]).update(patch).eq("id", id);
+  if (r.error) {
+    if (riga) { applicaLocale(tbk, id, prima); render(); }
+    toast(r.error.message, true);
+    return false;
+  }
+  if (!riga) await reload([tbk]);
+  return true;
+}
 async function reload(keys) {
   await Promise.all(keys.map(async function (k) {
     var r = await sb.from(TB[k]).select("*"); if (!r.error) D[k] = r.data || [];
@@ -3495,10 +3514,7 @@ async function salvaSezioni(kid, ss) {
     return { t: (s.t || "").trim(), d: s.d === "dopo" ? "dopo" : "prima", x: (s.x || "").trim(),
       v: (s.v || []).map(function (v) { return (v || "").trim(); }).filter(Boolean) };
   }).filter(function (s) { return s.t || s.x || s.v.length; });
-  var r = await sb.from("commesse").update({ sezioni: pulite }).eq("id", kid);
-  if (r.error) { toast(r.error.message, true); return false; }
-  if (!applicaLocale("com", kid, { sezioni: pulite })) await reload(["com"]);
-  return true;
+  return await salvaSubito("com", kid, { sezioni: pulite });
 }
 function edSez(kid, i, campo, val, vuotoTxt, multi) {
   return '<span class="ed' + (multi ? " edb" : "") + '" contenteditable="true" spellcheck="false" data-sez="' + kid + "|" + i + "|" + campo +
@@ -5209,10 +5225,8 @@ document.addEventListener("focusout", async function (e) {
     val = isNaN(n) ? null : n;
   } else val = testo === "" ? null : testo;
   var patch = {}; patch[campo] = val;
-  var rq = await sb.from(TB[tbk]).update(patch).eq("id", rid);
-  if (rq.error) { toast(rq.error.message, true); return; }
-  if (!applicaLocale(tbk, rid, patch)) await reload([tbk]);
-  toast("Salvato"); render();
+  if (await salvaSubito(tbk, rid, patch)) toast("Salvato");
+  render();
 });
 document.addEventListener("focusin", function (e) {
   var t = e.target;
@@ -5248,11 +5262,9 @@ document.addEventListener("change", async function (e) {
     if (campo === "progetto_id" && val) { var pg9 = by(D.prog, val); if (pg9) patch.commessa_id = pg9.commessa_id; }
     if (campo === "lavorazione_id" && val) { var lv9 = by(D.lav, val); if (lv9) { patch.progetto_id = lv9.progetto_id; patch.commessa_id = lv9.commessa_id; } }
     if (tbk === "task" && campo === "stato" && val === "Fatto") patch.completata_il = new Date().toISOString();
-    var rq = await sb.from(TB[tbk]).update(patch).eq("id", rid);
-    if (rq.error) { toast(rq.error.message, true); return; }
-    if (!applicaLocale(tbk, rid, patch)) await reload([tbk]);
+    if (await salvaSubito(tbk, rid, patch)) toast("Salvato");
     if (tbk === "set") SET = D.set[0] || SET;
-    toast("Salvato"); render(); return;
+    render(); return;
   }
   /* filtri di sezione: ambito|campo */
   if (e.target.dataset && e.target.dataset.f) {
