@@ -628,6 +628,40 @@ table.ts td:first-child{min-width:210px}
 .pfoot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line-soft);padding-top:12px;margin-top:auto}
 .pfoot span{display:flex;align-items:center;gap:7px;font-size:.82rem;color:var(--soft)}
 .pfoot b{color:var(--ink);font-variant-numeric:tabular-nums}
+
+/* progetti raggruppati per cliente */
+.cgroup{margin-bottom:14px}
+.plist{display:flex;flex-direction:column}
+.prow{display:grid;grid-template-columns:10px minmax(140px,1.6fr) 110px 108px 96px 92px 74px 30px;align-items:center;gap:12px;
+  padding:10px 4px;border-bottom:1px solid var(--line-soft);cursor:pointer;font-size:.86rem;transition:background .14s var(--ease)}
+.prow:last-child{border-bottom:0}
+.prow:hover{background:var(--cream)}
+.pdot{width:8px;height:8px;border-radius:99px;background:var(--sand)}
+.pdot.b-terra{background:var(--terra)}
+.pdot.b-green{background:var(--green)}
+.pdot.b-amber{background:var(--amber)}
+.pnome{font-weight:550;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pstato{justify-self:start}
+.pav{display:flex;align-items:center;gap:8px}
+.pav .prog{flex:1}
+.pav i{font-style:normal;font-size:.76rem;color:var(--soft);font-variant-numeric:tabular-nums}
+.pore,.pattivita,.pdata{color:var(--soft);font-variant-numeric:tabular-nums;font-size:.82rem}
+.pchi{justify-self:end}
+@media(max-width:1100px){.prow{grid-template-columns:10px 1fr 100px 80px 30px}.pav,.pattivita{display:none}}
+
+/* esplora professionisti */
+.espl{margin-bottom:14px}
+.esptop{display:flex;align-items:flex-start;gap:14px}
+.espchi{flex:1}
+.espchi h2{font-size:1.02rem;letter-spacing:-.02em}
+.espazioni{display:flex;align-items:center;gap:8px}
+.esplist{margin-top:14px;border-top:1px solid var(--line-soft);padding-top:6px}
+.esprow{display:flex;align-items:center;gap:14px;padding:9px 0;border-bottom:1px solid var(--line-soft)}
+.esprow:last-child{border-bottom:0}
+.espnome{flex:1;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.espprezzo{font-variant-numeric:tabular-nums;font-weight:600;color:var(--ink);white-space:nowrap}
+.espprezzo i{font-weight:400;font-size:.8rem}
+@media(max-width:640px){.esprow{flex-wrap:wrap;gap:8px}.espnome{flex:1 0 100%}}
 .lav{border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:14px}
 .lavtop{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
 .lavtop b{color:var(--ink);font-weight:600}
@@ -840,6 +874,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>
