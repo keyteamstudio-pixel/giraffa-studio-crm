@@ -18,11 +18,11 @@
 var cfg = window.GS_CONFIG || {};
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
-var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [] };
+var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [] };
 var CAL = 0;
 var PLINK = null;
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
@@ -2435,7 +2435,33 @@ function vCalendario() {
     '<span><i style="background:var(--blue)"></i>Fine di una fase</span>' +
     '<span><i style="background:var(--red)"></i>Pagamento in scadenza</span>' +
     '<span><i style="background:var(--green)"></i>Prenotazione di uno spazio</span>' +
-    '</div><p class="faint" style="margin-top:12px">Clicca un giorno vuoto per creare un attività con quella scadenza.</p></div></div>';
+    '</div><p class="faint" style="margin-top:12px">Clicca un giorno vuoto per creare un’attività con quella scadenza.</p></div></div>';
+  h += cardIscrizione();
+  return h;
+}
+/* Il calendario si porta fuori: un indirizzo segreto, personale, che Google o Apple
+   leggono da soli ogni paio d'ore. Nessuno può risalire dal link a nient'altro. */
+function urlIcs() {
+  var t = (D.caltok || [])[0];
+  if (!t || !t.token) return "";
+  return String(cfg.SUPABASE_URL || "").replace(/\/+$/, "") + "/functions/v1/ics/" + t.token + ".ics";
+}
+function cardIscrizione() {
+  var u = urlIcs();
+  var h = '<div class="card" style="margin-top:18px"><div class="cardhead"><h2>Portalo nel tuo calendario</h2>' +
+    (u ? '<button class="btn sm ghost" data-cal-nuovo="1">Rigenera il link</button>' : "") + "</div>";
+  if (!u) {
+    h += '<p class="faint">Crea il tuo indirizzo personale: da lì Google Calendar, Apple Calendario o Outlook leggono da soli le tue scadenze, le tue lavorazioni e le tue prenotazioni.</p>' +
+      '<div style="margin-top:14px"><button class="btn" data-cal-nuovo="1">Crea il mio link</button></div></div>';
+    return h;
+  }
+  h += '<div class="linkbox"><input type="text" readonly value="' + esc(u) + '" id="icslink"><button class="btn sm" data-cal-copia="1">Copia</button></div>' +
+    '<div class="grid g2" style="margin-top:16px">' +
+    '<div class="passi"><b>Google Calendar</b><ol><li>Apri Google Calendar sul computer.</li><li>Nella colonna a sinistra, accanto ad <i>Altri calendari</i>, clicca <b>+</b>.</li><li>Scegli <b>Da URL</b>, incolla il link e conferma.</li></ol></div>' +
+    '<div class="passi"><b>iPhone, Mac, Outlook</b><ol><li>iPhone: Impostazioni › Calendario › Account › Aggiungi account › Altro › <b>Aggiungi calendario con sottoscrizione</b>.</li><li>Mac: Calendario › File › <b>Nuova sottoscrizione calendario</b>.</li><li>Outlook: Calendario › Aggiungi calendario › <b>Iscriviti dal Web</b>.</li></ol></div>' +
+    "</div>" +
+    '<p class="faint" style="margin-top:14px">Il link è personale e va tenuto per te: chi ce l’ha vede i titoli dei tuoi impegni. Se ti sfugge di mano, rigeneralo: il vecchio smette di funzionare all’istante. Gli aggiornamenti arrivano da soli, di solito entro poche ore.</p>' +
+    "</div>";
   return h;
 }
 
@@ -3022,6 +3048,20 @@ document.addEventListener("click", async function (e) {
   if (d.openProg) { go("progetto", d.openProg, "lavorazioni"); return; }
   if (d.openLav) { go("lavorazione", d.openLav); return; }
   if (d.cal !== undefined) { CAL = d.cal === "0" ? 0 : CAL + (+d.cal); render(); return; }
+  if (d.calCopia) {
+    var inp = el("#icslink"); if (!inp) return;
+    inp.focus(); inp.select(); inp.setSelectionRange(0, 999);
+    var fatto = false;
+    try { fatto = document.execCommand("copy"); } catch (e) { fatto = false; }
+    if (!fatto && navigator.clipboard) { try { await navigator.clipboard.writeText(inp.value); fatto = true; } catch (e2) { fatto = false; } }
+    toast(fatto ? "Link copiato" : "Selezionalo e copialo a mano", !fatto); return;
+  }
+  if (d.calNuovo) {
+    if (urlIcs() && !confirm("Il link di adesso smetterà di funzionare e i calendari già collegati andranno rifatti. Procedo?")) return;
+    var rct = await sb.rpc("cal_rigenera");
+    if (rct.error) { toast(rct.error.message, true); return; }
+    await reload(["caltok"]); toast("Link pronto"); render(); return;
+  }
   if (d.day) { openForm("task", null, { scadenza: d.day }); return; }
   if (d.noteditP) { NOTEDIT = d.noteditP === "1"; render(); return; }
   if (d.visprog) {
