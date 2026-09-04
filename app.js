@@ -24,12 +24,14 @@ var APPVER = (function () {
 })();
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
-var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [] };
+var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
+  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
+  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
@@ -91,8 +93,22 @@ function isPro() { return me.ruolo === "professionista"; }
 function isCliente() { return me.ruolo === "cliente"; }
 function vediCosti() { return !isPR(); }
 
-var STATI = ["Bozza", "Preventivo", "Approvata", "In corso", "Consegna", "Chiusa", "Persa"];
-var STATO_COL = { Bozza: "", Preventivo: "b-amber", Approvata: "b-blue", "In corso": "b-terra", Consegna: "b-blue", Chiusa: "b-green", Persa: "b-red" };
+/* Il preventivo ha quattro momenti e basta: lo scrivi, lo mandi, te lo accettano,
+   lo chiudi. "Perso" non e' un quinto momento, e' la porta di servizio: serve
+   perche' un preventivo rifiutato deve poter sparire dai conti aperti. */
+var STATI = ["Bozza", "Inviato", "Accettato", "Completato", "Perso"];
+var STATO_COL = { Bozza: "", Inviato: "b-amber", Accettato: "b-terra", Completato: "b-green", Perso: "b-red" };
+var STATI_APERTI = ["Bozza", "Inviato"];              /* ancora da decidere */
+var STATI_VINTI = ["Accettato", "Completato"];        /* il cliente ha detto si */
+var STATI_CHIUSI = ["Completato", "Perso"];           /* non si muovono piu' */
+var STATO_DATA = { Inviato: "inviato_il", Accettato: "accettato_il", Completato: "completato_il" };
+var STATO_SPIEGA = {
+  Bozza: "Lo stai ancora scrivendo. Non l'ha visto nessuno.",
+  Inviato: "E' uscito al cliente. Da qui si aspetta una risposta.",
+  Accettato: "Il cliente ha detto si: da qui nascono progetti e attivita.",
+  Completato: "Il lavoro e' finito e consegnato.",
+  Perso: "Il cliente ha detto no, o non ha risposto piu'."
+};
 var TASK_STATI = ["Da fare", "In corso", "In review", "Fatto"];
 var FASE_STATI = ["Da iniziare", "In corso", "In attesa cliente", "Completata"];
 var FASE_COL = { "Da iniziare": "", "In corso": "b-terra", "In attesa cliente": "b-amber", Completata: "b-green" };
@@ -139,7 +155,7 @@ function budget(k) {
   return { ricavo: ricavo, extra: extra, oreStim: oreStim, oreFatte: oreFatte, costoPian: c.cost, costoReale: costoReale, margPian: margPian, margReale: margReale, burnOre: burnOre, burnCosto: burnCosto, varianti: vApp.length };
 }
 function salute(k) {
-  if (["Chiusa", "Persa", "Bozza"].indexOf(k.stato) > -1) return { c: "", t: "—", d: "" };
+  if (STATI_CHIUSI.concat(["Bozza"]).indexOf(k.stato) > -1) return { c: "", t: "—", d: "" };
   var b = budget(k), av = avanzamento(k.id), motivi = [];
   var rosso = false, giallo = false;
   if (k.scadenza && k.scadenza < today()) { rosso = true; motivi.push("consegna scaduta"); }
@@ -378,7 +394,7 @@ function avanzamento(k) {
   var f = fasiOf(k); if (!f.length) return null;
   return Math.round(sum(f, function (x) { return x.avanzamento; }) / f.length);
 }
-function valoreCliente(c) { return sum(comOfCliente(c).filter(function (k) { return k.stato !== "Persa"; }), function (k) { return calc(k).tot; }); }
+function valoreCliente(c) { return sum(comOfCliente(c).filter(function (k) { return k.stato !== "Perso"; }), function (k) { return calc(k).tot; }); }
 
 function isMineCom(k) { return me.pro_id && (k.owner_id === me.pro_id || k.pm_id === me.pro_id || k.pr_id === me.pro_id || righeOf(k.id).some(function (r) { var s = by(D.serv, r.serv_id); return r.assegnato_id === me.pro_id || (s && s.pro_id === me.pro_id); })); }
 function mio(row, kind) {
@@ -482,8 +498,28 @@ function mieiDatiPersonali() {
    spiegazione sotto i titoli — un menu si legge, non si studia — ed etichette
    di una parola dove la parola basta. Quello che riguarda solo te (profilo,
    listino, impostazioni) sta sotto il tuo nome, in fondo, come in ogni app. */
+/* Il menu si mette al passo di chi lo usa. La figura professionale dice quali
+   parti del gestionale le servono davvero — un fotografo vive di progetti e
+   materiali, un commercialista di calendario e scadenze — e quelle salgono in
+   cima alla loro zona. Non sparisce niente: cambia solo l'ordine, perché un
+   menu che nasconde le cose è un menu che si combatte. */
+function navOrdina(v) {
+  var f = miaFigura(), mod = f && f.moduli && f.moduli.length ? f.moduli : null;
+  if (!mod) return v;
+  var out = [], blocco = [];
+  function scarica() {
+    blocco.sort(function (a, b) {
+      var ia = mod.indexOf(a.k), ib = mod.indexOf(b.k);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+    });
+    out = out.concat(blocco); blocco = [];
+  }
+  v.forEach(function (n) { if (n.g) { scarica(); out.push(n); } else blocco.push(n); });
+  scarica();
+  return out;
+}
 function navFor() {
-  return [
+  return navOrdina([
     { g: "Lavoro" },
     { k: "dash", t: "Oggi", d: "Cosa guardare adesso" },
     { k: "calendario", t: "Calendario", d: "Scadenze e consegne sul mese" },
@@ -493,15 +529,18 @@ function navFor() {
     { k: "carico", t: "Carico", d: "Quanto lavoro hai davanti" },
     { g: "Clienti" },
     { k: "clienti", t: "Clienti", d: "I tuoi clienti", c: function () { return fcli().length; } },
-    { k: "commesse", t: "Preventivi", d: "I tuoi e quelli dello studio", c: function () { return fcom().filter(function (k) { return ["Bozza", "Preventivo"].indexOf(k.stato) > -1; }).length; } },
+    { k: "commesse", t: "Preventivi", d: "I tuoi e quelli dello studio", c: function () { return fcom().filter(function (k) { return STATI_APERTI.indexOf(k.stato) > -1; }).length; } },
     { k: "amm", t: "Amministrazione", d: "Incassi, scadenze, pipeline" },
     { k: "report", t: "Report", d: "Numeri e andamenti" },
     { g: "Studio" },
-    { k: "studio", t: "Bacheca", d: "Cosa condividiamo" },
+    { k: "studio", t: "Bacheca", d: "Cosa succede nello studio", c: function () { return D.post.filter(function (p) { return p.fissato; }).length; } },
+    { k: "eventi", t: "Eventi", d: "Workshop, riunioni, formazione", c: function () { return agendaFutura().length; } },
+    { k: "chat", t: "Chat", d: "I canali dello studio", c: function () { return nonLettiTot(); } },
     { k: "pool", t: "Professionisti", d: "Chi c'è e cosa sa fare" },
+    { k: "professioni", t: "Mestieri", d: "Il catalogo delle figure professionali", c: function () { return D.prof.length; } },
     { k: "fornitori", t: "Fornitori", d: "La rubrica dello studio" },
     { k: "spazi", t: "Spazi", d: "Sale, postazioni e prenotazioni" }
-  ];
+  ]);
 }
 /* Le tue cose, dentro il menu del tuo nome. */
 function navMio() {
@@ -624,6 +663,7 @@ var FS = {
   prog: { stato: "", cli: "", pro: "", cerca: "" },
   cli: { stato: "", owner: "", cerca: "" },
   serv: { cat: "", chi: "", cerca: "" },
+  prof: { cat: "", cerca: "" },
   forn: { cat: "", cerca: "" },
   pool: { cat: "", cerca: "" }
 };
@@ -744,12 +784,12 @@ function proposte(dove) {
   com.forEach(function (k) {
     var c = calc(k), nome = k.titolo || "senza titolo";
     /* un lavoro approvato senza scadenze di pagamento è un lavoro che non sai quando incassi */
-    if (["Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1 && c.tot > 0 && !pagOf(k.id).length) {
+    if (["Accettato"].indexOf(k.stato) > -1 && c.tot > 0 && !pagOf(k.id).length) {
       agg({ id: "pag50-" + k.id, ico: "€", t: "«" + nome + "» vale " + eur(c.tot) + " e non ha nessuna scadenza di pagamento.",
         s: "Posso creare due scadenze da metà: una alla firma, una alla consegna.", si: "Crea le due scadenze", az: "pag50|" + k.id });
     }
     /* un preventivo scaduto continua a stare in pipeline e falsa i conti */
-    if (k.stato === "Preventivo") {
+    if (k.stato === "Inviato") {
       var gg = k.validita == null ? 30 : +k.validita;
       var fine = new Date(dataDoc(k)); fine.setDate(fine.getDate() + gg);
       if (days(today(), iso(fine)) > 0) {
@@ -770,7 +810,7 @@ function proposte(dove) {
         s: "Se è uno sconto voluto va benissimo, dimmi solo di no.", si: "Allinea al listino", az: "allinea|" + r.id + "|" + s.prezzo });
     });
     /* lavoro in corso su cui non segni ore: o è fermo, o le ore le stai perdendo */
-    if (["Approvata", "In corso"].indexOf(k.stato) > -1) {
+    if (["Accettato"].indexOf(k.stato) > -1) {
       var mie = fore().filter(function (o) { return o.commessa_id === k.id; }).map(function (o) { return o.data; }).sort();
       var ultima = mie[mie.length - 1];
       var quanti = ultima ? days(today(), ultima) : days(today(), (k.created_at || today()).slice(0, 10));
@@ -798,7 +838,7 @@ function proposte(dove) {
         agg({ id: "mail-" + c.id, ico: "@", t: "Di " + esc0(c.nome) + " non hai l'email.",
           s: "Senza non gli mandi il preventivo né gli apri il portale.", si: "Apri la scheda", az: "vai|cliente|" + c.id + "|anagrafica" });
       }
-      if (!c.piva && suoi.some(function (k) { return ["Approvata", "In corso", "Consegna", "Chiusa"].indexOf(k.stato) > -1; })) {
+      if (!c.piva && suoi.some(function (k) { return STATI_VINTI.indexOf(k.stato) > -1; })) {
         agg({ id: "piva-" + c.id, ico: "#", t: "Per fatturare a " + esc0(c.nome) + " ti serve la partita IVA.",
           s: "Il lavoro è già partito e in anagrafica non c'è.", si: "Apri la scheda", az: "vai|cliente|" + c.id + "|anagrafica" });
       }
@@ -845,7 +885,7 @@ async function faiProposta(az, id) {
 }
 function vDash() {
   var com = fcom(), cli = fcli(), ore = fore(), tk = ftask();
-  var aperte = com.filter(function (k) { return ["Preventivo", "Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1; });
+  var aperte = com.filter(function (k) { return ["Inviato", "Accettato"].indexOf(k.stato) > -1; });
   var pipeline = sum(aperte, function (k) { return calc(k).tot; });
   var d = new Date(), m0 = iso(new Date(d.getFullYear(), d.getMonth(), 1));
   var oreMese = ore.filter(function (o) { return o.data >= m0; });
@@ -854,7 +894,7 @@ function vDash() {
   var pagAperti = D.pag.filter(function (p) { return p.stato === "Da incassare"; });
   var scaduti = pagAperti.filter(function (p) { return p.scadenza && p.scadenza < today(); });
 
-  var attive = com.filter(function (k) { return ["Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1; });
+  var attive = com.filter(function (k) { return ["Accettato"].indexOf(k.stato) > -1; });
   var avgAv = attive.length ? Math.round(sum(attive, function (k) { return avanzamento(k.id) || 0; }) / attive.length) : 0;
   var wk = settimane(ore, 8), foc = focusItems(com, tk);
   var oggi = new Date().toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
@@ -921,7 +961,7 @@ function listCom(list) {
 }
 function boardCom(list) {
   var h = '<div class="board">';
-  STATI.filter(function (s) { return s !== "Persa" || list.some(function (k) { return k.stato === s; }); }).forEach(function (s) {
+  STATI.filter(function (s) { return s !== "Perso" || list.some(function (k) { return k.stato === s; }); }).forEach(function (s) {
     var items = list.filter(function (k) { return k.stato === s; });
     if (!items.length) return;
     h += '<div class="bcol"><h3>' + s + "<span>" + items.length + "</span></h3>";
@@ -948,7 +988,7 @@ function tblCom(list) {
       '<td><span class="badge ' + (STATO_COL[k.stato] || "") + '">' + esc(k.stato) + "</span></td>" +
       '<td><span class="badge ' + sal.c + '">' + sal.t + "</span></td>" +
       "<td>" + (av == null ? '<span class="faint">—</span>' : '<span class="faint">' + av + "%</span>" + prog(av)) + "</td>" +
-      "<td>" + (k.scadenza ? (k.scadenza < today() && ["Chiusa", "Persa"].indexOf(k.stato) < 0 ? '<span class="badge b-red">' + dshort(k.scadenza) + "</span>" : dt(k.scadenza)) : "—") + "</td>" +
+      "<td>" + (k.scadenza ? (k.scadenza < today() && STATI_CHIUSI.indexOf(k.stato) < 0 ? '<span class="badge b-red">' + dshort(k.scadenza) + "</span>" : dt(k.scadenza)) : "—") + "</td>" +
       '<td class="num"><b>' + eur(b.ricavo) + "</b></td>" +
       '<td class="num"><button class="lnk" data-duplica="' + k.id + '">Duplica</button></td></tr>';
     if (ap) {
@@ -982,9 +1022,10 @@ function vCommesse() {
   var nStud = tutte.length - nPers;
   var val = sum(list, function (k) { return budget(k).ricavo; });
   var h = head("Preventivi", list.length + " preventivi · " + eur(val) + " di valore",
-    '<button class="btn sm ghost" data-route="importa|-|">Importa un preventivo</button>' +
-    '<button class="btn sm" data-new="com">+ Nuovo preventivo</button>');
-  h += barraViste([["personali", "I miei", nPers], ["studio", "Dello studio", nStud], ["tutti", "Tutti", tutte.length]], quali, "commesse",
+    '<button class="btn sm ghost" data-route="importa|-|">Importa</button>' +
+    '<button class="btn sm ghost" data-new="com" data-ctx-amb="studio">+ Dello studio</button>' +
+    '<button class="btn sm" data-new="com" data-ctx-amb="personale">+ Tuo</button>');
+  h += barraViste([["personali", "Tuoi", nPers], ["studio", "Dello studio", nStud], ["tutti", "Tutti", tutte.length]], quali, "commesse",
     '<select data-comvista="1" title="Come li vuoi vedere">' + opzioni([["lista", "Lista"], ["bacheca", "Bacheca"], ["timeline", "Timeline"]], vista) + "</select>" +
     fcerca("com", "Cerca un preventivo o un cliente…") +
     fsel("com", "stato", [["", "Ogni stato"]].concat(STATI.map(function (s) { return [s, s]; }))) +
@@ -993,14 +1034,19 @@ function vCommesse() {
     '<select data-persp="1">' + opzioni([["all", "Miei e condivisi"], ["me", "Solo miei"], ["shared", "Solo condivisi"]], persp) + "</select>" +
     (f.stato || f.salute || f.cli || f.cerca ? '<button class="lnk mini" data-f-reset="com">azzera</button>' : ""));
 
+  if (quali !== "tutti") {
+    h += '<p class="faint" style="margin:-4px 0 12px">' + (quali === "studio"
+      ? "Escono a nome Giraffa Studio, con la sua intestazione e la serie <b>S/" + new Date().getFullYear() + "</b>. Dentro possono lavorare più professionisti, ognuno con la sua partita IVA."
+      : "Escono a nome tuo, con la tua intestazione e la serie <b>P/" + new Date().getFullYear() + "</b>. Sono affari tuoi: nessun collega li vede.") + "</p>";
+  }
   if (!list.length) {
     var vTxt = (f.stato || f.salute || f.cli || f.cerca) ? "Nessun preventivo con questi filtri."
-      : quali === "studio" ? "Nessun preventivo dello studio: appena in un preventivo entrano servizi di più professionisti, lo trovi qui."
-      : quali === "personali" ? "Nessun preventivo tuo. Creane uno: finché le righe sono solo tue esce a tuo nome."
+      : quali === "studio" ? "Nessun preventivo dello studio, per ora."
+      : quali === "personali" ? "Nessun preventivo tuo, per ora."
       : "Ancora nessun preventivo.";
     return h + '<div class="card">' + vuoto(vTxt, (f.stato || f.salute || f.cli || f.cerca)
       ? '<button class="lnk" data-f-reset="com">Azzera i filtri</button>'
-      : '<button class="lnk" data-new="com">Nuovo preventivo</button>') + "</div>";
+      : '<button class="lnk" data-new="com" data-ctx-amb="' + (quali === "studio" ? "studio" : "personale") + '">Creane uno</button>') + "</div>";
   }
   if (vista === "bacheca") return h + boardCom(list);
   if (vista === "timeline") {
@@ -1022,12 +1068,33 @@ function vCommesse() {
         var w = Math.max(2.5, ((i2 - i1) / 86400000 + 1) / giorni * 100);
         var sal = salute(k);
         return '<div class="tlrow"><div class="tlname" data-open-com="' + k.id + '">' + esc(k.titolo) + "</div>" +
-          '<div class="tltrack"><button class="tlbar ' + (k.stato === "Chiusa" ? "ok" : sal.c === "b-red" ? "bad" : "") + '" style="left:' + x + "%;width:" + w + '%" data-open-com="' + k.id + '">' + esc(nameOf(D.cli, k.cliente_id)) + "</button></div></div>";
+          '<div class="tltrack"><button class="tlbar ' + (k.stato === "Completato" ? "ok" : sal.c === "b-red" ? "bad" : "") + '" style="left:' + x + "%;width:" + w + '%" data-open-com="' + k.id + '">' + esc(nameOf(D.cli, k.cliente_id)) + "</button></div></div>";
       }).join("") + "</div>";
   }
   return h + '<div class="card">' + tblCom(list.slice().sort(function (a, b) { return STATI.indexOf(a.stato) - STATI.indexOf(b.stato); })) + "</div>";
 }
 
+/* Il ciclo in testa al preventivo: dove sta adesso, che giorno ci è passato, e
+   il passo successivo a portata di clic. Un preventivo non è una voce in una
+   tendina: è una storia con quattro momenti, e va vista come tale. */
+var CICLO = ["Bozza", "Inviato", "Accettato", "Completato"];
+function cicloBar(k) {
+  var i = CICLO.indexOf(k.stato), perso = k.stato === "Perso";
+  var h = '<div class="card ciclo"><div class="csteps' + (perso ? " perso" : "") + '">';
+  CICLO.forEach(function (st, j) {
+    var cl = perso ? (j === 0 ? "fatto" : "") : (j < i ? "fatto" : j === i ? "qui" : "");
+    var dd = st === "Bozza" ? dataDoc(k) : k[STATO_DATA[st]];
+    h += '<div class="cstep ' + cl + '"><i></i><b>' + st + "</b><span>" + (dd ? dt(dd) : "—") + "</span></div>";
+  });
+  h += "</div><div class=\"cazioni\"><span class=\"faint\">" +
+    esc(perso ? STATO_SPIEGA.Perso : (STATO_SPIEGA[k.stato] || "")) + "</span><span class=\"cbtn\">";
+  var pross = perso ? null : CICLO[i + 1];
+  if (pross) h += '<button class="btn sm" data-ciclo="' + k.id + "|" + pross + '">' +
+    (pross === "Inviato" ? "L\'ho mandato al cliente" : pross === "Accettato" ? "Il cliente ha accettato" : "Il lavoro è finito") + "</button>";
+  if (!perso && k.stato !== "Completato") h += '<button class="btn sm ghost" data-ciclo="' + k.id + '|Perso">Perso</button>';
+  if (perso) h += '<button class="btn sm ghost" data-ciclo="' + k.id + '|Bozza">Riaprilo</button>';
+  return h + "</span></div></div>";
+}
 function vCommessa() {
   var k = by(D.com, current);
   if (!k) return '<div class="card">Preventivo non trovato. <button class="lnk" data-go="commesse">Torna all\'elenco</button></div>';
@@ -1045,9 +1112,11 @@ function vCommessa() {
     (isPR() ? "" : (timerMio() && timerMio().commessa_id === k.id
       ? '<button class="btn sm stop" data-tstop="1">■ Ferma <span id="timerlbl">' + durata(timerMio().iniziato) + "</span></button>"
       : '<button class="btn sm ghost" data-tstart="' + k.id + '">▶ Avvia timer</button>')) +
-    (["Approvata", "In corso"].indexOf(k.stato) > -1 && !isPR() && !isCliente() ? '<button class="btn sm" data-avvia="' + k.id + '">⚡ Avvia il lavoro</button>' : "") +
+    (["Accettato"].indexOf(k.stato) > -1 && !k.avviato && !isPR() && !isCliente() ? '<button class="btn sm" data-avvia="' + k.id + '">⚡ Apri il lavoro</button>' : "") +
     '<button class="btn sm ghost" data-route="prospetto|' + k.id + '|ore">Prospetti</button>' +
     '<button class="btn sm" data-portale="' + k.id + '">Anteprima cliente</button></div></div>';
+
+  h += cicloBar(k);
 
   h += '<div class="grid g4">' +
     kpi(eur(b.ricavo), "Valore del lavoro", c.mrr ? eur(c.mrr) + " al mese ricorrenti" : b.extra ? eur(k.budget_importo || c.tot) + " + " + eur(b.extra) + " di varianti" : "imponibile " + eur(c.imp) + " · IVA " + eur(c.iva)) +
@@ -1787,10 +1856,10 @@ function vOre() {
 function vAmm() {
   var com = fcom(), cli = fcli();
   var d = new Date(), anno = d.getFullYear();
-  var aperte = com.filter(function (k) { return ["Preventivo", "Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1; });
-  var inviati = com.filter(function (k) { return k.stato === "Preventivo"; });
-  var vinti = com.filter(function (k) { return ["Approvata", "In corso", "Consegna", "Chiusa"].indexOf(k.stato) > -1; });
-  var persi = com.filter(function (k) { return k.stato === "Persa"; });
+  var aperte = com.filter(function (k) { return ["Inviato", "Accettato"].indexOf(k.stato) > -1; });
+  var inviati = com.filter(function (k) { return k.stato === "Inviato"; });
+  var vinti = com.filter(function (k) { return STATI_VINTI.indexOf(k.stato) > -1; });
+  var persi = com.filter(function (k) { return k.stato === "Perso"; });
   var tassoVinc = (vinti.length + persi.length) ? Math.round(vinti.length / (vinti.length + persi.length) * 100) : null;
   var pagMiei = D.pag.filter(function (p) { return can(p.commessa_id); });
   var incassato = sum(pagMiei.filter(function (p) { return p.stato === "Incassato" && String(p.pagato_il || p.scadenza || "").slice(0, 4) === String(anno); }), function (p) { return p.importo; });
@@ -1844,22 +1913,285 @@ function vProfilo() {
   return vPro();
 }
 
-/* ---------------- bacheca dello studio ---------------- */
-function vStudio() {
-  var h = head("Bacheca dello studio", "Quello che condividiamo davvero: persone, competenze, fornitori, spazi");
-  var attivi = D.pros.filter(function (x) { return x.vetting !== "Sospeso"; });
-  var conServizi = D.pros.filter(function (x) { return D.serv.some(function (s) { return s.pro_id === x.id; }); });
-  h += '<div class="grid g4">' +
-    kpi(String(attivi.length), "Professionisti", conServizi.length + " con servizi a listino") +
-    kpi(String(D.serv.filter(function (s) { return s.attivo !== false; }).length), "Servizi disponibili", "da usare nei tuoi preventivi") +
-    kpi(String(D.forn.length), "Fornitori segnalati", "consigliati dai colleghi") +
-    kpi(String((STATS && STATS.categorie) || 0), "Categorie coperte", "competenze diverse nello studio") + "</div>";
-  h += '<div class="card" style="background:var(--cream);margin-top:16px"><div class="cardhead"><h2>Cosa resta tuo</h2><span class="badge">applicato dal database</span></div>' +
-    '<p class="faint">Clienti, preventivi, fatture, ore e tariffe sono dentro il tuo spazio: nessun collega li vede, nemmeno chi cura le aree comuni. ' +
-    'Un collega entra solo nel singolo lavoro in cui lo coinvolgi, e vede quel lavoro, non il resto del tuo studio. Qui sopra c\'è tutto ciò che invece è di tutti.</p></div>';
+/* ---------------- figure professionali ----------------
+   Il database sa che mestiere fai. Non per etichettarti, ma perché un fotografo
+   e un avvocato non usano lo stesso gestionale: uno vende servizi e giornate,
+   l'altro pratiche e ore; uno apre sopralluogo-shooting-selezione, l'altro
+   colloquio-studio-atto-udienze. La figura porta con sé quattro cose: l'unità
+   con cui vende, il modo in cui misura il lavoro, le voci tipiche del suo
+   listino e le attività tipo di un suo lavoro. Nessun mestiere è escluso: se
+   manca, si aggiunge al catalogo e da lì in poi vale per tutti. */
+function professione(pid) { return pid ? by(D.prof, pid) : null; }
+/* Le attività tipo si scrivono come si scriverebbero su un foglio: una per riga,
+   e dopo i due punti le ore. Nessuno deve imparare una sintassi per dire
+   "sopralluogo, quattro ore". */
+function attivitaTxt(arr) {
+  return (arr || []).map(function (a) {
+    var n = a.n || a.nome || "";
+    var o = a.o == null ? a.ore : a.o;
+    return o == null || o === "" ? n : n + " : " + o;
+  }).join("\n");
+}
+function attivitaDaTxt(txt) {
+  return String(txt || "").split("\n").map(function (r) { return r.trim(); }).filter(Boolean).map(function (r) {
+    var i = r.lastIndexOf(":");
+    if (i < 0) return { n: r, o: null };
+    var ore = r.slice(i + 1).trim().replace(",", ".");
+    if (!ore || isNaN(+ore)) return { n: r, o: null };
+    return { n: r.slice(0, i).trim(), o: +ore };
+  }).filter(function (a) { return a.n; });
+}
+function miaFigura() { return figuraDi(me.pro_id); }
+function figureAttive() { return D.prof.filter(function (f) { return f.attiva !== false; }); }
+function quantiCon(pid) { return D.pros.filter(function (x) { return x.professione_id === pid; }).length; }
+function MISURA_ET(m) {
+  return { ore: "a ore", progetto: "a progetto", quantita: "a quantità", ricorrente: "a canone" }[m] || "a progetto";
+}
+/* La tendina delle figure, raggruppata per famiglia: cercare "Fabbro" fra
+   novantotto voci in fila non è cercare, è frugare. */
+function optProf(val) {
+  var g = {};
+  figureAttive().forEach(function (f) { (g[f.categoria] = g[f.categoria] || []).push(f); });
+  return '<option value="">— nessuna figura —</option>' + Object.keys(g).sort().map(function (c) {
+    return '<optgroup label="' + esc(c) + '">' + g[c].map(function (f) {
+      return '<option value="' + f.id + '"' + (val === f.id ? " selected" : "") + ">" + esc(f.nome) + "</option>";
+    }).join("") + "</optgroup>";
+  }).join("");
+}
+function schedaFigura(f, aperta) {
+  var att = f.attivita || [], sv = f.servizi || [], n = quantiCon(f.id);
+  var h = '<div class="figc' + (aperta ? " ap" : "") + '"><button class="figt" data-fig="' + f.id + '"><b>' + esc(f.nome) + "</b>" +
+    '<span class="faint">' + esc(f.unita) + " · " + MISURA_ET(f.misura) + "</span>" +
+    (n ? '<span class="cnt">' + n + "</span>" : "") + '<em class="chev"></em></button>';
+  if (aperta) {
+    h += '<div class="figb"><div class="grid g2">' +
+      '<div><div class="glab">Attività tipo di un suo lavoro</div><ol class="fontil">' +
+      (att.length ? att.map(function (a) { return "<li>" + esc(a.n || a.nome) + (a.o ? ' <span class="faint">' + a.o + " h</span>" : "") + "</li>"; }).join("") : "<li class=\"faint\">Ancora nessuna</li>") +
+      "</ol></div>" +
+      '<div><div class="glab">Voci tipiche del suo listino</div><ul class="fontil">' +
+      (sv.length ? sv.map(function (x) { return "<li>" + esc(x.n || x.nome) + ' <span class="faint">/ ' + esc(x.u || x.unita || "") + "</span></li>"; }).join("") : "<li class=\"faint\">Ancora nessuna</li>") +
+      "</ul></div></div>";
+    var chi = D.pros.filter(function (x) { return x.professione_id === f.id; });
+    if (chi.length) h += '<div class="glab" style="margin-top:10px">Nello studio</div><div class="checklist">' +
+      chi.map(function (x) { return '<div class="cri">' + avatar(x.id, 20) + ' <button class="lnk" data-open-pro="' + x.id + '">' + esc(x.nome) + "</button></div>"; }).join("") + "</div>";
+    if (miaFigura() && miaFigura().id === f.id) h += '<p class="faint" style="margin-top:10px">È la tua figura: da qui arrivano le attività che nascono quando un tuo preventivo viene accettato.</p>';
+    h += "</div>";
+  }
+  return h + "</div>";
+}
+var FIGAP = null;
+function vProfessioni() {
+  var f = FS.prof || (FS.prof = { cat: "", cerca: "" });
+  var q = (f.cerca || "").toLowerCase();
+  var list = figureAttive().filter(function (x) {
+    if (f.cat && x.categoria !== f.cat) return false;
+    if (!q) return true;
+    var testo = x.nome + " " + x.categoria + " " + (x.servizi || []).map(function (s) { return s.n; }).join(" ") + " " + (x.attivita || []).map(function (a) { return a.n; }).join(" ");
+    return testo.toLowerCase().indexOf(q) > -1;
+  });
+  var mia = miaFigura();
+  var h = head("Figure professionali", D.prof.length + " mestieri nel catalogo · " + D.pros.filter(function (x) { return x.professione_id; }).length + " colleghi collegati a una figura",
+    (mia ? '<span class="badge b-terra">la tua: ' + esc(mia.nome) + "</span>" : '<button class="btn sm" data-go="profilo">Scegli la tua</button>'));
+  h += '<p class="faint" style="margin:-4px 0 14px">Il catalogo è aperto: qui dentro c\'è il mestiere di chiunque, dall\'architetto al tappezziere. Ogni figura porta con sé la sua unità di misura, le voci tipiche del suo listino e le attività che aprono un suo lavoro. È da qui che il gestionale capisce come lavori.</p>';
+  h += barraViste(null, "", "professioni",
+    fcerca("prof", "Cerca un mestiere, un servizio, un'attività…") +
+    fsel("prof", "cat", [["", "Ogni famiglia"]].concat(elencoCat(D.prof, "categoria"))) +
+    (f.cat || f.cerca ? '<button class="lnk mini" data-f-reset="prof">azzera</button>' : ""));
+  if (!list.length) return h + '<div class="card">' + vuoto("Nessuna figura con questi filtri.", '<button class="lnk" data-f-reset="prof">Azzera</button>') + "</div>";
+  var g = {};
+  list.forEach(function (x) { (g[x.categoria] = g[x.categoria] || []).push(x); });
+  Object.keys(g).sort().forEach(function (c) {
+    h += '<div class="card"><div class="cardhead"><h2>' + esc(c) + '</h2><span class="faint">' + g[c].length + " figure</span></div>" +
+      g[c].map(function (x) { return schedaFigura(x, FIGAP === x.id); }).join("") + "</div>";
+  });
+  return h;
+}
+/* Il listino tipo della tua figura: un clic e le voci entrano nel tuo listino,
+   con la tua unità di misura già a posto. I prezzi li metti tu: nessuno può
+   sapere quanto vale il tuo lavoro. */
+async function prendiListino() {
+  var f = miaFigura();
+  if (!f) { toast("Prima scegli la tua figura professionale dal profilo", true); return; }
+  var gia = D.serv.filter(function (s) { return s.pro_id === me.pro_id; }).map(function (s) { return s.nome; });
+  var nuovi = (f.servizi || []).filter(function (x) { return gia.indexOf(x.n || x.nome) < 0; }).map(function (x) {
+    return { pro_id: me.pro_id, professione_id: f.id, nome: x.n || x.nome, cat: f.categoria,
+      unita: x.u || x.unita || f.unita, tipo_unita: "Forfait", attivo: true, min_qty: 1 };
+  });
+  if (!nuovi.length) { toast("Il tuo listino ha già tutte le voci tipiche"); return; }
+  var r = await sb.from("servizi").insert(nuovi);
+  if (r.error) { toast(r.error.message, true); return; }
+  await reload(["serv"]);
+  toast("Aggiunte " + nuovi.length + " voci: ora mettici i tuoi prezzi");
+  render();
+}
 
-  h += '<div class="grid g32" style="margin-top:18px"><div>';
-  h += '<div class="card"><div class="cardhead"><h2>Cosa sanno fare i colleghi</h2><button class="btn sm ghost" data-go="servizi">Vai al listino</button></div>';
+/* ---------------- la parte viva dello studio ----------------
+   Un collettivo non è un elenco di partite IVA che condividono un logo. È gente
+   che si parla, che si passa lavoro, che una sera fa un workshop. Questa parte
+   del CRM non serve a fatturare: serve a far esistere lo studio anche quando
+   nessuno ha un preventivo aperto. Sta su un piano tutto suo — nessun cliente
+   entra qui, e nessun dato di lavoro esce di qua. */
+function proNome(id) { return id ? nameOf(D.pros, id) : "Qualcuno"; }
+function quando(iso) {
+  if (!iso) return "";
+  var d = new Date(iso), m = (Date.now() - d.getTime()) / 60000;
+  if (m < 1) return "adesso";
+  if (m < 60) return Math.floor(m) + " min fa";
+  if (m < 24 * 60) return Math.floor(m / 60) + " h fa";
+  if (m < 48 * 60) return "ieri";
+  return dt(iso.slice(0, 10));
+}
+function oraIt(t) { return t ? String(t).slice(0, 5) : ""; }
+function rispDi(pid) { return D.risp.filter(function (r) { return r.post_id === pid; }).sort(function (a, b) { return a.created_at < b.created_at ? -1 : 1; }); }
+function reazDi(pid) { return D.reaz.filter(function (r) { return r.post_id === pid; }); }
+function hoReagito(pid) { return D.reaz.some(function (r) { return r.post_id === pid && r.pro_id === me.pro_id; }); }
+function postOrdinati() {
+  return D.post.slice().sort(function (a, b) {
+    if (!!a.fissato !== !!b.fissato) return a.fissato ? -1 : 1;
+    return a.created_at < b.created_at ? 1 : -1;
+  });
+}
+var POSTAP = null;
+var POSTTIPI = ["Messaggio", "Annuncio", "Domanda", "Vittoria"];
+function scrivi(dove) {
+  return '<form class="scrivi" data-post="' + (dove || "studio") + '">' +
+    (me.pro_id ? avatar(me.pro_id, 34) : "") +
+    '<div class="scrivic"><textarea name="testo" rows="2" placeholder="Che si dice? Un annuncio, una domanda ai colleghi, una cosa andata bene…" required></textarea>' +
+    '<div class="scrivib"><select name="tipo">' + sel(POSTTIPI, "Messaggio") + "</select>" +
+    '<button class="btn sm" type="submit">Pubblica</button></div></div></form>';
+}
+function unPost(p, compatto) {
+  var rr = rispDi(p.id), rz = reazDi(p.id), mio = p.pro_id === me.pro_id;
+  var h = '<div class="post' + (p.fissato ? " fisso" : "") + '">' +
+    '<div class="posth">' + avatar(p.pro_id, 32) +
+    '<div><b>' + esc(proNome(p.pro_id)) + "</b>" +
+    '<span class="faint">' + esc(quando(p.created_at)) + (p.tipo && p.tipo !== "Messaggio" ? " · " + esc(p.tipo.toLowerCase()) : "") + (p.fissato ? " · in evidenza" : "") + "</span></div>" +
+    (mio || puo("studio") ? '<span class="postaz"><button class="lnk mini" data-postfix="' + p.id + '">' + (p.fissato ? "togli" : "fissa") + '</button><button class="lnk mini" data-postvia="' + p.id + '">elimina</button></span>' : "") +
+    "</div>";
+  h += '<p class="postt">' + esc(p.testo).replace(/\n/g, "<br>") + "</p>";
+  h += '<div class="postp"><button class="lnk mini' + (hoReagito(p.id) ? " on" : "") + '" data-postlike="' + p.id + '">' +
+    (hoReagito(p.id) ? "★" : "☆") + " " + (rz.length || "") + '</button><button class="lnk mini" data-postap="' + p.id + '">' +
+    (rr.length ? rr.length + (rr.length === 1 ? " risposta" : " risposte") : "rispondi") + "</button></div>";
+  if (!compatto && (POSTAP === p.id || rr.length)) {
+    h += '<div class="postr">' + rr.map(function (r) {
+      return '<div class="rispo">' + avatar(r.pro_id, 22) + '<div><b>' + esc(proNome(r.pro_id)) + '</b> <span class="faint">' + esc(quando(r.created_at)) + "</span><br>" + esc(r.testo).replace(/\n/g, "<br>") + "</div></div>";
+    }).join("");
+    if (POSTAP === p.id) h += '<form class="qadd" data-risp="' + p.id + '"><input name="testo" placeholder="Scrivi una risposta…" autocomplete="off" required><button class="btn sm" type="submit">Invia</button></form>';
+    h += "</div>";
+  }
+  return h + "</div>";
+}
+/* ---- eventi e workshop ---- */
+function agendaFutura() {
+  var og = today();
+  return D.ag.filter(function (e) { return (e.data || "") >= og; }).sort(function (a, b) { return (a.data + (a.ora || "")) < (b.data + (b.ora || "")) ? -1 : 1; });
+}
+function agendaPassata() {
+  var og = today();
+  return D.ag.filter(function (e) { return (e.data || "") < og; }).sort(function (a, b) { return a.data < b.data ? 1 : -1; });
+}
+function iscrittiA(eid) { return D.iscr.filter(function (i) { return i.agenda_id === eid && i.stato !== "Non ci sono"; }); }
+function miaIscrizione(eid) { return D.iscr.filter(function (i) { return i.agenda_id === eid && i.pro_id === me.pro_id; })[0]; }
+function unEvento(e, compatto) {
+  var isc = iscrittiA(e.id), mia = miaIscrizione(e.id);
+  var pieno = e.posti && isc.length >= e.posti && (!mia || mia.stato === "Non ci sono");
+  var h = '<div class="ev1"><div class="evd"><b>' + esc(dshort(e.data)) + "</b><span>" + esc(oraIt(e.ora) || "—") + "</span></div>" +
+    '<div class="evc"><div class="evt"><b>' + esc(e.titolo) + '</b><span class="badge ' + (e.tipo === "Workshop" ? "b-terra" : e.tipo === "Formazione" ? "b-blue" : "") + '">' + esc(e.tipo) + "</span></div>" +
+    '<div class="faint">' + [e.luogo || (e.spazio_id ? nameOf(D.spazi, e.spazio_id) : ""), e.relatore_id ? "con " + proNome(e.relatore_id) : "", e.posti ? isc.length + " su " + e.posti + " posti" : isc.length ? isc.length + " partecipanti" : ""].filter(Boolean).join(" · ") + "</div>";
+  if (!compatto && e.descrizione) h += '<p class="evx">' + esc(e.descrizione).replace(/\n/g, "<br>") + "</p>";
+  if (!compatto && isc.length) h += '<div class="evi">' + isc.slice(0, 12).map(function (i) { return avatar(i.pro_id, 22); }).join("") + "</div>";
+  h += '<div class="evb">' +
+    (mia && mia.stato === "Ci sono"
+      ? '<span class="badge b-green">ci sei</span><button class="lnk mini" data-evno="' + e.id + '">non ci sono più</button>'
+      : pieno ? '<span class="badge b-amber">posti esauriti</span>'
+      : '<button class="btn sm ghost" data-evsi="' + e.id + '">Ci sono</button>') +
+    (e.pro_id === me.pro_id || puo("studio") ? '<button class="lnk mini" data-edit="ag:' + e.id + '">modifica</button>' : "") +
+    "</div></div></div>";
+  return h;
+}
+function vEventi() {
+  var fut = agendaFutura(), pas = agendaPassata();
+  var quali = tab || "prossimi";
+  var h = head("Eventi e workshop", fut.length + " in arrivo · " + pas.length + " già fatti",
+    '<button class="btn sm" data-new="ag">+ Organizza qualcosa</button>');
+  h += '<p class="faint" style="margin:-4px 0 14px">Riunioni, workshop, formazione, aperitivi. Chi organizza scrive qui, gli altri dicono se ci sono. È il calendario dello studio, non quello dei clienti.</p>';
+  h += barraViste([["prossimi", "In arrivo", fut.length], ["passati", "Già fatti", pas.length]], quali, "eventi", "");
+  var list = quali === "passati" ? pas : fut;
+  if (!list.length) return h + '<div class="card">' + vuoto(quali === "passati" ? "Ancora niente alle spalle." : "Niente in programma. Organizza tu la prima cosa.", '<button class="lnk" data-new="ag">Organizza qualcosa</button>') + "</div>";
+  var mesi = {};
+  list.forEach(function (e) { (mesi[String(e.data).slice(0, 7)] = mesi[String(e.data).slice(0, 7)] || []).push(e); });
+  Object.keys(mesi).sort(function (a, b) { return quali === "passati" ? (a < b ? 1 : -1) : (a < b ? -1 : 1); }).forEach(function (m) {
+    h += '<div class="card"><div class="cardhead"><h2>' + esc(meseEt(m)) + '</h2><span class="faint">' + mesi[m].length + "</span></div>" +
+      mesi[m].map(function (e) { return unEvento(e); }).join("") + "</div>";
+  });
+  return h;
+}
+function meseEt(ym) {
+  var p = String(ym).split("-");
+  return (MESI_IT[+p[1] - 1] || "").replace(/^./, function (c) { return c.toUpperCase(); }) + " " + p[0];
+}
+/* ---- chat a canali ---- */
+function msgDi(cid) { return D.msg.filter(function (m) { return m.canale_id === cid; }).sort(function (a, b) { return a.created_at < b.created_at ? -1 : 1; }); }
+function nonLetti(cid) {
+  var l = D.lett.filter(function (x) { return x.canale_id === cid && x.pro_id === me.pro_id; })[0];
+  var da = l ? l.letto_il : "";
+  return D.msg.filter(function (m) { return m.canale_id === cid && m.pro_id !== me.pro_id && (!da || m.created_at > da); }).length;
+}
+function nonLettiTot() { return D.can.reduce(function (n, c) { return n + nonLetti(c.id); }, 0); }
+function canaleCorrente() {
+  var c = current && by(D.can, current);
+  if (c) return c;
+  return D.can.slice().sort(function (a, b) { return (a.ordine || 0) - (b.ordine || 0); })[0] || null;
+}
+function vChat() {
+  var c = canaleCorrente();
+  var h = head("Chat dello studio", D.can.length + " canali · " + D.msg.length + " messaggi",
+    (puo("studio") ? '<button class="btn sm ghost" data-new="can">+ Nuovo canale</button>' : ""));
+  if (!c) return h + '<div class="card">' + vuoto("Nessun canale ancora.") + "</div>";
+  h += '<div class="chatw"><div class="chatl">' + D.can.slice().sort(function (a, b) { return (a.ordine || 0) - (b.ordine || 0); }).map(function (x) {
+    var n = nonLetti(x.id);
+    return '<button class="' + (x.id === c.id ? "on" : "") + '" data-route="chat|' + x.id + '|"># ' + esc(x.nome) + (n ? '<span class="cnt">' + n + "</span>" : "") + "</button>";
+  }).join("") + "</div><div class=\"chatm\"><div class=\"chatmh\"><b># " + esc(c.nome) + "</b><span class=\"faint\">" + esc(c.descrizione || "") + "</span></div>";
+  var mm = msgDi(c.id);
+  h += '<div class="chatms">' + (mm.length ? mm.slice(-60).map(function (m) {
+    return '<div class="msg' + (m.pro_id === me.pro_id ? " mio" : "") + '">' + avatar(m.pro_id, 26) +
+      '<div><b>' + esc(proNome(m.pro_id)) + '</b> <span class="faint">' + esc(quando(m.created_at)) + "</span><br>" + esc(m.testo).replace(/\n/g, "<br>") + "</div></div>";
+  }).join("") : '<p class="faint" style="padding:20px">Ancora nessun messaggio. Comincia tu.</p>') + "</div>";
+  h += '<form class="qadd" data-msg="' + c.id + '"><input name="testo" placeholder="Scrivi in #' + esc(c.nome) + '…" autocomplete="off" required><button class="btn sm" type="submit">Invia</button></form>';
+  return h + "</div></div>";
+}
+
+/* ---------------- bacheca dello studio ---------------- */
+/* La prima cosa che vedi dello studio non sono i numeri: è cosa succede. Chi ha
+   scritto, cosa c'è in calendario, chi sta parlando in chat. I numeri vengono
+   dopo, perché servono, ma non sono la ragione per cui si sta insieme. */
+function vStudio() {
+  var attivi = D.pros.filter(function (x) { return x.vetting !== "Sospeso"; });
+  var fut = agendaFutura();
+  var wk = fut.filter(function (e) { return e.tipo === "Workshop" || e.tipo === "Formazione"; });
+  var nl = nonLettiTot();
+  var settimana = iso(new Date(Date.now() + 7 * 86400000));
+  var conFigura = D.pros.filter(function (x) { return x.professione_id; }).length;
+
+  var h = head("Lo studio", attivi.length + " persone · " + D.post.length + " messaggi in bacheca · " + fut.length + " cose in calendario",
+    '<button class="btn sm ghost" data-go="chat">Chat' + (nl ? " (" + nl + ")" : "") + '</button>' +
+    '<button class="btn sm" data-new="ag">+ Organizza qualcosa</button>');
+  h += '<div class="grid g4">' +
+    kpi(String(attivi.length), "Siamo in", conFigura + " con una figura professionale") +
+    kpi(String(fut.filter(function (e) { return e.data <= settimana; }).length), "Questa settimana", fut.length + " cose in calendario in tutto") +
+    kpi(String(wk.length), "Workshop e formazione", wk.length ? "il prossimo " + dshort(wk[0].data) : "niente in programma") +
+    kpi(String(nl), "Messaggi da leggere", D.can.length + " canali aperti") + "</div>";
+
+  h += '<div class="grid g32" style="margin-top:16px"><div>';
+  /* la bacheca */
+  h += '<div class="card"><div class="cardhead"><h2>Bacheca</h2><span class="faint">quello che ci diciamo</span></div>';
+  h += scrivi("studio");
+  var pp = postOrdinati();
+  h += pp.length ? '<div class="posts">' + pp.slice(0, 12).map(function (p) { return unPost(p); }).join("") + "</div>"
+    : vuoto("Ancora niente in bacheca. Scrivi tu la prima cosa: un annuncio, una domanda, un lavoro andato bene.");
+  h += "</div>";
+  /* cosa sanno fare i colleghi */
+  h += '<div class="card"><div class="cardhead"><h2>Cosa sanno fare i colleghi</h2><button class="btn sm ghost" data-go="professioni">Per mestiere</button></div>';
   var cats = {};
   D.serv.filter(function (s) { return s.attivo !== false && s.pro_id !== me.pro_id; }).forEach(function (s) { (cats[s.cat || "Altro"] = cats[s.cat || "Altro"] || []).push(s); });
   var ck = Object.keys(cats).sort();
@@ -1868,21 +2200,42 @@ function vStudio() {
       return '<div class="cri"><b>' + esc(s.nome) + '</b><span class="faint"> · ' + esc(nameOf(D.pros, s.pro_id)) + " · " + eur(s.prezzo) + (s.unita ? " / " + esc(s.unita) : "") + "</span></div>";
     }).join("") + "</div>";
   }).join("") : vuoto("Nessun servizio dei colleghi, per ora.");
-  h += "</div>";
-  h += '<div class="card"><div class="cardhead"><h2>Fornitori consigliati</h2><button class="btn sm ghost" data-go="fornitori">Tutti</button></div>';
-  h += D.forn.length ? '<div class="checklist">' + D.forn.slice(0, 6).map(function (f) {
-    return '<div class="cri"><b>' + esc(f.nome) + '</b><span class="faint"> · ' + esc(f.categoria || "—") + (f.consigliato_da ? " · da " + esc(nameOf(D.pros, f.consigliato_da)) : "") + "</span></div>";
-  }).join("") + "</div>" : vuoto("Nessun fornitore segnalato.", '<button class="lnk" data-new="forn">Segnalane uno</button>');
   h += "</div></div><div>";
-  h += '<div class="card"><div class="cardhead"><h2>Chi c\'è</h2><button class="btn sm ghost" data-go="pool">Il pool</button></div>';
+
+  /* in calendario */
+  h += '<div class="card"><div class="cardhead"><h2>In calendario</h2><button class="btn sm ghost" data-go="eventi">Tutti</button></div>';
+  h += fut.length ? fut.slice(0, 5).map(function (e) { return unEvento(e, true); }).join("")
+    : vuoto("Niente in programma.", '<button class="lnk" data-new="ag">Organizza qualcosa</button>');
+  h += "</div>";
+  /* la chat, di sbieco */
+  var ultimi = D.msg.slice().sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; }).slice(0, 4);
+  h += '<div class="card"><div class="cardhead"><h2>In chat</h2><button class="btn sm ghost" data-go="chat">Apri' + (nl ? " (" + nl + ")" : "") + "</button></div>";
+  h += ultimi.length ? '<div class="checklist">' + ultimi.map(function (m) {
+    var c = by(D.can, m.canale_id);
+    return '<div class="cri">' + avatar(m.pro_id, 20) + " <b>" + esc(proNome(m.pro_id)) + '</b> <span class="faint">in #' + esc(c ? c.nome : "?") + " · " + esc(quando(m.created_at)) + "</span><div>" + esc(m.testo.slice(0, 90)) + (m.testo.length > 90 ? "…" : "") + "</div></div>";
+  }).join("") + "</div>" : vuoto("Nessun messaggio ancora.");
+  h += "</div>";
+  /* chi c'è */
+  h += '<div class="card"><div class="cardhead"><h2>Chi c\'è</h2><button class="btn sm ghost" data-go="pool">Tutti</button></div>';
   h += '<div class="checklist">' + attivi.slice(0, 10).map(function (x) {
-    return '<div class="cri">' + avatar(x.id, 22) + ' <button class="lnk" data-open-pro="' + x.id + '">' + esc(x.nome) + '</button><span class="faint"> · ' + esc(x.ruolo || "—") + "</span></div>";
+    var f = x.professione_id ? by(D.prof, x.professione_id) : null;
+    return '<div class="cri">' + avatar(x.id, 22) + ' <button class="lnk" data-open-pro="' + x.id + '">' + esc(x.nome) + '</button><span class="faint"> · ' + esc(f ? f.nome : (x.ruolo || "—")) + "</span></div>";
   }).join("") + "</div></div>";
+  /* fornitori e spazi, dove sono sempre stati */
+  h += '<div class="card"><div class="cardhead"><h2>Fornitori</h2><button class="btn sm ghost" data-go="fornitori">Tutti</button></div>';
+  h += D.forn.length ? '<div class="checklist">' + D.forn.slice(0, 5).map(function (f) {
+    return '<div class="cri"><b>' + esc(f.nome) + '</b><span class="faint"> · ' + esc(f.categoria || "—") + "</span></div>";
+  }).join("") + "</div>" : vuoto("Nessun fornitore segnalato.", '<button class="lnk" data-new="forn">Segnalane uno</button>');
+  h += "</div>";
   h += '<div class="card"><div class="cardhead"><h2>Spazi</h2><button class="btn sm ghost" data-go="spazi">Prenota</button></div>';
   h += D.spazi.length ? '<div class="checklist">' + D.spazi.map(function (x) {
-    return '<div class="cri"><b>' + esc(x.nome) + '</b><span class="faint"> · ' + esc(x.stato || "—") + (x.partner ? " · " + esc(x.partner) : "") + "</span></div>";
+    return '<div class="cri"><b>' + esc(x.nome) + '</b><span class="faint"> · ' + esc(x.stato || "—") + "</span></div>";
   }).join("") + "</div>" : vuoto("Nessuno spazio ancora.");
   h += "</div></div></div>";
+
+  h += '<div class="card" style="background:var(--cream);margin-top:16px"><div class="cardhead"><h2>Cosa resta tuo</h2><span class="badge">applicato dal database</span></div>' +
+    '<p class="faint">Clienti, preventivi, pagamenti, ore e tariffe stanno dentro il tuo spazio: nessun collega li vede, nemmeno chi cura le aree comuni. ' +
+    'Un collega entra solo nel singolo lavoro in cui lo coinvolgi. Questa pagina è l\'altro piano dell\'edificio: qui c\'è solo quello che è di tutti, e nessun cliente ci mette piede.</p></div>';
   return h;
 }
 
@@ -1923,7 +2276,7 @@ function vCarico() {
   var mieRighe = D.righe.filter(function (r) {
     var s = by(D.serv, r.serv_id);
     var k = by(D.com, r.commessa_id);
-    return (r.assegnato_id === me.pro_id || (s && s.pro_id === me.pro_id)) && k && ["Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1;
+    return (r.assegnato_id === me.pro_id || (s && s.pro_id === me.pro_id)) && k && ["Accettato"].indexOf(k.stato) > -1;
   });
   var stim = sum(mieLav, function (l) { return l.ore_stimate; });
   var stimRighe = sum(mieRighe, function (r) { return r.ore_stimate; });
@@ -2006,7 +2359,7 @@ function vClienti() {
   if (vista === "schede") {
     return h + '<div class="grid g3">' + ordinati.map(function (c) {
       var com = comOfCliente(c.id);
-      var att = com.filter(function (k) { return ["Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1; });
+      var att = com.filter(function (k) { return ["Accettato"].indexOf(k.stato) > -1; });
       return '<div class="card pcard" data-route="cliente|' + c.id + '|anagrafica">' +
         '<div class="cardhead"><h2>' + esc(c.nome) + '</h2><span class="badge ' + (c.stato === "Attivo" ? "b-green" : c.stato === "Lead" ? "b-amber" : "") + '">' + esc(c.stato || "Lead") + "</span></div>" +
         '<p class="faint">' + esc(c.settore || "—") + (c.referente ? " · " + esc(c.referente) : "") + "</p>" +
@@ -2073,7 +2426,7 @@ function vCliente() {
       '<div class="row2">' + qcampo("cli", c.id, "email", "Email", qinput("cli", c.id, "email", "email", c.email)) +
       qcampo("cli", c.id, "telefono", "Telefono", qinput("cli", c.id, "telefono", "text", c.telefono)) + "</div></div>" +
       '<div class="card"><h3 style="margin-bottom:12px">In sintesi</h3><table><tbody>' +
-      row2("Preventivi", com.length + " · " + com.filter(function (k) { return ["In corso", "Approvata"].indexOf(k.stato) > -1; }).length + " attivi") +
+      row2("Preventivi", com.length + " · " + com.filter(function (k) { return ["Accettato"].indexOf(k.stato) > -1; }).length + " attivi") +
       row2("Progetti", prg.length) +
       row2("Incassato", eur(sum(pg.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; }))) +
       row2("Da incassare", eur(sum(pg.filter(function (p) { return p.stato !== "Incassato"; }), function (p) { return p.importo; }))) +
@@ -2276,7 +2629,7 @@ async function salvaLink(ctx, dati) {
 
 function apriAggiungiServizio(sid) {
   var x = by(D.serv, sid); if (!x) return;
-  var miei = fcom().filter(function (k) { return ["Bozza", "Preventivo", "Approvata", "In corso"].indexOf(k.stato) > -1; });
+  var miei = fcom().filter(function (k) { return ["Bozza", "Inviato", "Accettato"].indexOf(k.stato) > -1; });
   if (!miei.length) { toast("Non hai preventivi aperti: creane uno e poi torna qui", true); return; }
   modal('<form class="box" data-serv-add-save="' + sid + '"><h2>Aggiungi al preventivo</h2>' +
     '<p class="faint" style="margin-bottom:14px">' + esc(x.nome) + " di " + esc(nameOf(D.pros, x.pro_id)) +
@@ -2296,8 +2649,17 @@ function vPro() {
   var tk = D.task.filter(function (t) { return t.assegnato_id === p.id; });
   var com = D.com.filter(function (k) { return k.owner_id === p.id || k.pm_id === p.id || k.pr_id === p.id || righeOf(k.id).some(function (r) { var s = by(D.serv, r.serv_id); return r.assegnato_id === p.id || (s && s.pro_id === p.id); }); });
   var h = (view === "profilo" ? crumbs([["Profilo"], ["Il mio profilo"]]) : crumbs([["Studio"], ["Professionisti", "pool"], [p.nome]]));
-  h += '<div class="top"><h1>' + esc(p.nome) + '<span class="sub">' + esc(p.ruolo || "—") + '</span></h1><div class="tools">' + (view === "profilo" ? "" : '<button class="btn sm ghost" data-go="pool">← Professionisti</button>') + '<button class="btn sm ghost" data-edit="pros:' + p.id + '">Modifica</button></div></div>';
+  var fig = p.professione_id ? by(D.prof, p.professione_id) : null;
+  h += '<div class="top"><h1>' + esc(p.nome) + '<span class="sub">' + esc(fig ? fig.nome : (p.ruolo || "—")) + (fig && p.ruolo && p.ruolo !== fig.nome ? " · " + esc(p.ruolo) : "") + '</span></h1><div class="tools">' + (view === "profilo" ? "" : '<button class="btn sm ghost" data-go="pool">← Professionisti</button>') + '<button class="btn sm ghost" data-edit="pros:' + p.id + '">Modifica</button></div></div>';
   var mio = p.id === me.pro_id;
+  if (mio) {
+    h += fig
+      ? '<div class="card" style="background:var(--cream)"><div class="cardhead"><h2>Come lavori tu</h2><button class="btn sm ghost" data-go="professioni">Il catalogo dei mestieri</button></div>' +
+        '<p class="faint" style="margin-bottom:10px">Sei un <b>' + esc(fig.nome) + '</b>: vendi <b>' + MISURA_ET(fig.misura) + '</b>, la tua unità naturale è <b>' + esc(fig.unita) + '</b>. Quando un tuo preventivo viene accettato, da ogni voce nascono queste attività — poi le sposti come vuoi.</p>' +
+        '<ol class="fontil">' + (fig.attivita || []).map(function (a) { return "<li>" + esc(a.n || a.nome) + (a.o ? ' <span class="faint">' + a.o + " h</span>" : "") + "</li>"; }).join("") + "</ol>" +
+        '<div style="margin-top:12px"><button class="btn sm ghost" data-listino="1">Porta le voci tipiche nel tuo listino</button></div></div>'
+      : '<div class="card" style="background:var(--cream)"><div class="cardhead"><h2>Che mestiere fai?</h2><button class="btn sm" data-edit="pros:' + p.id + '">Scegli la tua figura</button></div><p class="faint">Il catalogo ha ' + D.prof.length + ' mestieri, dall\'architetto al tappezziere. Scegliendo il tuo, il gestionale si mette al tuo passo: menu nell\'ordine che ti serve, unità di misura giusta, voci di listino già pronte e attività che nascono da sole quando un preventivo viene accettato.</p></div>';
+  }
   h += '<div class="grid g4">' +
     kpi(String(com.length), mio ? "I tuoi lavori" : "Lavori insieme a te", mio ? D.cli.filter(function (c) { return c.owner_id === p.id; }).length + " clienti tuoi" : "solo quelli che condividete") +
     kpi(mio ? num(sum(ore, function (o) { return o.ore; }), 1) + " h" : "—", mio ? "Ore registrate" : "Ore", mio ? ore.length + " registrazioni" : "private, le vede solo chi le registra") +
@@ -2377,8 +2739,11 @@ function vServizi() {
     if (f.cerca && (s.nome + " " + (s.cat || "") + " " + (s.descrizione || "")).toLowerCase().indexOf(f.cerca.toLowerCase()) === -1) return false;
     return true;
   });
+  var mia = miaFigura();
   var h = head("I miei servizi", list.length + " servizi · " + (f.chi === "io" ? "il tuo listino" : "quello che sanno fare gli altri"),
+    (mia ? '<button class="btn sm ghost" data-listino="1">Prendi le voci tipiche da ' + esc(mia.nome) + "</button>" : "") +
     '<button class="btn sm" data-new="serv">+ Nuovo servizio</button>');
+  if (!mia) h += '<div class="card" style="background:var(--cream)"><div class="cardhead"><h2>Che mestiere fai?</h2><button class="btn sm" data-go="profilo">Scegli la tua figura</button></div><p class="faint">Scegli la tua figura professionale e il gestionale si mette al tuo passo: unità di misura giusta, voci tipiche già pronte, e le attività di un tuo lavoro che nascono da sole quando un preventivo viene accettato.</p></div>';
   h += barraViste(null, "", "servizi",
     fcerca("serv", "Cerca un servizio…") +
     fsel("serv", "chi", [["io", "I miei"], ["altri", "Dei colleghi"], ["tutti", "Tutti"]]) +
@@ -2397,8 +2762,8 @@ function vServizi() {
 function vReport() {
   var com = fcom(), ore = fore();
   var pagMiei = D.pag.filter(function (p) { return can(p.commessa_id); });
-  var vinte = com.filter(function (k) { return ["Approvata", "In corso", "Consegna", "Chiusa"].indexOf(k.stato) > -1; });
-  var perse = com.filter(function (k) { return k.stato === "Persa"; });
+  var vinte = com.filter(function (k) { return STATI_VINTI.indexOf(k.stato) > -1; });
+  var perse = com.filter(function (k) { return k.stato === "Perso"; });
   var conv = (vinte.length + perse.length) ? Math.round(vinte.length / (vinte.length + perse.length) * 100) : 0;
   var mesi = {};
   pagMiei.filter(function (p) { return p.stato === "Incassato"; }).forEach(function (p) { var kk = String(p.pagato_il || p.scadenza || "").slice(0, 7); if (kk) mesi[kk] = (mesi[kk] || 0) + (+p.importo || 0); });
@@ -2411,7 +2776,7 @@ function vReport() {
     kpi(conv + " %", "Preventivi vinti", vinte.length + " vinti · " + perse.length + " persi") +
     kpi(totOre ? Math.round(fattOre / totOre * 100) + " %" : "—", "Ore fatturabili", num(fattOre, 1) + " h su " + num(totOre, 1) + " registrate") +
     kpi(eur(com.length ? sum(com, function (k) { return calc(k).tot; }) / com.length : 0), "Valore medio", com.length + " preventivi") +
-    kpi(eur(sum(com.filter(function (k) { return k.stato !== "Persa"; }), function (k) { return calc(k).margine; })), "Margine complessivo", "sui lavori non persi") + "</div>";
+    kpi(eur(sum(com.filter(function (k) { return k.stato !== "Perso"; }), function (k) { return calc(k).margine; })), "Margine complessivo", "sui lavori non persi") + "</div>";
   h += '<div class="grid g2" style="margin-top:16px"><div class="card"><div class="cardhead"><h2>Incassi per mese</h2></div>';
   h += mk.length ? '<div class="bars">' + mk.map(function (kk) { return bar(kk, mesi[kk], Math.max.apply(null, mk.map(function (x) { return mesi[x]; })), eur(mesi[kk])); }).join("") + "</div>" : vuoto("—");
   h += '</div><div class="card"><div class="cardhead"><h2>Top clienti</h2></div>';
@@ -3401,7 +3766,8 @@ async function creaDaImport() {
   }
   var rk = await sb.from("commesse").insert({
     titolo: (IMP.titolo || "Preventivo importato").slice(0, 140),
-    cliente_id: cid, owner_id: me.pro_id, pm_id: me.pro_id, stato: "Preventivo",
+    cliente_id: cid, owner_id: me.pro_id, pm_id: me.pro_id, stato: "Inviato", inviato_il: IMP.data || today(),
+    ambito: IMP.ambito || "personale",
     numero: IMP.numero || null, data: IMP.data || today(), iva: IMP.iva == null ? 22 : +IMP.iva, sconto: +IMP.sconto || 0,
     premessa: IMP.premessa || null, condizioni: IMP.condizioni || null, chiusura: IMP.chiusura || null,
     validita: IMP.validita == null ? 30 : +IMP.validita,
@@ -3473,13 +3839,21 @@ function emittente(k) {
 function dataDoc(k) {
   return (k && k.data) || String((k && k.created_at) || today()).slice(0, 10);
 }
+/* Due serie separate, perché sono due cose separate: quello che esce a tuo nome
+   e quello che esce a nome dello studio. P/2026/001 e S/2026/001 non si toccano
+   mai, e il numero si congela il giorno in cui il preventivo parte. */
+function serieDi(k) { return ambitoCom(k) === "studio" ? "S" : "P"; }
 function numeroDoc(k) {
   if (k.numero) return k.numero;
-  var anno = dataDoc(k).slice(0, 4);
-  var miei = D.com.filter(function (x) { return dataDoc(x).slice(0, 4) === anno; })
-    .sort(function (a, b) { return dataDoc(a) < dataDoc(b) ? -1 : 1; });
+  var anno = dataDoc(k).slice(0, 4), sr = serieDi(k);
+  var miei = D.com.filter(function (x) { return dataDoc(x).slice(0, 4) === anno && serieDi(x) === sr; })
+    .sort(function (a, b) {
+      var da = dataDoc(a), db = dataDoc(b);
+      if (da !== db) return da < db ? -1 : 1;
+      return (a.created_at || "") < (b.created_at || "") ? -1 : 1;
+    });
   var i = miei.map(function (x) { return x.id; }).indexOf(k.id);
-  return anno + "/" + String((i < 0 ? miei.length : i) + 1).padStart(3, "0");
+  return sr + "/" + anno + "/" + String((i < 0 ? miei.length : i) + 1).padStart(3, "0");
 }
 /* Le date scritte a mano: 12/03/2026, 2026-03-12, «12 marzo 2026». */
 var MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
@@ -4156,6 +4530,7 @@ var PROS_PR = function () { return D.pros; };
 var FORMS = {
   com: { t: "Preventivo", tb: "com", f: function (r) {
     return fld("titolo", "Titolo", "text", r.titolo, true) +
+      selField("ambito", "A nome di chi esce", selKV([["personale", "Tuo — esce con la tua partita IVA e la tua serie P/anno"], ["studio", "Dello studio — esce a nome Giraffa Studio, serie S/anno"]], r.ambito === "studio" ? "studio" : "personale")) +
       '<div class="row2">' + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) + selField("stato", "Stato", sel(STATI, r.stato || "Bozza")) + "</div>" +
       '<div class="row2">' + selField("owner_id", "Owner (chi ha il rapporto)", opt(D.pros, r.owner_id || me.pro_id)) + selField("pm_id", "Regia / PM", opt(D.pros, r.pm_id)) + "</div>" +
       selField("pr_id", "Chi ha portato il cliente", opt(D.pros, r.pr_id)) +
@@ -4167,6 +4542,27 @@ var FORMS = {
       '<div class="row2">' + fld("validita", "Validità preventivo (giorni)", "number", r.validita == null ? 30 : r.validita) + fld("probabilita", "Probabilità di chiusura (%)", "number", r.probabilita == null ? 50 : r.probabilita) + "</div>" +
       fld("condizioni", "Condizioni e tempi (compaiono sul preventivo)", "textarea", r.condizioni) +
       fld("note", "Note interne", "textarea", r.note);
+  }},
+  ag: { t: "Evento", tb: "ag", f: function (r) {
+    return fld("titolo", "Cosa succede", "text", r.titolo, true) +
+      '<div class="row2">' + selField("tipo", "Che cosa è", sel(["Evento", "Workshop", "Riunione", "Formazione", "Aperitivo"], r.tipo || "Evento")) + fld("data", "Giorno", "date", r.data || today(), true) + "</div>" +
+      '<div class="row2">' + fld("ora", "Dalle", "time", r.ora) + fld("fine", "Alle", "time", r.fine) + "</div>" +
+      '<div class="row2">' + fld("luogo", "Dove (indirizzo o stanza)", "text", r.luogo) + selField("spazio_id", "Oppure uno spazio dello studio", opt(D.spazi, r.spazio_id)) + "</div>" +
+      '<div class="row2">' + selField("relatore_id", "Chi lo tiene", opt(PROS_PRO(), r.relatore_id)) + fld("posti", "Posti (vuoto = illimitati)", "number", r.posti) + "</div>" +
+      fld("costo", "Costo a persona (€, vuoto = gratis)", "number", r.costo) +
+      fld("descrizione", "Di cosa si tratta", "textarea", r.descrizione);
+  }},
+  can: { t: "Canale", tb: "can", f: function (r) {
+    return fld("nome", "Nome del canale (senza cancelletto)", "text", r.nome, true) +
+      fld("descrizione", "Di cosa si parla qui", "text", r.descrizione) +
+      fld("ordine", "Posizione nell elenco", "number", r.ordine == null ? 100 : r.ordine);
+  }},
+  prof: { t: "Figura professionale", tb: "prof", f: function (r) {
+    return fld("nome", "Come si chiama il mestiere", "text", r.nome, true) +
+      '<div class="row2">' + fld("categoria", "Famiglia (Design, Diritto, Artigianato…)", "text", r.categoria, true) + fld("unita", "Unità naturale (progetto, ora, pezzo…)", "text", r.unita || "progetto") + "</div>" +
+      selField("misura", "Come vende il lavoro", selKV([["ore", "A ore"], ["progetto", "A progetto"], ["quantita", "A quantità"], ["ricorrente", "A canone"]], r.misura || "progetto")) +
+      '<div class="field"><label>Attività tipo, una per riga</label><textarea name="attivita_txt" rows="6" placeholder="Sopralluogo : 4&#10;Esecuzione : 20&#10;Consegna : 2">' + esc(attivitaTxt(r.attivita)) + "</textarea></div>" +
+      fld("descrizione", "In una riga, cosa fa", "text", r.descrizione);
   }},
   vari: { t: "Variante", tb: "vari", f: function (r) {
     return fld("nome", "Cosa cambia", "text", r.nome, true) +
@@ -4192,6 +4588,7 @@ var FORMS = {
     return '<div class="fgroup"><h3>Scheda visibile ai colleghi</h3>' +
       fld("nome", "Nome", "text", r.nome, true) +
       '<div class="row2">' + fld("ruolo", "Cosa fai (es. Fotografo, Sviluppatore)", "text", r.ruolo) + selField("vetting", "Stato", sel(["In valutazione", "Attivo", "Sospeso"], r.vetting || "In valutazione")) + "</div>" +
+      '<div class="field"><label>Figura professionale</label><select name="professione_id">' + optProf(r.professione_id) + '</select><p class="faint" style="margin-top:6px">Da qui il gestionale capisce come lavori: l\'unità con cui vendi, le voci tipiche del tuo listino e le attività che nascono quando un preventivo viene accettato. Se il tuo mestiere non c\'è, si aggiunge al catalogo.</p></div>' +
       fld("competenze", "Competenze (separate da virgola)", "text", r.competenze) +
       '<div class="row2">' + fld("email", "Email", "email", r.email) + fld("telefono", "Telefono", "text", r.telefono) + "</div>" +
       '<div class="row2">' + fld("citta", "Città", "text", r.citta) + fld("piva", "P. IVA", "text", r.piva) + "</div></div>" +
@@ -4208,6 +4605,8 @@ var FORMS = {
   serv: { t: "Servizio", tb: "serv", f: function (r) {
     return fld("nome", "Nome", "text", r.nome, true) +
       selField("pro_id", "Professionista", opt(PROS_PRO(), r.pro_id || me.pro_id)) +
+      '<div class="field"><label>Figura professionale</label><select name="professione_id">' + optProf(r.professione_id || (miaFigura() || {}).id) + "</select></div>" +
+      '<div class="field"><label>Attività tipo, una per riga</label><textarea name="attivita_txt" rows="5" placeholder="Sopralluogo : 4&#10;Shooting : 8&#10;Post produzione : 10">' + esc(attivitaTxt(r.attivita)) + '</textarea><p class="faint" style="margin-top:6px">Quando un preventivo con questa voce viene accettato, da qui nascono le attività. Le ore dopo i due punti sono la stima. Se lasci vuoto valgono quelle della figura professionale.</p></div>' +
       '<div class="row2">' + fld("cat", "Categoria (Foto, Web, Social…)", "text", r.cat) + selField("tipo_unita", "Si vende a", sel(["Forfait", "Giornata", "Mezza giornata", "Ora", "Mese", "Anno", "A consumo"], r.tipo_unita || "Forfait")) + "</div>" +
       '<div class="row2">' + fld("unita", "Come si chiama l unità (progetto, shooting, mese…)", "text", r.unita) + fld("min_qty", "Quantità minima", "number", r.min_qty == null ? 1 : r.min_qty) + "</div>" +
       '<div class="row2">' + selField("ricorrente", "Ricorrente", sel(["no", "si"], r.ricorrente ? "si" : "no")) + selField("periodo", "Periodo", sel(["Mensile", "Annuale"], r.periodo || "Mensile")) + "</div>" +
@@ -4332,6 +4731,7 @@ var FSEZ = {
   com: ["commesse", "Preventivi"], cli: ["clienti", "Clienti"], pros: ["pool", "Professionisti"],
   serv: ["servizi", "I miei servizi"], prog: ["progetti", "Progetti"], lav: ["progetti", "Progetti"],
   forn: ["fornitori", "Fornitori"], spazi: ["spazi", "Coworking & spazi"],
+  ag: ["eventi", "Eventi e workshop"], can: ["chat", "Chat dello studio"], prof: ["professioni", "Figure professionali"],
   membri: ["impostazioni", "Impostazioni"], fasi: ["commesse", "Preventivi"], pag: ["commesse", "Preventivi"],
   vari: ["commesse", "Preventivi"], appr: ["commesse", "Preventivi"], righe: ["commesse", "Preventivi"],
   task: ["task", "Attività"], ore: ["ore", "Ore & timesheet"], inter: ["clienti", "Clienti"], modelli: ["task", "Attività"],
@@ -4410,6 +4810,8 @@ async function saveForm(f) {
     F.priv.forEach(function (c) { if (c in obj) { privati[c] = obj[c]; delete obj[c]; } });
   }
   if (entity === "ev" && !obj.pro_id) obj.pro_id = me.pro_id;
+  if (entity === "ag" && !obj.pro_id) obj.pro_id = me.pro_id;
+  if ("attivita_txt" in obj) { obj.attivita = attivitaDaTxt(obj.attivita_txt); delete obj.attivita_txt; }
   /* Chi apre una lavorazione o un'attività sceglie il progetto, non il preventivo:
      il preventivo lo ricavo io risalendo la catena. Senza, il database rifiuta la
      riga perché non capisce a quale lavoro appartiene. */
@@ -4575,12 +4977,27 @@ function render() {
     return;
   }
   buildNav();
-  var V = { attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi };
+  var V = { attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi, professioni: vProfessioni, eventi: vEventi, chat: vChat };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search") || el("#tcerca") || el("#fcerca");
   if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
+  if (view === "chat") { var cms = el(".chatms"); if (cms) cms.scrollTop = cms.scrollHeight; segnaLetto(); }
   countUp();
+}
+
+/* Entrare in un canale vuol dire averlo letto. Segno la lettura senza ridisegnare
+   tutta la pagina: basta aggiornare il pallino nel menu. */
+var LETTOBUSY = "";
+async function segnaLetto() {
+  var c = canaleCorrente();
+  if (!c || !me.pro_id || LETTOBUSY === c.id || !nonLetti(c.id)) return;
+  LETTOBUSY = c.id;
+  var r = await sb.from("letture").upsert({ canale_id: c.id, pro_id: me.pro_id, letto_il: new Date().toISOString() }, { onConflict: "canale_id,pro_id" });
+  LETTOBUSY = "";
+  if (r.error) return;
+  await reload(["lett"]);
+  buildNav();
 }
 
 /* numeri che salgono */
@@ -4744,6 +5161,7 @@ document.addEventListener("click", async function (e) {
     if (d.ctx) ctx.commessa_id = d.ctx;
     if (d.ctxCli) ctx.cliente_id = d.ctxCli;
     if (d.ctxPro) ctx.pro_id = d.ctxPro;
+    if (d.ctxAmb) ctx.ambito = d.ctxAmb;
     if (d.ctxProg) { ctx.progetto_id = d.ctxProg; var pk2 = by(D.prog, d.ctxProg); if (pk2) ctx.commessa_id = pk2.commessa_id; }
     if (d.ctxLav) { var lk = by(D.lav, d.ctxLav); if (lk) { ctx.lavorazione_id = lk.id; ctx.progetto_id = lk.progetto_id; ctx.commessa_id = lk.commessa_id; } }
     if (d.ctxTask) { var tk8 = by(D.task, d.ctxTask); if (tk8) { ctx.task_id = tk8.id; ctx.lavorazione_id = tk8.lavorazione_id; ctx.progetto_id = tk8.progetto_id; ctx.commessa_id = tk8.commessa_id; } }
@@ -4755,6 +5173,38 @@ document.addEventListener("click", async function (e) {
   if (d.rigaEdit) { openRiga(null, d.rigaEdit); return; }
   if (d.portale) { openPortale(d.portale); return; }
   if (d.avvia) { await avviaLavoro(d.avvia); return; }
+  if (d.fig) { FIGAP = FIGAP === d.fig ? null : d.fig; render(); return; }
+  if (d.postap) { POSTAP = POSTAP === d.postap ? null : d.postap; render(); return; }
+  if (d.postlike) {
+    if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
+    var rl = hoReagito(d.postlike)
+      ? await sb.from("post_reaz").delete().eq("post_id", d.postlike).eq("pro_id", me.pro_id)
+      : await sb.from("post_reaz").insert({ post_id: d.postlike, pro_id: me.pro_id });
+    if (rl.error) { toast(rl.error.message, true); return; }
+    await reload(["reaz"]); render(); return;
+  }
+  if (d.postfix) {
+    var pf = by(D.post, d.postfix);
+    if (await salvaSubito("post", d.postfix, { fissato: !(pf && pf.fissato) })) render();
+    return;
+  }
+  if (d.postvia) {
+    if (!confirm("Eliminare questo messaggio dalla bacheca?")) return;
+    var rv = await sb.from("post").delete().eq("id", d.postvia);
+    if (rv.error) { toast(rv.error.message, true); return; }
+    await reload(["post", "risp", "reaz"]); toast("Eliminato"); render(); return;
+  }
+  if (d.evsi || d.evno) {
+    if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
+    var eid = d.evsi || d.evno;
+    var re = await sb.from("iscrizioni").upsert(
+      { agenda_id: eid, pro_id: me.pro_id, stato: d.evsi ? "Ci sono" : "Non ci sono" },
+      { onConflict: "agenda_id,pro_id" });
+    if (re.error) { toast(re.error.message, true); return; }
+    await reload(["iscr"]); toast(d.evsi ? "Segnato: ci sei" : "Va bene, sarà per la prossima"); render(); return;
+  }
+  if (d.listino) { await prendiListino(); return; }
+  if (d.ciclo) { var cz = d.ciclo.split("|"); await cambiaStato(cz[0], cz[1]); return; }
   if (d.portnew) {
     var tok = "";
     var alfa = "abcdefghijkmnopqrstuvwxyz23456789";
@@ -4907,43 +5357,102 @@ document.addEventListener("click", async function (e) {
   if (d.tstop) { await stopTimer(); return; }
 });
 
-async function avviaLavoro(kid) {
-  var k = by(D.com, kid); if (!k) return;
+/* ---------------- dal preventivo al lavoro ----------------
+   Quando il cliente dice sì il preventivo smette di essere un foglio. Da ogni
+   voce scelta nasce un progetto, e dentro il progetto le attività tipo di quel
+   servizio. Se il servizio non ne ha, si prendono quelle della figura
+   professionale di chi lo esegue: un fotografo apre sopralluogo, shooting,
+   selezione e post produzione; un avvocato apre colloquio, studio, atto, udienze.
+   Niente di tutto questo è definitivo: sono attività vere, si spostano e si
+   cancellano come le altre. */
+function figuraDi(proId) {
+  var pr = by(D.pros, proId);
+  return pr && pr.professione_id ? by(D.prof, pr.professione_id) : null;
+}
+function attivitaTipo(r) {
+  var sv = by(D.serv, r.serv_id);
+  if (sv && sv.attivita && sv.attivita.length) return sv.attivita;
+  var f = (sv && sv.professione_id && by(D.prof, sv.professione_id)) || figuraDi(r.assegnato_id || (sv && sv.pro_id));
+  if (f && f.attivita && f.attivita.length) return f.attivita;
+  return [{ n: "Esecuzione", o: r.ore_stimate || null }, { n: "Consegna al cliente", o: null }];
+}
+async function apriIlLavoro(kid) {
+  var fatti = { p: 0, a: 0, gia: 0 };
+  var k = by(D.com, kid); if (!k) return fatti;
   var righe = righeOf(kid).filter(function (r) { return !r.opzionale && r.tipo !== "Sconto"; });
-  if (!righe.length) { toast("Il preventivo non ha righe da avviare"); return; }
-  var creatiP = 0, creatiL = 0, saltati = 0;
-  var progs = progOf(kid);
-  var generale = null;
+  var esistenti = progOf(kid).slice();
   for (var i = 0; i < righe.length; i++) {
-    var r = righe[i], cc = rigaCalc(r);
-    var pid = r.progetto_id;
+    var r = righe[i], cc = rigaCalc(r), chi = cc.pro || k.owner_id || me.pro_id;
+    var nome = (cc.nome || "Lavoro").slice(0, 140);
+    var pg = r.progetto_id ? by(D.prog, r.progetto_id) : null;
+    if (!pg) pg = esistenti.filter(function (x) { return x.nome === nome; })[0];
+    var pid = pg && pg.id;
     if (!pid) {
-      if (!generale) {
-        var pg0 = progs.filter(function (x) { return x.nome === "Generale"; })[0];
-        if (pg0) generale = pg0.id;
-        else {
-          var np = await sb.from("progetti").insert({ commessa_id: kid, nome: "Generale", pro_id: k.owner_id, stato: "In corso", ordine: 99 }).select();
-          if (np.error) { toast(np.error.message, true); return; }
-          generale = np.data[0].id; creatiP++;
-        }
-      }
-      pid = generale;
-    }
-    var gia = D.lav.filter(function (l) { return l.progetto_id === pid && l.nome === cc.nome; })[0];
-    if (gia) { saltati++; continue; }
-    var nl = await sb.from("lavorazioni").insert({
-      progetto_id: pid, commessa_id: kid, nome: cc.nome,
-      descrizione: r.descrizione || null, pro_id: cc.pro || k.owner_id,
-      stato: "Da iniziare", ore_stimate: r.ore_stimate || null,
-      inizio: k.inizio || null, fine: k.scadenza || null, ordine: i + 1
+      var np = await sb.from("progetti").insert({
+        commessa_id: kid, nome: nome, descrizione: r.descrizione || null,
+        pro_id: chi, stato: "Da iniziare", ordine: i + 1,
+        inizio: k.inizio || null, fine: k.scadenza || null
+      }).select();
+      if (np.error) { toast(np.error.message, true); return fatti; }
+      pid = np.data[0].id; esistenti.push(np.data[0]); fatti.p++;
+      if (!r.progetto_id) await sb.from("righe").update({ progetto_id: pid }).eq("id", r.id);
+    } else fatti.gia++;
+    var mod = attivitaTipo(r), nuove = [];
+    var gia = D.task.filter(function (t) { return t.progetto_id === pid; }).map(function (t) { return t.titolo; });
+    mod.forEach(function (a, j) {
+      var tit = String(a.n || a.nome || "Attività").slice(0, 200);
+      if (gia.indexOf(tit) > -1) return;
+      gia.push(tit);
+      nuove.push({
+        titolo: tit, commessa_id: kid, cliente_id: k.cliente_id || null, progetto_id: pid,
+        assegnato_id: chi || null, stato: "Da fare", priorita: "Media", ordine: j + 1,
+        stimate: (a.o == null || a.o === "") ? null : +a.o, sezione: nome.slice(0, 80)
+      });
     });
-    if (nl.error) { toast(nl.error.message, true); return; }
-    creatiL++;
+    if (nuove.length) {
+      var nt = await sb.from("task").insert(nuove);
+      if (nt.error) { toast(nt.error.message, true); return fatti; }
+      fatti.a += nuove.length;
+    }
   }
-  if (k.stato === "Approvata") await sb.from("commesse").update({ stato: "In corso" }).eq("id", kid);
-  await logEv(kid, "Lavoro avviato: " + creatiL + " lavorazioni" + (creatiP ? " e " + creatiP + " progetto" : "") + (saltati ? " (" + saltati + " già presenti)" : ""));
-  await reload(["prog", "lav", "com", "ev"]);
-  toast(creatiL ? "Create " + creatiL + " lavorazioni" : "Tutte le lavorazioni erano già presenti");
+  if (fatti.p || fatti.a) await logEv(kid, "Lavoro aperto: " + fatti.p + " progetti e " + fatti.a + " attività");
+  await sb.from("commesse").update({ avviato: true }).eq("id", kid);
+  await reload(["prog", "task", "righe", "com", "ev"]);
+  return fatti;
+}
+function esitoLavoro(f) {
+  if (!f.p && !f.a) return "C'era già tutto: nessun doppione.";
+  return "Aperti " + f.p + " progett" + (f.p === 1 ? "o" : "i") + " e " + f.a + " attività.";
+}
+async function avviaLavoro(kid) {
+  var righe = righeOf(kid).filter(function (r) { return !r.opzionale && r.tipo !== "Sconto"; });
+  if (!righe.length) { toast("Il preventivo non ha voci da cui partire"); return; }
+  toast("Sto aprendo il lavoro…");
+  var f = await apriIlLavoro(kid);
+  toast(esitoLavoro(f));
+  render();
+}
+/* Il passaggio di momento non è un campo come gli altri: si segna la data, si
+   congela il numero quando il preventivo parte, e all'accettazione nascono
+   progetti e attività. Una cosa sola, perché nella testa di chi lavora è una
+   cosa sola. */
+async function cambiaStato(kid, val) {
+  var k = by(D.com, kid) || {};
+  if (!k.id || k.stato === val) return;
+  var patch = { stato: val };
+  if (STATO_DATA[val] && !k[STATO_DATA[val]]) patch[STATO_DATA[val]] = today();
+  if (val !== "Bozza" && !k.numero) patch.numero = numeroDoc(k);
+  var eraAvviato = k.avviato;
+  if (!await salvaSubito("com", kid, patch)) return;
+  await logEv(kid, "Preventivo " + val.toLowerCase());
+  await reload(["ev"]);
+  if (val === "Accettato" && !eraAvviato) { await accettaPreventivo(kid); return; }
+  toast("Preventivo " + val.toLowerCase());
+  render();
+}
+async function accettaPreventivo(kid) {
+  var f = await apriIlLavoro(kid);
+  toast("Accettato. " + esitoLavoro(f));
   render();
 }
 async function stopTimer() {
@@ -5017,6 +5526,32 @@ document.addEventListener("submit", async function (e) {
   var f = e.target;
   if (f.id === "loginform") { e.preventDefault(); return doLogin(f); }
   if (f.dataset.save) { e.preventDefault(); return saveForm(f); }
+  if (f.dataset.post) {
+    e.preventDefault();
+    var tp = (f.testo.value || "").trim(); if (!tp) return;
+    if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
+    var rp1 = await sb.from("post").insert({ pro_id: me.pro_id, testo: tp, tipo: f.tipo ? f.tipo.value : "Messaggio" });
+    if (rp1.error) { toast(rp1.error.message, true); return; }
+    f.testo.value = "";
+    await reload(["post"]); toast("Pubblicato"); render(); return;
+  }
+  if (f.dataset.risp) {
+    e.preventDefault();
+    var tr = (f.testo.value || "").trim(); if (!tr) return;
+    var rr1 = await sb.from("post_risp").insert({ post_id: f.dataset.risp, pro_id: me.pro_id, testo: tr });
+    if (rr1.error) { toast(rr1.error.message, true); return; }
+    await reload(["risp"]); render(); return;
+  }
+  if (f.dataset.msg) {
+    e.preventDefault();
+    var tm = (f.testo.value || "").trim(); if (!tm) return;
+    if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
+    var rm1 = await sb.from("messaggi").insert({ canale_id: f.dataset.msg, pro_id: me.pro_id, testo: tm });
+    if (rm1.error) { toast(rm1.error.message, true); return; }
+    f.testo.value = "";
+    await sb.from("letture").upsert({ canale_id: f.dataset.msg, pro_id: me.pro_id, letto_il: new Date().toISOString() }, { onConflict: "canale_id,pro_id" });
+    await reload(["msg", "lett"]); render(); return;
+  }
   if (f.dataset.rigaSave) {
     e.preventDefault();
     var pp = f.dataset.rigaSave.split(":"), kid = pp[0], rid = pp[1];
@@ -5274,6 +5809,10 @@ document.addEventListener("change", async function (e) {
     if (campo === "progetto_id" && val) { var pg9 = by(D.prog, val); if (pg9) patch.commessa_id = pg9.commessa_id; }
     if (campo === "lavorazione_id" && val) { var lv9 = by(D.lav, val); if (lv9) { patch.progetto_id = lv9.progetto_id; patch.commessa_id = lv9.commessa_id; } }
     if (tbk === "task" && campo === "stato" && val === "Fatto") patch.completata_il = new Date().toISOString();
+    /* Il preventivo che cambia momento non è un campo come gli altri: si segna la
+       data del passaggio, si congela il numero quando parte, e all'accettazione
+       nascono progetti e attività. */
+    if (tbk === "com" && campo === "stato") { await cambiaStato(rid, val); return; }
     if (await salvaSubito(tbk, rid, patch)) toast("Salvato");
     if (tbk === "set") SET = D.set[0] || SET;
     render(); return;
