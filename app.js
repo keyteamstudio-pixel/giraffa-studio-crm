@@ -673,7 +673,7 @@ function vDash() {
     '<button class="btn sm" data-new="com">+ Nuovo preventivo</button>' + '<button class="btn sm ghost" data-new="ore">+ Registra ore</button>' + "</div></div>";
 
   h += '<div class="grid g32">';
-  h += '<div class="card"><div class="cardhead"><h2>Da guardare adesso</h2>' + (foc.length ? '<span class="badge ' + (foc[0].c || "") + '">' + foc.length + " cose</span>" : '<span class="badge b-green">tutto in ordine</span>') + "</div>";
+  h += '<div class="card"><div class="cardhead"><h2>Da guardare adesso</h2>' + (foc.length ? '<span class="badge ' + (foc[0].c || "") + '">' + foc.length + (foc.length === 1 ? " cosa" : " cose") + "</span>" : '<span class="badge b-green">tutto in ordine</span>') + "</div>";
   h += foc.length ? foc.map(function (f) {
     return '<button class="frow" ' + (f.task ? 'data-open-task="' + f.task + '"' : f.act ? 'data-new="' + f.act + '"' : 'data-open-com="' + f.k + '"') + '><span class="fdot ' + (f.c || "b-blue") + '"></span><span class="ftxt"><b>' + esc(f.t) + '</b><span class="faint">' + esc(f.s) + "</span></span><span class=\"fgo\">›</span></button>";
   }).join("") : '<div class="empty">Nessuna urgenza: puoi lavorare sereno.</div>';
