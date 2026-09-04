@@ -18,12 +18,12 @@
 var cfg = window.GS_CONFIG || {};
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
-var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [] };
+var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", set: "settings" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", set: "settings" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
@@ -103,7 +103,6 @@ function pagOf(k) { return D.pag.filter(function (p) { return p.commessa_id === 
 function apprOf(k) { return D.appr.filter(function (a) { return a.commessa_id === k; }); }
 function oreOf(k) { return D.ore.filter(function (o) { return o.commessa_id === k; }); }
 function taskOf(k) { return D.task.filter(function (t) { return t.commessa_id === k; }); }
-function movOf(k) { return D.mov.filter(function (m) { return m.commessa_id === k; }); }
 function oreTot(k) { return sum(oreOf(k), function (o) { return o.ore; }); }
 function comOfCliente(c) { return D.com.filter(function (k) { return k.cliente_id === c; }); }
 function variOf(k) { return D.vari.filter(function (v) { return v.commessa_id === k; }); }
@@ -193,15 +192,6 @@ function ring(p, size) {
     '<text x="50%" y="50%" text-anchor="middle" dy=".35em" class="ringtxt" style="font-size:' + Math.round(s * 0.26) + 'px">' + Math.round(v) + "%</text></svg>";
 }
 var SPK = 0;
-function spark(vals) {
-  var w = 240, h = 52, id = "sg" + (++SPK);
-  var mx = Math.max.apply(null, vals.concat([1]));
-  var step = vals.length > 1 ? w / (vals.length - 1) : w;
-  var pts = vals.map(function (v, i) { return (i * step).toFixed(1) + "," + (h - (v / mx) * (h - 8) - 4).toFixed(1); });
-  return '<svg class="spark" viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none"><defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--terra)" stop-opacity=".25"/><stop offset="100%" stop-color="var(--terra)" stop-opacity="0"/></linearGradient></defs>' +
-    '<polygon points="0,' + h + " " + pts.join(" ") + " " + w + "," + h + '" fill="url(#' + id + ')"/>' +
-    '<polyline points="' + pts.join(" ") + '" fill="none" stroke="var(--terra)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-}
 /* Un grafico che si legge: scala a sinistra, settimane sotto, un punto per ogni
    valore e il numero che compare passandoci sopra. */
 function graficoOre(vals, ette) {
@@ -398,19 +388,18 @@ function mio(row, kind) {
   if (kind === "cli") return row.owner_id === me.pro_id;
   if (kind === "ore") return row.pro_id === me.pro_id;
   if (kind === "task") return row.assegnato_id === me.pro_id;
-  if (kind === "mov") return row.pro_id === me.pro_id;
   return true;
 }
 function fcom() { return D.com.filter(function (k) { return mio(k, "com"); }); }
 function fcli() { return D.cli.filter(function (c) { return mio(c, "cli"); }); }
 function fore() { return D.ore.filter(function (o) { return mio(o, "ore"); }); }
 function ftask() { return D.task.filter(function (t) { return mio(t, "task"); }); }
-function fmov() { return D.mov.filter(function (m) { return mio(m, "mov"); }); }
 
 /* ---------------- caricamento ---------------- */
 async function loadAll() {
   me.email = user.email;
   var m = await sb.from("membri").select("*").eq("user_id", user.id).maybeSingle();
+  if (m.error) toast("Non riesco a leggere il tuo profilo: " + m.error.message, true);
   if (m.data) {
     me.ruolo = m.data.ruolo || "professionista"; me.pro_id = m.data.pro_id; me.cliente_id = m.data.cliente_id;
     me.perm = { spazi: !!m.data.perm_spazi, studio: !!m.data.perm_studio, accessi: !!m.data.perm_accessi };
@@ -418,10 +407,17 @@ async function loadAll() {
   if (isCliente()) { var p = await sb.rpc("portale"); PORT = p.data || []; me.nome = "Area cliente"; return; }
   var keys = Object.keys(TB);
   var res = await Promise.all(keys.map(function (k) { return sb.from(TB[k]).select("*"); }));
-  res.forEach(function (r, i) { D[keys[i]] = (r.error ? [] : (r.data || [])); });
-  var s = await sb.from("settings").select("*").eq("id", 1).maybeSingle();
-  if (s.data) SET = s.data;
+  /* se una tabella non risponde lo devi sapere: dati vuoti e dati negati non sono
+     la stessa cosa, e confonderli fa prendere decisioni sbagliate */
+  var rotte = [];
+  res.forEach(function (r, i) {
+    if (r.error) rotte.push(TB[keys[i]]);
+    D[keys[i]] = (r.error ? [] : (r.data || []));
+  });
+  if (rotte.length) toast("Non riesco a leggere: " + rotte.join(", ") + ". Quello che vedi è incompleto.", true);
+  SET = D.set[0] || SET;
   var st = await sb.rpc("studio_stats");
+  if (st.error) toast("Riepilogo dello studio non disponibile: " + st.error.message, true);
   STATS = st.data || null;
   mieiDatiPersonali();
   var pr = me.pro_id ? by(D.pros, me.pro_id) : null;
@@ -554,7 +550,6 @@ var FS = {
   com: { stato: "", salute: "", cli: "", cerca: "" },
   prog: { stato: "", cli: "", pro: "", cerca: "" },
   cli: { stato: "", owner: "", cerca: "" },
-  mov: { tipo: "", stato: "", anno: "", cerca: "" },
   serv: { cat: "", chi: "", cerca: "" },
   forn: { cat: "", cerca: "" },
   pool: { cat: "", cerca: "" }
@@ -838,7 +833,7 @@ function vCommesse() {
 function vCommessa() {
   var k = by(D.com, current);
   if (!k) return '<div class="card">Preventivo non trovato. <button class="lnk" data-go="commesse">Torna all\'elenco</button></div>';
-  var c = calc(k), ore = oreOf(k.id), tk = taskOf(k.id), mv = movOf(k.id), fs = fasiOf(k.id), mt = matOf(k.id), pg = pagOf(k.id), ap = apprOf(k.id);
+  var c = calc(k), ore = oreOf(k.id), tk = taskOf(k.id), fs = fasiOf(k.id), mt = matOf(k.id), pg = pagOf(k.id), ap = apprOf(k.id);
   var oreT = sum(ore, function (o) { return o.ore; }), av = avanzamento(k.id);
   var incassato = sum(pg.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; });
   var t = tab || "note";
@@ -992,7 +987,7 @@ function vCommessa() {
     h += '<div class="cardhead"><h2>Scadenzario pagamenti</h2><button class="btn sm ghost" data-new="pag" data-ctx="' + k.id + '">+ Nuova scadenza</button></div>';
     h += pg.length ? '<table><thead><tr><th>Voce</th><th>Scadenza</th><th class="num">Importo</th><th>Stato</th><th></th></tr></thead><tbody>' + pg.slice().sort(function (a, b) { return (a.scadenza || "") < (b.scadenza || "") ? -1 : 1; }).map(function (p) {
       var late = p.stato === "Da incassare" && p.scadenza && p.scadenza < today();
-      return "<tr><td>" + esc(p.nome) + "</td><td>" + (late ? '<span class="badge b-red">' + dt(p.scadenza) + "</span>" : dt(p.scadenza)) + '</td><td class="num">' + eur(p.importo) + '</td><td><span class="badge ' + (p.stato === "Incassato" ? "b-green" : "b-amber") + '">' + esc(p.stato) + '</span></td><td class="num">' + (fattDi(p.id) ? '<span class="badge b-blue">' + esc(fattDi(p.id).numero || "fattura") + "</span> " : '<button class="lnk" data-fattpag="' + p.id + '">Genera fattura</button> ') + (p.stato !== "Incassato" ? '<button class="lnk" data-incassa="' + p.id + '">Incassato</button> ' : "") + '<button class="lnk" data-edit="pag:' + p.id + '">Modifica</button></td></tr>';
+      return "<tr><td>" + esc(p.nome) + "</td><td>" + (late ? '<span class="badge b-red">' + dt(p.scadenza) + "</span>" : dt(p.scadenza)) + '</td><td class="num">' + eur(p.importo) + '</td><td><span class="badge ' + (p.stato === "Incassato" ? "b-green" : "b-amber") + '">' + esc(p.stato) + '</span></td><td class="num">' + (p.stato !== "Incassato" ? '<button class="lnk" data-incassa="' + p.id + '">Incassato</button> ' : "") + '<button class="lnk" data-edit="pag:' + p.id + '">Modifica</button></td></tr>';
     }).join("") + '</tbody><tfoot><tr><td colspan="2"><b>Totale piano</b></td><td class="num"><b>' + eur(sum(pg, function (p) { return p.importo; })) + "</b></td><td colspan=\"2\"></td></tr></tfoot></table>" : vuoto("Nessun piano di pagamento.", '<button class="lnk" data-new="pag" data-ctx="' + k.id + '">Crea acconto e saldo</button>');
   }
   if (t === "approvazioni") {
@@ -1583,7 +1578,7 @@ function vOre() {
   }
 
   h += '<div class="grid g32" style="margin-top:18px"><div class="card"><div class="cardhead"><h2>Ritmo delle ultime 12 settimane</h2><span class="faint">ogni quadratino è un giorno</span></div>' + heatOre(list) + "</div>";
-  h += '<div class="card"><div class="cardhead"><h2>Andamento</h2><span class="faint">8 settimane</span></div>' + spark(settimane(list, 8)) + "</div></div>";
+  h += '<div class="card"><div class="cardhead"><h2>Andamento</h2><span class="faint">8 settimane</span></div>' + graficoOre(settimane(list, 8), ettSettimane(8)) + "</div></div>";
 
   var per = {}; list.forEach(function (o) { if (o.commessa_id) per[o.commessa_id] = (per[o.commessa_id] || 0) + (+o.ore || 0); });
   var pk = Object.keys(per).sort(function (a, b) { return per[b] - per[a]; });
@@ -2353,6 +2348,7 @@ function vProgetto() {
 
   var h = crumbs([["Lavoro"], ["Progetti", "progetti"], [p.nome]]);
   h += '<div class="top"><h1>' + esc(p.nome) + '<span class="sub">' + esc(k ? nameOf(D.cli, k.cliente_id) : "—") + (k ? ' · <button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button>" : "") + '</span></h1><div class="tools">' +
+    '<button class="btn sm ghost" data-visprog="' + p.id + '">' + (p.visibile_cliente ? "Nascondi al cliente" : "Mostra al cliente") + "</button>" +
     '<button class="btn sm ghost" data-edit="prog:' + p.id + '">Modifica</button>' +
     '<button class="btn sm" data-new="lav" data-ctx-prog="' + p.id + '">+ Lavorazione</button></div></div>';
 
@@ -2784,47 +2780,6 @@ function vDocumento() {
 }
 function docHead(k, titolo) {
   return '<div style="display:flex;justify-content:space-between;align-items:flex-start"><i class="mark" style="height:52px"></i><div style="text-align:right"><h2>' + titolo + '</h2><div class="faint">' + esc(nameOf(D.cli, k.cliente_id)) + " · " + dt(today()) + "</div></div></div>";
-}
-function openPreventivo(id) {
-  var k = by(D.com, id); if (!k) return;
-  var c = calc(k), rr = righeOf(k.id), pgt = progOf(k.id), pg = pagOf(k.id);
-  var corpo = "";
-  var gruppi = pgt.map(function (p) { return { p: p, r: rr.filter(function (x) { return x.progetto_id === p.id && !x.opzionale; }) }; });
-  var senza = rr.filter(function (x) { return !x.progetto_id && !x.opzionale; });
-  if (senza.length) gruppi.push({ p: { nome: "Altre voci" }, r: senza });
-  gruppi.forEach(function (g) {
-    if (!g.r.length) return;
-    corpo += '<h3 style="margin:22px 0 8px">' + esc(g.p.nome) + (g.p.pro_id ? ' <span class="faint">· a cura di ' + esc(nameOf(D.pros, g.p.pro_id)) + "</span>" : "") + "</h3>" +
-      '<table><thead><tr><th>Voce</th><th class="num">Q.tà</th><th class="num">Prezzo un.</th><th class="num">Importo</th></tr></thead><tbody>' +
-      g.r.map(function (r) {
-        var rc = rigaCalc(r);
-        return "<tr><td><b>" + esc(rc.nome) + "</b>" + (r.descrizione ? '<div class="faint">' + esc(r.descrizione) + "</div>" : "") +
-          (r.ricorrente ? '<div class="faint">' + esc(r.periodo || "Mensile") + ", per " + (r.cicli || 1) + (r.periodo === "Annuale" ? " anni" : " mesi") + "</div>" : "") +
-          '</td><td class="num">' + num(rc.q, rc.q % 1 ? 1 : 0) + " " + esc(rc.unita || "") + '</td><td class="num">' + eur(rc.pu) + (r.sconto ? " −" + r.sconto + "%" : "") + '</td><td class="num">' + eur(rc.prezzo) + "</td></tr>";
-      }).join("") +
-      '</tbody><tfoot><tr><td colspan="3"><b>Totale ' + esc(g.p.nome) + '</b></td><td class="num"><b>' + eur(sum(g.r, function (x) { return rigaCalc(x).prezzo; })) + "</b></td></tr></tfoot></table>";
-  });
-  var opzR = rr.filter(function (x) { return x.opzionale; });
-  modal('<div class="box wide">' + docHead(k, "Preventivo") +
-    '<h2 style="margin-top:22px">' + esc(k.titolo) + "</h2>" + (k.note ? '<p class="muted">' + esc(k.note) + "</p>" : "") +
-    corpo +
-    '<table style="margin-top:20px"><tbody>' +
-    row2("Imponibile", eur(c.imp + c.sconto)) +
-    (c.sconto ? row2("Sconto commerciale (" + (k.sconto || 0) + "%)", "−" + eur(c.sconto)) : "") +
-
-    row2("<b>Totale imponibile</b>", "<b>" + eur(c.tot) + "</b>") +
-    row2("IVA " + (k.iva == null ? 22 : k.iva) + "%", eur(c.iva)) +
-    row2("<b>Totale</b>", "<b>" + eur(c.lordo) + "</b>") +
-    (c.mrr ? row2("Di cui ricorrente", eur(c.mrr) + " al mese") : "") +
-    "</tbody></table>" +
-    (opzR.length ? '<h3 style="margin:22px 0 8px">Opzioni, se le vorrete attivare</h3><table><tbody>' + opzR.map(function (r) {
-      var rc = rigaCalc(r);
-      return "<tr><td>" + esc(rc.nome) + (r.descrizione ? '<div class="faint">' + esc(r.descrizione) + "</div>" : "") + '</td><td class="num">' + eur(rc.prezzo) + "</td></tr>";
-    }).join("") + "</tbody></table>" : "") +
-    (pg.length ? '<h3 style="margin:22px 0 8px">Piano di pagamento</h3><table><tbody>' + pg.map(function (p) { return "<tr><td>" + esc(p.nome) + '</td><td class="faint">' + dt(p.scadenza) + '</td><td class="num">' + eur(p.importo) + "</td></tr>"; }).join("") + "</tbody></table>" : "") +
-    (k.condizioni ? '<h3 style="margin:22px 0 8px">Condizioni</h3>' + md(k.condizioni) : "") +
-    '<p class="faint" style="margin-top:16px">Validità ' + (k.validita == null ? 30 : k.validita) + " giorni. Ogni professionista opera con la propria partita IVA sotto il coordinamento di Giraffa Studio.</p>" +
-    '<div class="actions noprint"><button class="btn ghost" data-close>Chiudi</button><button class="btn" onclick="window.print()">Stampa / PDF</button></div></div>');
 }
 function openPortale(id) {
   var k = by(D.com, id); if (!k) return;
@@ -3297,12 +3252,10 @@ document.addEventListener("click", async function (e) {
   if (d.pal) { openPalette(); return; }
   if (t.hasAttribute("data-fs")) { FSTATO = d.fs || ""; render(); return; }
   if (t.hasAttribute("data-fh")) { FSAL = d.fh || ""; render(); return; }
-  if (d.vista) { VISTA = d.vista; render(); return; }
   if (d.exp) { EXP[d.exp] = !EXP[d.exp]; render(); return; }
   if (d.go) { go(d.go); return; }
   if (d.route) { var rq = d.route.split("|"); go(rq[0], rq[1] || null, rq[2] || ""); return; }
   if (d.annulla) { tornaIndietro(); return; }
-  if (d.tab) { go(view, current, d.tab); return; }
   if (d.openCom) { go("commessa", d.openCom, "servizi"); return; }
   if (d.openProg) { go("progetto", d.openProg, "lavorazioni"); return; }
   if (d.openLav) { go("lavorazione", d.openLav); return; }
@@ -3358,13 +3311,7 @@ document.addEventListener("click", async function (e) {
   if (d.del) { var q = d.del.split(":"); await delRow(q[0], q.slice(1).join(":")); return; }
   if (d.riga) { openRiga(d.riga); return; }
   if (d.rigaEdit) { openRiga(null, d.rigaEdit); return; }
-  if (d.preventivo) { openPreventivo(d.preventivo); return; }
   if (d.portale) { openPortale(d.portale); return; }
-  if (d.done) {
-    var r1 = await sb.from("task").update({ stato: "Fatto" }).eq("id", d.done);
-    if (r1.error) { toast(r1.error.message, true); return; }
-    await reload(["task"]); toast("Attività completata"); render(); return;
-  }
   if (d.avvia) { await avviaLavoro(d.avvia); return; }
   if (d.portnew) {
     var tok = "";
@@ -3460,7 +3407,7 @@ document.addEventListener("click", async function (e) {
   }
   if (d.fReset) {
     var vuoto0 = { com: { stato: "", salute: "", cli: "", cerca: "" }, prog: { stato: "", cli: "", pro: "", cerca: "" }, cli: { stato: "", owner: "", cerca: "" },
-      mov: { tipo: "", stato: "", anno: "", cerca: "" }, serv: { cat: "", chi: "io", cerca: "" }, forn: { cat: "", cerca: "" }, pool: { cat: "", cerca: "" } };
+      serv: { cat: "", chi: "io", cerca: "" }, forn: { cat: "", cerca: "" }, pool: { cat: "", cerca: "" } };
     if (vuoto0[d.fReset]) FS[d.fReset] = vuoto0[d.fReset];
     render(); return;
   }
@@ -3753,7 +3700,6 @@ document.addEventListener("input", function (e) {
     FDIRTY = true;
     var fst = el("#fstat"); if (fst) fst.textContent = "modifiche non salvate";
   }
-  if (e.target.id === "search") { search = e.target.value; render(); }
   if (e.target.id === "palq") renderPal(e.target.value);
   if (e.target.id === "tdesc") {
     var vald = e.target.value, tid9 = current, std = el("#tstat");
