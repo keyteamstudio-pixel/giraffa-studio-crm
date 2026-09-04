@@ -416,10 +416,9 @@ function navFor() {
     { k: "profilo", t: "Il mio profilo", d: "La tua scheda e quanto è completa" },
     { k: "servizi", t: "I miei servizi", d: "Il tuo listino: è così che ti trovano", c: function () { return D.serv.filter(function (x) { return x.pro_id === me.pro_id; }).length; } },
     { g: "Amministrazione", n: "i tuoi soldi e i tuoi clienti" },
-    { k: "amm", t: "Quadro amministrativo", d: "Fatturato, incassi, pipeline" },
+    { k: "amm", t: "Quadro amministrativo", d: "Incassi, scadenze, pipeline" },
     { k: "clienti", t: "Clienti", d: "I tuoi clienti", c: function () { return fcli().length; } },
     { k: "commesse", t: "Preventivi", d: "Preventivi ancora da chiudere", c: function () { return fcom().filter(function (k) { return ["Bozza", "Preventivo"].indexOf(k.stato) > -1; }).length; } },
-    { k: "fatture", t: "Fatture", d: "Fatture non ancora pagate", c: function () { return fmov().filter(function (m) { return m.stato !== "Pagata"; }).length; } },
     { k: "report", t: "Report", d: "Numeri e andamenti" },
     { g: "Studio", n: "quello che è di tutti" },
     { k: "studio", t: "Bacheca", d: "Cosa condividiamo" },
@@ -584,7 +583,7 @@ function bannerProfilo() {
     (mancano.indexOf("i tuoi servizi nel listino") > -1 ? ' <button class="lnk" data-go="servizi">Aggiungi un servizio</button>' : "") + "</p></div>";
 }
 function vDash() {
-  var com = fcom(), cli = fcli(), ore = fore(), tk = ftask(), mov = fmov();
+  var com = fcom(), cli = fcli(), ore = fore(), tk = ftask();
   var aperte = com.filter(function (k) { return ["Preventivo", "Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1; });
   var pipeline = sum(aperte, function (k) { return calc(k).tot; });
   var d = new Date(), m0 = iso(new Date(d.getFullYear(), d.getMonth(), 1));
@@ -633,7 +632,7 @@ function vDash() {
     var da = sum(pagAperti, function (p) { return p.importo; });
     var sc = sum(scaduti, function (p) { return p.importo; });
     var tot = Math.max(1, inc + da);
-    h += '<div class="card"><div class="cardhead"><h2>Incassi</h2><button class="btn sm ghost" data-go="fatture">Fatture</button></div>' +
+    h += '<div class="card"><div class="cardhead"><h2>Incassi</h2><button class="btn sm ghost" data-go="amm">Quadro</button></div>' +
       '<div class="stack"><i class="s1" style="width:' + Math.round(inc / tot * 100) + '%"></i><i class="s2" style="width:' + Math.round((da - sc) / tot * 100) + '%"></i><i class="s3" style="width:' + Math.round(sc / tot * 100) + '%"></i></div>' +
       '<div class="legend"><span><i class="s1"></i>Incassato ' + eur(inc) + "</span><span><i class=\"s2\"></i>Da incassare " + eur(da - sc) + "</span>" + (sc ? '<span><i class="s3"></i>Scaduto ' + eur(sc) + "</span>" : "") + "</div></div>";
   }
@@ -888,7 +887,7 @@ function vCommessa() {
     h += '<p class="faint" style="margin-bottom:10px">Il registro ore è personale: qui vedi solo le tue.</p>';
     var daFatt = ore.filter(function (o) { return o.fatturabile && !o.movimento_id; });
     var valDaFatt = sum(daFatt, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); });
-    h += '<div class="cardhead"><h2>Ore registrate</h2><span>' + (daFatt.length && vediCosti() ? '<button class="btn sm ghost" data-fattore="' + k.id + '">Fattura ' + num(sum(daFatt, function (o) { return o.ore; }), 1) + " h · " + eur(valDaFatt) + "</button> " : "") + '<button class="btn sm ghost" data-new="ore" data-ctx="' + k.id + '">+ Registra ore</button></span></div>' + tblOre(ore);
+    h += '<div class="cardhead"><h2>Ore registrate</h2><span>' + (daFatt.length ? '<span class="faint">da fatturare: ' + num(sum(daFatt, function (o) { return o.ore; }), 1) + " h · " + eur(valDaFatt) + "</span> " : "") + '<button class="btn sm ghost" data-new="ore" data-ctx="' + k.id + '">+ Registra ore</button></span></div>' + tblOre(ore);
   }
   if (t === "materiali") {
     h += '<div class="cardhead"><h2>Materiali del lavoro</h2><button class="btn sm ghost" data-new="mat" data-ctx="' + k.id + '">+ Aggiungi materiale</button></div>';
@@ -1488,8 +1487,8 @@ function vOre() {
       dfk.map(function (k) {
         var kk = by(D.com, k);
         return '<tr><td><button class="lnk" data-open-com="' + k + '">' + esc(nameOf(D.com, k, "titolo")) + "</button></td><td>" + esc(kk ? nameOf(D.cli, kk.cliente_id) : "—") +
-          '</td><td class="num">' + num(daFatt[k].ore, 1) + '</td><td class="num">' + eur(daFatt[k].val) + '</td><td class="num"><button class="lnk" data-fattore="' + k + '">Genera fattura</button></td></tr>';
-      }).join("") + '</tbody></table><p class="faint" style="margin-top:10px">Genera una fattura da queste ore: le righe usate restano collegate al movimento e spariscono da qui.</p></div>';
+          '</td><td class="num">' + num(daFatt[k].ore, 1) + '</td><td class="num">' + eur(daFatt[k].val) + '</td><td class="num"><button class="lnk" data-open-com="' + k + '">Apri</button></td></tr>';
+      }).join("") + '</tbody></table><p class="faint" style="margin-top:10px">Il promemoria di cosa hai da fatturare: la fattura vera la fai col tuo gestionale fiscale.</p></div>';
   }
 
   h += '<div class="grid g32" style="margin-top:18px"><div class="card"><div class="cardhead"><h2>Ritmo delle ultime 12 settimane</h2><span class="faint">ogni quadratino è un giorno</span></div>' + heatOre(list) + "</div>";
@@ -1506,32 +1505,36 @@ function vOre() {
 
 /* ---------------- quadro amministrativo ---------------- */
 function vAmm() {
-  var com = fcom(), cli = fcli(), mov = fmov();
+  var com = fcom(), cli = fcli();
   var d = new Date(), anno = d.getFullYear();
   var aperte = com.filter(function (k) { return ["Preventivo", "Approvata", "In corso", "Consegna"].indexOf(k.stato) > -1; });
   var inviati = com.filter(function (k) { return k.stato === "Preventivo"; });
   var vinti = com.filter(function (k) { return ["Approvata", "In corso", "Consegna", "Chiusa"].indexOf(k.stato) > -1; });
   var persi = com.filter(function (k) { return k.stato === "Persa"; });
   var tassoVinc = (vinti.length + persi.length) ? Math.round(vinti.length / (vinti.length + persi.length) * 100) : null;
-  var fatturato = sum(mov.filter(function (m) { return m.tipo === "Attiva" && String(m.data || "").slice(0, 4) === String(anno); }), function (m) { return m.importo; });
-  var daIncassare = sum(mov.filter(function (m) { return m.tipo === "Attiva" && m.stato !== "Pagata"; }), function (m) { return m.importo; });
-  var scadute = mov.filter(function (m) { return m.tipo === "Attiva" && m.stato !== "Pagata" && m.scadenza && m.scadenza < today(); });
-  var pagAperti = D.pag.filter(function (p) { return p.stato === "Da incassare" && can(p.commessa_id); });
+  var pagMiei = D.pag.filter(function (p) { return can(p.commessa_id); });
+  var incassato = sum(pagMiei.filter(function (p) { return p.stato === "Incassato" && String(p.pagato_il || p.scadenza || "").slice(0, 4) === String(anno); }), function (p) { return p.importo; });
+  var pagAperti = pagMiei.filter(function (p) { return p.stato !== "Incassato"; });
+  var daIncassare = sum(pagAperti, function (p) { return p.importo; });
+  var scadute = pagAperti.filter(function (p) { return p.scadenza && p.scadenza < today(); });
   var h = head("Quadro amministrativo", "Clienti, preventivi e denaro: il tuo, solo il tuo",
     '<button class="btn sm ghost" data-new="cli">+ Cliente</button><button class="btn sm" data-new="com">+ Preventivo</button>');
   h += '<div class="grid g4">' +
-    kpi(eur(fatturato), "Fatturato " + anno, mov.filter(function (m) { return m.tipo === "Attiva"; }).length + " fatture emesse") +
+    kpi(eur(incassato), "Incassato " + anno, pagMiei.filter(function (p) { return p.stato === "Incassato"; }).length + " scadenze saldate") +
     kpi(eur(daIncassare), "Da incassare", scadute.length ? scadute.length + " già scadute" : "nessuna scaduta") +
     kpi(eur(sum(aperte, function (k) { return calc(k).tot; })), "Pipeline aperta", aperte.length + " preventivi in gioco") +
     kpi(tassoVinc == null ? "—" : tassoVinc + " %", "Preventivi vinti", vinti.length + " vinti · " + persi.length + " persi") + "</div>";
 
   h += '<div class="grid g32" style="margin-top:18px"><div>';
-  h += '<div class="card"><div class="cardhead"><h2>Da incassare</h2><button class="btn sm ghost" data-go="fatture">Tutte le fatture</button></div>';
-  var apertiMov = mov.filter(function (m) { return m.tipo === "Attiva" && m.stato !== "Pagata"; }).sort(function (a, b) { return (a.scadenza || "") < (b.scadenza || "") ? -1 : 1; });
-  h += apertiMov.length ? '<table><thead><tr><th>Numero</th><th>Cliente</th><th>Scadenza</th><th class="num">Importo</th><th>Stato</th></tr></thead><tbody>' +
-    apertiMov.slice(0, 10).map(function (m) {
-      var late = m.scadenza && m.scadenza < today();
-      return "<tr><td>" + esc(m.numero || "—") + "</td><td>" + esc(nameOf(D.cli, m.cliente_id)) + "</td><td>" + (late ? '<span class="badge b-red">' + dt(m.scadenza) + "</span>" : dt(m.scadenza)) + '</td><td class="num">' + eur(m.importo) + '</td><td><span class="badge ' + (m.stato === "Pagata" ? "b-green" : "b-amber") + '">' + esc(m.stato) + "</span></td></tr>";
+  h += '<div class="card"><div class="cardhead"><h2>Da incassare</h2><span class="faint">le fatture le fai fuori dal CRM</span></div>';
+  var apertiPag = pagAperti.slice().sort(function (a, b) { return (a.scadenza || "") < (b.scadenza || "") ? -1 : 1; });
+  h += apertiPag.length ? '<table><thead><tr><th>Voce</th><th>Cliente</th><th>Scadenza</th><th class="num">Importo</th><th class="num"></th></tr></thead><tbody>' +
+    apertiPag.slice(0, 10).map(function (p) {
+      var k = by(D.com, p.commessa_id);
+      var late = p.scadenza && p.scadenza < today();
+      return "<tr><td>" + esc(p.nome) + '<div class="faint">' + esc(k ? k.titolo : "") + "</div></td><td>" + esc(k ? nameOf(D.cli, k.cliente_id) : "—") + "</td><td>" +
+        (late ? '<span class="badge b-red">' + dt(p.scadenza) + "</span>" : dt(p.scadenza)) + '</td><td class="num">' + eur(p.importo) +
+        '</td><td class="num"><button class="lnk" data-incassa="' + p.id + '">Incassato</button></td></tr>';
     }).join("") + "</tbody></table>" : vuoto("Niente da incassare.");
   h += "</div>";
   h += '<div class="card"><div class="cardhead"><h2>Preventivi da seguire</h2><button class="btn sm ghost" data-go="commesse">Tutti</button></div>';
@@ -1762,13 +1765,11 @@ function vCliente() {
     kpi(pl ? (pl.attivo ? "Attivo" : "Sospeso") : accesso ? "Con account" : "No", "Accesso al portale", pl ? (pl.pwd_hash ? "link con password" : "manca la password") : accesso ? esc(accesso.email || "") : "nessun accesso") + "</div>";
 
   var prg = D.prog.filter(function (p) { return com.some(function (k) { return k.id === p.commessa_id; }); });
-  var fat = D.mov.filter(function (m) { return m.cliente_id === c.id || com.some(function (k) { return k.id === m.commessa_id; }); });
   var t = tab || "anagrafica";
   h += schede([
     ["anagrafica", "Anagrafica"],
     ["preventivi", "Preventivi", com.length],
     ["progetti", "Progetti", prg.length],
-    ["fatture", "Fatture", fat.length],
     ["scadenze", "Scadenze", pg.filter(function (p) { return p.stato !== "Incassato"; }).length],
     ["diario", "Diario", inter.length],
     ["portale", "Portale"]
@@ -1793,7 +1794,7 @@ function vCliente() {
       '<div class="card"><h3 style="margin-bottom:12px">In sintesi</h3><table><tbody>' +
       row2("Preventivi", com.length + " · " + com.filter(function (k) { return ["In corso", "Approvata"].indexOf(k.stato) > -1; }).length + " attivi") +
       row2("Progetti", prg.length) +
-      row2("Fatturato", eur(sum(fat.filter(function (m) { return m.tipo === "Attiva"; }), function (m) { return m.importo; }))) +
+      row2("Incassato", eur(sum(pg.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; }))) +
       row2("Da incassare", eur(sum(pg.filter(function (p) { return p.stato !== "Incassato"; }), function (p) { return p.importo; }))) +
       row2("Ultima interazione", inter[0] ? dt(inter[0].data) + " · " + esc(inter[0].tipo || "Nota") : "—") +
       "</tbody></table></div></div>";
@@ -1807,10 +1808,6 @@ function vCliente() {
       prg.map(function (p) {
         return '<tr><td><b>' + esc(p.nome) + "</b></td><td>" + esc(nameOf(D.com, p.commessa_id, "titolo")) + "</td><td>" + esc(nameOf(D.pros, p.pro_id)) + '</td><td><span class="badge">' + esc(p.stato || "—") + "</span></td><td>" + dt(p.fine) + '</td><td class="num"><button class="lnk" data-open-prog="' + p.id + '">Apri</button></td></tr>';
       }).join("") + "</tbody></table>" : vuoto("Nessun progetto aperto per questo cliente.")) + "</div>";
-  }
-  if (t === "fatture") {
-    h += '<div class="card"><div class="cardhead"><h2>Fatture e movimenti</h2><button class="btn sm ghost" data-new="mov" data-ctx-cli="' + c.id + '">+ Movimento</button></div>' +
-      (fat.length ? tblMov(fat) : vuoto("Nessuna fattura per questo cliente.")) + "</div>";
   }
   if (t === "scadenze") {
     h += '<div class="card"><div class="cardhead"><h2>Scadenze di pagamento</h2></div>' + (pg.length ? '<table><thead><tr><th>Voce</th><th>Preventivo</th><th>Scadenza</th><th class="num">Importo</th><th>Stato</th></tr></thead><tbody>' +
@@ -1850,28 +1847,65 @@ function vPool() {
   var f = FS.pool, q = (f.cerca || "").toLowerCase();
   var elenco = D.pros.filter(function (p) {
     if (f.cat && !D.serv.some(function (s) { return s.pro_id === p.id && (s.cat || "Altro") === f.cat; })) return false;
-    return !q || (p.nome + " " + (p.ruolo || "") + " " + (p.competenze || "") + " " + (p.citta || "")).toLowerCase().indexOf(q) > -1;
+    if (!q) return true;
+    var testo = (p.nome + " " + (p.ruolo || "") + " " + (p.competenze || "") + " " + (p.citta || "") + " " +
+      D.serv.filter(function (s) { return s.pro_id === p.id; }).map(function (s) { return s.nome + " " + (s.cat || ""); }).join(" ")).toLowerCase();
+    return testo.indexOf(q) > -1;
   });
-  var h = head("Professionisti", elenco.length + " persone · " + D.pros.filter(function (p) { return p.vetting === "Attivo"; }).length + " attive",
-    (puo("accessi") ? '<button class="btn sm" data-new="pros">+ Nuova persona</button>' : ""));
+  var conServizi = elenco.filter(function (p) { return D.serv.some(function (s) { return s.pro_id === p.id; }); });
+  var h = head("Professionisti", "Cerca chi ti serve e porta i suoi servizi dentro un tuo preventivo: il cliente resta tuo",
+    (puo("accessi") ? '<button class="btn sm ghost" data-new="pros">+ Nuova persona</button>' : "") + '<button class="btn sm" data-go="servizi">Il mio listino</button>');
   h += barraViste(null, "", "pool",
-    fcerca("pool", "Cerca per nome, competenza, città…") +
-    fsel("pool", "cat", [["", "Ogni categoria di servizio"]].concat(elencoCat(D.serv, "cat"))) +
+    fcerca("pool", "Cerca una competenza, un servizio, una città…") +
+    fsel("pool", "cat", [["", "Ogni categoria"]].concat(elencoCat(D.serv, "cat"))) +
     (f.cat || f.cerca ? '<button class="lnk mini" data-f-reset="pool">azzera</button>' : ""));
-  if (!elenco.length) return h + '<div class="card">' + vuoto("Nessun professionista con questi filtri.", '<button class="lnk" data-f-reset="pool">Azzera i filtri</button>') + "</div>";
-  h += '<div class="grid g3">';
-  elenco.forEach(function (p) {
-    var srv = D.serv.filter(function (s) { return s.pro_id === p.id; });
-    var ore = D.ore.filter(function (o) { return o.pro_id === p.id; });
-    var com = D.com.filter(function (k) { return k.owner_id === p.id || k.pm_id === p.id || k.pr_id === p.id || righeOf(k.id).some(function (r) { var s = by(D.serv, r.serv_id); return r.assegnato_id === p.id || (s && s.pro_id === p.id); }); });
-    h += '<div class="card"><div class="cardhead"><h2>' + esc(p.nome) + '</h2><span class="badge ' + (p.vetting === "Attivo" ? "b-green" : "b-amber") + '">' + esc(p.vetting || "—") + "</span></div>" +
-      '<p class="muted" style="font-size:.88rem">' + esc(p.ruolo || "—") + "</p>" +
-      '<div style="margin:10px 0">' + (p.competenze || "").split(",").filter(Boolean).map(function (x) { return '<span class="chip">' + esc(x.trim()) + "</span>"; }).join("") + "</div>" +
-      "<table><tbody>" + (p.id === me.pro_id ? row2("Tariffa oraria", p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "—") : "") + row2("Servizi a listino", srv.length) + row2("Lavori insieme a te", com.length) + (p.id === me.pro_id ? row2("Ore registrate", num(sum(ore, function (o) { return o.ore; }), 1) + " h") : "") + "</tbody></table>" +
-      '<div style="margin-top:12px;display:flex;gap:8px"><button class="btn sm ghost" data-open-pro="' + p.id + '">Scheda</button><button class="btn sm ghost" data-edit="pros:' + p.id + '">Modifica</button></div></div>';
-  });
-  return h + "</div>";
+
+  if (!elenco.length) return h + '<div class="card">' + vuoto("Nessuno con questi criteri.", '<button class="lnk" data-f-reset="pool">Azzera la ricerca</button>') + "</div>";
+  if (f.cerca || f.cat) h += '<p class="faint" style="margin:-6px 0 14px">' + elenco.length + " persone · " + conServizi.length + " con servizi che corrispondono</p>";
+
+  h += elenco.slice().sort(function (a, b) {
+    var sa = D.serv.filter(function (x) { return x.pro_id === a.id; }).length;
+    var sb = D.serv.filter(function (x) { return x.pro_id === b.id; }).length;
+    return sb - sa;
+  }).map(function (p) {
+    var mio = p.id === me.pro_id;
+    var srv = D.serv.filter(function (x) { return x.pro_id === p.id && (!f.cat || (x.cat || "Altro") === f.cat); });
+    var comp = (p.competenze || "").split(",").filter(Boolean);
+    return '<div class="card espl">' +
+      '<div class="esptop">' + avatar(p.id, 44) +
+      '<div class="espchi"><h2>' + esc(p.nome) + (mio ? ' <span class="badge">tu</span>' : "") + "</h2>" +
+      '<div class="faint">' + esc(p.ruolo || "—") + (p.citta ? " · " + esc(p.citta) : "") + "</div>" +
+      '<div style="margin-top:7px">' + comp.map(function (c) { return '<span class="chip">' + esc(c.trim()) + "</span>"; }).join("") + "</div></div>" +
+      '<div class="espazioni"><span class="badge ' + (p.vetting === "Attivo" ? "b-green" : "b-amber") + '">' + esc(p.vetting || "—") + "</span>" +
+      '<button class="btn sm ghost" data-route="pro|' + p.id + '|scheda">Scheda</button></div></div>' +
+      (srv.length ? '<div class="esplist">' + srv.map(function (x) {
+        return '<div class="esprow"><span class="espnome"><b>' + esc(x.nome) + "</b>" +
+          (x.cat ? ' <span class="chip">' + esc(x.cat) + "</span>" : "") +
+          (x.descrizione ? '<span class="faint"> · ' + esc(x.descrizione.slice(0, 70)) + "</span>" : "") + "</span>" +
+          '<span class="espprezzo">' + eur(x.prezzo) + (x.unita ? '<i class="faint"> / ' + esc(x.unita) + "</i>" : "") + "</span>" +
+          '<button class="btn sm" data-serv-add="' + x.id + '">+ al preventivo</button></div>';
+      }).join("") + "</div>"
+        : '<p class="faint" style="margin-top:12px">' + (mio ? "Non hai ancora messo servizi a listino: è così che i colleghi ti trovano." : "Nessun servizio a listino, per ora.") +
+          (mio ? ' <button class="lnk" data-new="serv">Aggiungine uno</button>' : "") + "</p>") +
+      "</div>";
+  }).join("");
+  return h;
 }
+/* portare un servizio di un collega dentro un proprio preventivo */
+function apriAggiungiServizio(sid) {
+  var x = by(D.serv, sid); if (!x) return;
+  var miei = fcom().filter(function (k) { return ["Bozza", "Preventivo", "Approvata", "In corso"].indexOf(k.stato) > -1; });
+  if (!miei.length) { toast("Non hai preventivi aperti: creane uno e poi torna qui", true); return; }
+  modal('<form class="box" data-serv-add-save="' + sid + '"><h2>Aggiungi al preventivo</h2>' +
+    '<p class="faint" style="margin-bottom:14px">' + esc(x.nome) + " di " + esc(nameOf(D.pros, x.pro_id)) +
+    ". Il compenso concordato resta suo, il prezzo al cliente lo decidi tu.</p>" +
+    selField("commessa_id", "In quale preventivo", opt(miei, "", "titolo")) +
+    '<div class="row2">' + fld("qty", "Quantità", "number", x.min_qty == null ? 1 : x.min_qty) +
+    fld("prezzo_unit", "Prezzo al cliente (€)", "number", x.prezzo) + "</div>" +
+    fld("costo_unit", "Compenso al collega (€)", "number", x.costo) +
+    '<div class="actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn" type="submit">Aggiungi</button></div></form>');
+}
+
 function vPro() {
   var p = by(D.pros, current);
   if (!p) return '<div class="card">Non trovato. <button class="lnk" data-go="pool">Torna al pool</button></div>';
@@ -1978,55 +2012,14 @@ function vServizi() {
 }
 
 /* ---------------- fatturazione ---------------- */
-function tblMov(list) {
-  if (!list.length) return vuoto("Nessun movimento.", '<button class="lnk" data-new="mov">Registrane uno</button>');
-  var h = '<table><thead><tr><th>Numero</th><th>Tipo</th><th>Cliente</th><th>Preventivo</th><th>Emessa da</th><th>Data</th><th>Scadenza</th><th class="num">Importo</th><th>Stato</th><th></th></tr></thead><tbody>';
-  list.slice().sort(function (a, b) { return a.data < b.data ? 1 : -1; }).forEach(function (m) {
-    var late = m.stato !== "Pagata" && m.scadenza && m.scadenza < today();
-    h += "<tr><td>" + esc(m.numero || "—") + '</td><td><span class="badge ' + (m.tipo === "Attiva" ? "b-green" : "b-amber") + '">' + esc(m.tipo) + "</span></td><td>" + esc(m.cliente_id ? nameOf(D.cli, m.cliente_id) : "—") + "</td><td>" + esc(m.commessa_id ? nameOf(D.com, m.commessa_id, "titolo") : "—") + "</td><td>" + esc(nameOf(D.pros, m.pro_id)) + "</td><td>" + dt(m.data) + "</td><td>" + (late ? '<span class="badge b-red">' + dt(m.scadenza) + "</span>" : dt(m.scadenza)) + '</td><td class="num">' + eur(m.importo) + '</td><td><span class="badge ' + (MOV_COL[m.stato] || "") + '">' + esc(m.stato) + '</span></td><td class="num">' + (m.stato !== "Pagata" ? '<button class="lnk" data-pay="' + m.id + '">Incassata</button> ' : "") + '<button class="lnk" data-edit="mov:' + m.id + '">Modifica</button></td></tr>';
-  });
-  return h + "</tbody></table>";
-}
-function vFatture() {
-  var list = fmov();
-  var att = list.filter(function (m) { return m.tipo === "Attiva"; }), pas = list.filter(function (m) { return m.tipo === "Passiva"; });
-  var inc = sum(att.filter(function (m) { return m.stato === "Pagata"; }), function (m) { return m.importo; });
-  var da = sum(att.filter(function (m) { return m.stato !== "Pagata"; }), function (m) { return m.importo; });
-  var scad = att.filter(function (m) { return m.stato !== "Pagata" && m.scadenza && m.scadenza < today(); });
-  var f = FS.mov;
-  var filtrate = list.filter(function (m) {
-    if (f.tipo && m.tipo !== f.tipo) return false;
-    if (f.stato && m.stato !== f.stato) return false;
-    if (f.anno && (m.data || "").slice(0, 4) !== f.anno) return false;
-    if (f.cerca && ((m.numero || "") + " " + nameOf(D.cli, m.cliente_id) + " " + nameOf(D.com, m.commessa_id, "titolo")).toLowerCase().indexOf(f.cerca.toLowerCase()) === -1) return false;
-    return true;
-  });
-  var anni = {}; list.forEach(function (m) { if (m.data) anni[m.data.slice(0, 4)] = 1; });
-  var h = head("Le mie fatture", "Movimenti attivi e passivi: sono tuoi e li vedi solo tu", '<button class="btn sm" data-new="mov">+ Nuovo movimento</button>');
-  h += barraViste(null, "", "fatture",
-    fcerca("mov", "Cerca numero, cliente, preventivo…") +
-    fsel("mov", "tipo", [["", "Entrate e uscite"], ["Attiva", "Solo entrate"], ["Passiva", "Solo uscite"]]) +
-    fsel("mov", "stato", [["", "Ogni stato"], ["Da emettere", "Da emettere"], ["Emessa", "Emessa"], ["Pagata", "Pagata"], ["Insoluta", "Insoluta"]]) +
-    fsel("mov", "anno", [["", "Ogni anno"]].concat(Object.keys(anni).sort().reverse().map(function (a) { return [a, a]; }))) +
-    (f.tipo || f.stato || f.anno || f.cerca ? '<button class="lnk mini" data-f-reset="mov">azzera</button>' : ""));
-  h += '<div class="grid g4">' +
-    kpi(eur(inc), "Incassato", att.filter(function (m) { return m.stato === "Pagata"; }).length + " fatture pagate") +
-    kpi(eur(da), "Da incassare", att.filter(function (m) { return m.stato !== "Pagata"; }).length + " aperte") +
-    kpi(eur(sum(scad, function (m) { return m.importo; })), "Scaduto", scad.length + " oltre la scadenza") +
-    kpi(eur(sum(pas, function (m) { return m.importo; })), "Uscite", pas.length + " movimenti passivi") + "</div>";
-  h += '<div class="card"><div class="cardhead"><h2>Movimenti</h2><span class="faint">' + filtrate.length + " di " + list.length + "</span></div>" +
-    (filtrate.length ? tblMov(filtrate) : vuoto("Nessun movimento con questi filtri.", '<button class="lnk" data-f-reset="mov">Azzera i filtri</button>')) + "</div>";
-  return h;
-}
-
-/* ---------------- report ---------------- */
 function vReport() {
-  var com = fcom(), ore = fore(), mov = fmov();
+  var com = fcom(), ore = fore();
+  var pagMiei = D.pag.filter(function (p) { return can(p.commessa_id); });
   var vinte = com.filter(function (k) { return ["Approvata", "In corso", "Consegna", "Chiusa"].indexOf(k.stato) > -1; });
   var perse = com.filter(function (k) { return k.stato === "Persa"; });
   var conv = (vinte.length + perse.length) ? Math.round(vinte.length / (vinte.length + perse.length) * 100) : 0;
   var mesi = {};
-  mov.filter(function (m) { return m.tipo === "Attiva"; }).forEach(function (m) { var kk = (m.data || "").slice(0, 7); if (kk) mesi[kk] = (mesi[kk] || 0) + (+m.importo || 0); });
+  pagMiei.filter(function (p) { return p.stato === "Incassato"; }).forEach(function (p) { var kk = String(p.pagato_il || p.scadenza || "").slice(0, 7); if (kk) mesi[kk] = (mesi[kk] || 0) + (+p.importo || 0); });
   var mk = Object.keys(mesi).sort();
   var topCli = fcli().slice().sort(function (a, b) { return valoreCliente(b.id) - valoreCliente(a.id); }).slice(0, 8);
   var fattOre = sum(ore.filter(function (o) { return o.fatturabile; }), function (o) { return o.ore; });
@@ -2140,7 +2133,7 @@ function vSettings() {
 }
 /* ---------------- progetti ---------------- */
 function vProgetti() {
-  var vista = tab || "schede";
+  var vista = tab || "percliente";
   var f = FS.prog;
   var list = progVisibili().filter(function (p) {
     var k = by(D.com, p.commessa_id);
@@ -2152,7 +2145,7 @@ function vProgetti() {
   });
   var h = head("Progetti", list.length + " progetti in cui sei dentro",
     '<button class="btn sm" data-new="prog">+ Nuovo progetto</button>');
-  h += barraViste([["schede", "Schede"], ["lista", "Lista"], ["bacheca", "Bacheca"]], vista, "progetti",
+  h += barraViste([["percliente", "Per cliente"], ["elenco", "Elenco"], ["bacheca", "Bacheca"]], vista, "progetti",
     fcerca("prog", "Cerca un progetto…") +
     fsel("prog", "stato", [["", "Ogni stato"], ["Da iniziare", "Da iniziare"], ["In corso", "In corso"], ["In attesa cliente", "In attesa cliente"], ["Completato", "Completato"]]) +
     fsel("prog", "cli", [["", "Ogni cliente"]].concat(fcli().map(function (c) { return [c.id, c.nome]; }))) +
@@ -2160,17 +2153,52 @@ function vProgetti() {
     (f.stato || f.cli || f.pro || f.cerca ? '<button class="lnk mini" data-f-reset="prog">azzera</button>' : ""));
   if (!list.length) return h + '<div class="card">' + vuoto("Nessun progetto con questi filtri: i progetti nascono dentro un preventivo.", '<button class="lnk" data-go="commesse">Vai ai preventivi</button>') + "</div>";
 
-  if (vista === "lista") {
-    return h + '<div class="card tlist">' + list.map(function (p) {
-      var k = by(D.com, p.commessa_id), lv = lavOf(p.id);
-      var tk = taskOfProg(p.id).filter(function (t) { return t.stato !== "Fatto"; });
-      return rigaEl("progetto|" + p.id + "|lavorazioni", p.nome,
-        esc(k ? nameOf(D.cli, k.cliente_id) : "—") + " · " + lv.length + " lavorazioni · " + tk.length + " attività aperte",
-        '<span class="faint">' + num(avanzProg(p), 0) + "%</span>" +
-        '<span class="badge ' + (p.stato === "Completato" ? "b-green" : p.stato === "In corso" ? "b-terra" : "") + '">' + esc(p.stato || "—") + "</span>" +
-        (p.fine ? '<span class="badge ' + (p.fine < today() && p.stato !== "Completato" ? "b-red" : "") + '">' + dshort(p.fine) + "</span>" : "") +
-        (p.pro_id ? avatar(p.pro_id, 22) : ""));
-    }).join("") + "</div>";
+  function rigaProg(p) {
+    var lv = lavOf(p.id);
+    var ore = sum(oreOfProg(p.id), function (o) { return o.ore; });
+    var stim = sum(lv, function (l) { return l.ore_stimate; });
+    var tk = taskOfProg(p.id).filter(function (t) { return t.stato !== "Fatto"; });
+    var late = p.fine && p.fine < today() && p.stato !== "Completato";
+    var pal = p.stato === "Completato" ? "b-green" : p.stato === "In corso" ? "b-terra" : p.stato === "In attesa cliente" ? "b-amber" : "";
+    return '<div class="prow" data-route="progetto|' + p.id + '|lavorazioni">' +
+      '<span class="pdot ' + pal + '"></span>' +
+      '<span class="pnome">' + esc(p.nome) + "</span>" +
+      '<span class="pstato badge ' + pal + '">' + esc(p.stato || "—") + "</span>" +
+      '<span class="pav">' + prog(avanzProg(p)) + '<i>' + num(avanzProg(p), 0) + "%</i></span>" +
+      '<span class="pore">' + num(ore, 1) + (stim ? " / " + num(stim, 0) : "") + " h</span>" +
+      '<span class="pattivita">' + (tk.length ? tk.length + " attività" : '<i class="faint">—</i>') + "</span>" +
+      '<span class="pdata">' + (p.fine ? (late ? '<b class="neg">' + dshort(p.fine) + "</b>" : dshort(p.fine)) : "—") + "</span>" +
+      '<span class="pchi">' + (p.pro_id ? avatar(p.pro_id, 22) : "") + "</span></div>";
+  }
+  if (vista === "percliente") {
+    var perCli = {};
+    list.forEach(function (p) {
+      var k = by(D.com, p.commessa_id);
+      var cid = k ? k.cliente_id : "";
+      (perCli[cid] = perCli[cid] || []).push(p);
+    });
+    var chiavi = Object.keys(perCli).sort(function (a, b) { return nameOf(D.cli, a).localeCompare(nameOf(D.cli, b)); });
+    return h + chiavi.map(function (cid) {
+      var pg = perCli[cid];
+      var val = sum(pg, function (p) { return valoreProg(p.id); });
+      var lavori = {};
+      pg.forEach(function (p) { if (p.commessa_id) lavori[p.commessa_id] = 1; });
+      var aperti = pg.filter(function (p) { return p.stato !== "Completato"; }).length;
+      return '<div class="card cgroup"><div class="cardhead">' +
+        "<h2>" + (cid ? '<button class="lnk" data-route="cliente|' + cid + '|progetti">' + esc(nameOf(D.cli, cid)) + "</button>" : "Senza cliente") + "</h2>" +
+        '<span class="faint">' + pg.length + (pg.length === 1 ? " progetto" : " progetti") + (aperti !== pg.length ? " · " + aperti + " aperti" : "") + " · " + eur(val) + "</span></div>" +
+        '<div class="faint" style="margin:-4px 0 10px">' + Object.keys(lavori).map(function (kid) {
+          return '<button class="lnk mini2" data-route="commessa|' + kid + '|servizi">' + esc(nameOf(D.com, kid, "titolo")) + "</button>";
+        }).join(" · ") + "</div>" +
+        '<div class="plist">' + pg.slice().sort(function (a, b) { return (a.fine || "9999") < (b.fine || "9999") ? -1 : 1; }).map(rigaProg).join("") + "</div></div>";
+    }).join("");
+  }
+  if (vista === "elenco") {
+    return h + '<div class="card"><div class="plist">' +
+      list.slice().sort(function (a, b) { return (a.fine || "9999") < (b.fine || "9999") ? -1 : 1; }).map(function (p) {
+        var k = by(D.com, p.commessa_id);
+        return rigaProg(p).replace('<span class="pnome">', '<span class="pnome">' + esc(k ? nameOf(D.cli, k.cliente_id) + " · " : ""));
+      }).join("") + "</div></div>";
   }
   if (vista === "bacheca") {
     var stati = ["Da iniziare", "In corso", "In attesa cliente", "Completato"];
@@ -2648,14 +2676,6 @@ var FORMS = {
       '<div class="row2">' + fld("tariffa", "Tariffa oraria (€)", "number", r.tariffa == null ? (p ? p.tariffa_oraria : 0) : r.tariffa) + selField("fatturabile", "Fatturabile", sel(["si", "no"], r.fatturabile === false ? "no" : "si")) + "</div>" +
       fld("descrizione", "Descrizione", "text", r.descrizione);
   }},
-  mov: { t: "Movimento", tb: "mov", f: function (r) {
-    return '<div class="row2">' + selField("tipo", "Tipo", sel(["Attiva", "Passiva"], r.tipo || "Attiva")) + selField("stato", "Stato", sel(["Da emettere", "Emessa", "Pagata", "Insoluta"], r.stato || "Da emettere")) + "</div>" +
-      '<div class="row2">' + selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) + "</div>" +
-      selField("pro_id", "Emessa da", opt(D.pros, r.pro_id || me.pro_id)) +
-      '<div class="row2">' + fld("numero", "Numero", "text", r.numero) + fld("importo", "Importo (€)", "number", r.importo) + "</div>" +
-      '<div class="row2">' + fld("data", "Data", "date", r.data || today()) + fld("scadenza", "Scadenza", "date", r.scadenza) + "</div>" +
-      fld("note", "Note", "text", r.note);
-  }},
   inter: { t: "Nota sul cliente", tb: "inter", f: function (r) {
     return '<div class="row2">' + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) + selField("tipo", "Tipo", sel(["Nota", "Chiamata", "Email", "Meeting"], r.tipo || "Nota")) + "</div>" +
       '<div class="row2">' + fld("data", "Data", "date", r.data || today()) + selField("pro_id", "Chi", opt(D.pros, r.pro_id || me.pro_id)) + "</div>" +
@@ -2731,7 +2751,7 @@ var RAPIDI = { ore: 1, pren: 1, ev: 1, inter: 1, mat: 1, appr: 1 };
 var FSEZ = {
   com: ["commesse", "Preventivi"], cli: ["clienti", "Clienti"], pros: ["pool", "Professionisti"],
   serv: ["servizi", "I miei servizi"], prog: ["progetti", "Progetti"], lav: ["progetti", "Progetti"],
-  mov: ["fatture", "Fatture"], forn: ["fornitori", "Fornitori"], spazi: ["spazi", "Coworking & spazi"],
+  forn: ["fornitori", "Fornitori"], spazi: ["spazi", "Coworking & spazi"],
   membri: ["impostazioni", "Impostazioni"], fasi: ["commesse", "Preventivi"], pag: ["commesse", "Preventivi"],
   vari: ["commesse", "Preventivi"], appr: ["commesse", "Preventivi"], righe: ["commesse", "Preventivi"],
   task: ["task", "Attività"], ore: ["ore", "Ore & timesheet"], inter: ["clienti", "Clienti"], modelli: ["task", "Attività"],
@@ -2911,7 +2931,7 @@ function openPalette() {
   D.cli.forEach(function (c) { PAL.push({ t: c.nome, s: "Cliente", i: "◐", go: ["cliente", c.id] }); });
   D.pros.forEach(function (p) { PAL.push({ t: p.nome, s: "Professionista" + (p.ruolo ? " · " + p.ruolo : ""), i: "◍", go: ["pro", p.id] }); });
   navFor().forEach(function (n) { if (n.k) PAL.push({ t: n.t, s: "Vai a", i: "→", go: [n.k] }); });
-  [["com", "Nuovo preventivo"], ["ore", "Registra ore"], ["task", "Nuova attività"], ["cli", "Nuovo cliente"], ["mov", "Nuovo movimento"]].forEach(function (a) {
+  [["com", "Nuovo preventivo"], ["ore", "Registra ore"], ["task", "Nuova attività"], ["cli", "Nuovo cliente"], ["serv", "Nuovo servizio"]].forEach(function (a) {
     PAL.push({ t: a[1], s: "Azione", i: "+", act: a[0] });
   });
   modal('<div class="box pal"><input id="palq" placeholder="Cerca un preventivo, un cliente, una persona… o un\'azione" autocomplete="off" spellcheck="false"><div id="palres"></div><div class="palfoot"><span><kbd>↑</kbd><kbd>↓</kbd> muoviti</span><span><kbd>↵</kbd> apri</span><span><kbd>esc</kbd> chiudi</span></div></div>');
@@ -2952,7 +2972,7 @@ function render() {
     return;
   }
   buildNav();
-  var V = { attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, fatture: vFatture, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga };
+  var V = { attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search") || el("#tcerca") || el("#fcerca");
@@ -3044,14 +3064,7 @@ document.addEventListener("click", async function (e) {
     if (r1.error) { toast(r1.error.message, true); return; }
     await reload(["task"]); toast("Attività completata"); render(); return;
   }
-  if (d.pay) {
-    var r2 = await sb.from("movimenti").update({ stato: "Pagata" }).eq("id", d.pay);
-    if (r2.error) { toast(r2.error.message, true); return; }
-    await reload(["mov"]); toast("Segnata come incassata"); render(); return;
-  }
   if (d.avvia) { await avviaLavoro(d.avvia); return; }
-  if (d.fattpag) { await fatturaScadenza(d.fattpag); return; }
-  if (d.fattore) { await fatturaOre(d.fattore); return; }
   if (d.portnew) {
     var tok = "";
     var alfa = "abcdefghijkmnopqrstuvwxyz23456789";
@@ -3160,6 +3173,7 @@ document.addEventListener("click", async function (e) {
     if (rvs.error) { toast(rvs.error.message, true); return; }
     await reload(["viste"]); toast("Vista salvata"); render(); return;
   }
+  if (d.servAdd) { apriAggiungiServizio(d.servAdd); return; }
   if (d.modelli) { apriModelli(); return; }
   if (d.modNuovo) { await creaModelloDaProgetto(); return; }
   if (d.modUsa) { await applicaModello(d.modUsa); return; }
@@ -3203,53 +3217,6 @@ document.addEventListener("click", async function (e) {
   if (d.tstop) { await stopTimer(); return; }
 });
 
-function fattDi(pagId) { return D.mov.filter(function (m) { return m.pagamento_id === pagId; })[0] || null; }
-function prossimoNumero() {
-  var anno = new Date().getFullYear();
-  var n = 0;
-  D.mov.forEach(function (m) {
-    var x = /FT\/(\d{4})\/(\d+)/.exec(m.numero || "");
-    if (x && +x[1] === anno && +x[2] > n) n = +x[2];
-  });
-  return "FT/" + anno + "/" + String(n + 1).padStart(3, "0");
-}
-async function fatturaScadenza(pagId) {
-  var pg = by(D.pag, pagId); if (!pg) return;
-  var k = by(D.com, pg.commessa_id); if (!k) return;
-  if (fattDi(pagId)) { toast("Questa scadenza ha già una fattura"); return; }
-  var r = await sb.from("movimenti").insert({
-    tipo: "Attiva", commessa_id: k.id, cliente_id: k.cliente_id, pro_id: k.owner_id,
-    numero: prossimoNumero(), data: today(), scadenza: pg.scadenza,
-    importo: pg.importo, iva: k.iva == null ? 22 : k.iva, stato: "Da emettere",
-    note: pg.nome, pagamento_id: pagId
-  }).select();
-  if (r.error) { toast(r.error.message, true); return; }
-  await logEv(k.id, "Fattura " + (r.data && r.data[0] ? r.data[0].numero : "") + " da “" + pg.nome + "” · " + eur(pg.importo));
-  await reload(["mov", "ev"]);
-  toast("Fattura " + (r.data && r.data[0] ? r.data[0].numero : "") + " creata");
-  render();
-}
-async function fatturaOre(kid) {
-  var k = by(D.com, kid); if (!k) return;
-  var lista = oreOf(kid).filter(function (o) { return o.fatturabile && !o.movimento_id; });
-  if (!lista.length) { toast("Nessuna ora da fatturare"); return; }
-  var tot = Math.round(sum(lista, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); }));
-  var h = num(sum(lista, function (o) { return o.ore; }), 1);
-  if (!confirm("Creo una fattura da " + eur(tot) + " per " + h + " h non ancora fatturate?")) return;
-  var r = await sb.from("movimenti").insert({
-    tipo: "Attiva", commessa_id: k.id, cliente_id: k.cliente_id, pro_id: k.owner_id,
-    numero: prossimoNumero(), data: today(), scadenza: iso(new Date(Date.now() + 30 * 86400000)),
-    importo: tot, iva: k.iva == null ? 22 : k.iva, stato: "Da emettere",
-    note: "Consuntivo ore: " + h + " h"
-  }).select();
-  if (r.error) { toast(r.error.message, true); return; }
-  var mid = r.data && r.data[0] ? r.data[0].id : null;
-  if (mid) await sb.from("ore").update({ movimento_id: mid }).in("id", lista.map(function (o) { return o.id; }));
-  await logEv(k.id, "Fattura " + (r.data[0] || {}).numero + " su consuntivo di " + h + " h · " + eur(tot));
-  await reload(["mov", "ore", "ev"]);
-  toast("Fattura creata su " + h + " h");
-  render();
-}
 async function avviaLavoro(kid) {
   var k = by(D.com, kid); if (!k) return;
   var righe = righeOf(kid).filter(function (r) { return !r.opzionale && r.tipo !== "Sconto"; });
@@ -3385,6 +3352,23 @@ document.addEventListener("submit", async function (e) {
     await reload(["righe"]); closeModal(); toast("Voce salvata");
     if (f.dataset.page) { FDIRTY = false; FBACK = null; go("commessa", kid, "servizi"); return; }
     render(); return;
+  }
+  if (f.dataset.servAddSave) {
+    e.preventDefault();
+    var sv9 = by(D.serv, f.dataset.servAddSave); if (!sv9) return;
+    var kid9 = f.commessa_id.value; if (!kid9) { toast("Scegli un preventivo", true); return; }
+    var riga9 = {
+      commessa_id: kid9, serv_id: sv9.id, tipo: "Servizio", nome: sv9.nome, descrizione: sv9.descrizione,
+      qty: +f.qty.value || 1, unita: sv9.unita || null,
+      prezzo_unit: f.prezzo_unit.value === "" ? sv9.prezzo : +f.prezzo_unit.value,
+      costo_unit: f.costo_unit.value === "" ? sv9.costo : +f.costo_unit.value,
+      assegnato_id: sv9.pro_id, stato: "Da iniziare"
+    };
+    var rsa = await sb.from("righe").insert(riga9);
+    if (rsa.error) { toast(rsa.error.message, true); return; }
+    await logEv(kid9, "Aggiunto al preventivo: " + sv9.nome + " di " + nameOf(D.pros, sv9.pro_id));
+    await reload(["righe", "ev"]); closeModal();
+    toast(sv9.nome + " aggiunto"); go("commessa", kid9, "servizi"); return;
   }
   if (f.dataset.tsadd) {
     e.preventDefault();
