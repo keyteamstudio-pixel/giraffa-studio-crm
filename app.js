@@ -3192,7 +3192,7 @@ async function creaDaImport() {
   var rk = await sb.from("commesse").insert({
     titolo: (IMP.titolo || "Preventivo importato").slice(0, 140),
     cliente_id: cid, owner_id: me.pro_id, pm_id: me.pro_id, stato: "Preventivo",
-    numero: IMP.numero || null, iva: IMP.iva == null ? 22 : +IMP.iva, sconto: +IMP.sconto || 0,
+    numero: IMP.numero || null, data: IMP.data || today(), iva: IMP.iva == null ? 22 : +IMP.iva, sconto: +IMP.sconto || 0,
     premessa: IMP.premessa || null, condizioni: IMP.condizioni || null, chiusura: IMP.chiusura || null,
     validita: IMP.validita == null ? 30 : +IMP.validita,
     sezioni: IMP.tieniSez ? (IMP.sezioni || []) : [],
@@ -3257,13 +3257,39 @@ function emittente(k) {
   return { nome: p.nome || me.nome, piva: p.piva, indirizzo: p.indirizzo || p.citta,
     email: p.email, tel: p.telefono, sito: p.sito, iban: pv.iban, condizioni: pv.condizioni, studio: false };
 }
+/* La data che sta sul documento. Se importi un preventivo di marzo, quello
+   resta un preventivo di marzo: la data in cui l'hai messo dentro il CRM non
+   c'entra niente con la data che il cliente ha visto. */
+function dataDoc(k) {
+  return (k && k.data) || String((k && k.created_at) || today()).slice(0, 10);
+}
 function numeroDoc(k) {
   if (k.numero) return k.numero;
-  var anno = (k.created_at || today()).slice(0, 4);
-  var miei = D.com.filter(function (x) { return (x.created_at || "").slice(0, 4) === anno; })
-    .sort(function (a, b) { return a.created_at < b.created_at ? -1 : 1; });
+  var anno = dataDoc(k).slice(0, 4);
+  var miei = D.com.filter(function (x) { return dataDoc(x).slice(0, 4) === anno; })
+    .sort(function (a, b) { return dataDoc(a) < dataDoc(b) ? -1 : 1; });
   var i = miei.map(function (x) { return x.id; }).indexOf(k.id);
   return anno + "/" + String((i < 0 ? miei.length : i) + 1).padStart(3, "0");
+}
+/* Le date scritte a mano: 12/03/2026, 2026-03-12, «12 marzo 2026». */
+var MESI_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto", "settembre", "ottobre", "novembre", "dicembre"];
+function dataIt(s) {
+  var t = String(s || "").trim().toLowerCase();
+  if (!t) return null;
+  var m = t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return t;
+  m = t.match(/^(\d{1,2})[\/\-. ](\d{1,2})[\/\-. ](\d{2,4})$/);
+  if (m) {
+    var a = m[3].length === 2 ? "20" + m[3] : m[3];
+    return a + "-" + ("0" + m[2]).slice(-2) + "-" + ("0" + m[1]).slice(-2);
+  }
+  m = t.match(/^(\d{1,2})\s+([a-zàèéìòù]+)\.?\s+(\d{4})$/);
+  if (m) {
+    var mi = -1;
+    MESI_IT.forEach(function (nm, j) { if (nm.indexOf(m[2].slice(0, 3)) === 0) mi = j; });
+    if (mi > -1) return m[3] + "-" + ("0" + (mi + 1)).slice(-2) + "-" + ("0" + m[1]).slice(-2);
+  }
+  return null;
 }
 /* testo che si riscrive sul posto: tabella|campo|id */
 function ed(tb, id, campo, val, vuotoTxt, cls) {
@@ -3343,8 +3369,8 @@ function vDocumento() {
     "</div></div>" +
     '<div class="ddoc"><h2>Preventivo</h2><table><tbody>' +
     "<tr><td>Numero</td><td>" + ed("com", k.id, "numero", k.numero || numeroDoc(k)) + "</td></tr>" +
-    "<tr><td>Data</td><td>" + dt(k.created_at || today()) + "</td></tr>" +
-    "<tr><td>Validità</td><td>" + (k.validita == null ? 30 : k.validita) + " giorni</td></tr>" +
+    "<tr><td>Data</td><td>" + ed("com", k.id, "data", dt(dataDoc(k)), "la data del documento") + "</td></tr>" +
+    "<tr><td>Validità</td><td>" + ed("com", k.id, "validita", k.validita == null ? 30 : k.validita, "30", "n") + " giorni</td></tr>" +
     "</tbody></table></div></div>";
 
   h += '<div class="ddest"><span class="lb">Spettabile</span><b>' + ed("cli", cl.id || "", "nome", cl.nome, "Nome del cliente") + "</b>" +
@@ -3412,7 +3438,9 @@ function vDocumento() {
 
   h += '<div class="dfirme"><div><span class="lb">Per ' + esc(em.nome || "noi") + "</span><i></i></div>" +
     '<div><span class="lb">Per accettazione</span><i></i></div></div>';
-  h += '<p class="dpie">Preventivo valido ' + (k.validita == null ? 30 : k.validita) + " giorni dalla data di emissione." +
+  var gg = k.validita == null ? 30 : +k.validita;
+  var scade = new Date(dataDoc(k)); scade.setDate(scade.getDate() + gg);
+  h += '<p class="dpie">Preventivo valido ' + gg + " giorni dalla data di emissione, quindi fino al " + dt(iso(scade)) + "." +
     (amb === "studio" ? " Ogni professionista opera con la propria partita IVA sotto il coordinamento di " + esc(em.nome || "Giraffa Studio") + "." : "") + "</p>";
   h += "</div>";
   return h;
@@ -4442,6 +4470,7 @@ document.addEventListener("input", function (e) {
 /* Dentro il documento si scrive direttamente sul foglio: quando lasci un campo
    il valore va nel database e i totali si rifanno. */
 var EDNUM = ["qty", "prezzo_unit", "costo_unit", "sconto", "importo", "ore_stimate", "cicli", "validita", "iva"];
+var EDDATA = ["data", "scadenza", "inizio", "pagato_il"];
 document.addEventListener("focusout", async function (e) {
   var t = e.target;
   /* le sezioni stanno tutte in un campo solo: lo riscrivo intero */
@@ -4466,7 +4495,10 @@ document.addEventListener("focusout", async function (e) {
   var prima = t.dataset.prima;
   if (prima !== undefined && prima === testo) return;
   var val;
-  if (EDNUM.indexOf(campo) > -1) {
+  if (EDDATA.indexOf(campo) > -1) {
+    val = testo === "" ? null : dataIt(testo);
+    if (testo !== "" && !val) { toast("Data non capita: scrivila come 12/03/2026", true); t.innerText = t.dataset.prima || ""; return; }
+  } else if (EDNUM.indexOf(campo) > -1) {
     var n = parseFloat(testo.replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", "."));
     val = isNaN(n) ? null : n;
   } else val = testo === "" ? null : testo;
