@@ -990,6 +990,99 @@ table.dtab .num{text-align:right;font-variant-numeric:tabular-nums;white-space:n
 /* le fonti dell'analisi: sempre visibili, sempre cliccabili */
 ul.fontil{margin:10px 0 0;padding:0 0 0 17px;font-size:.85rem;line-height:1.7}
 ul.fontil li{margin-bottom:2px}
+/* ---- il ciclo del preventivo: quattro momenti, in fila ---- */
+.card.ciclo{padding:16px 18px}
+.csteps{display:flex;align-items:flex-start;gap:0}
+.cstep{flex:1;position:relative;text-align:center;padding-top:22px}
+.cstep i{position:absolute;top:4px;left:50%;transform:translateX(-50%);width:11px;height:11px;border-radius:50%;
+  background:var(--card);border:2px solid var(--line);z-index:1}
+.cstep::before{content:"";position:absolute;top:9px;left:0;right:50%;height:2px;background:var(--line)}
+.cstep::after{content:"";position:absolute;top:9px;left:50%;right:0;height:2px;background:var(--line)}
+.cstep:first-child::before,.cstep:last-child::after{display:none}
+.cstep b{display:block;font-size:.85rem;font-weight:600;color:var(--faint)}
+.cstep span{display:block;font-size:.78rem;color:var(--faint)}
+.cstep.fatto i{background:var(--green);border-color:var(--green)}
+.cstep.fatto::before,.cstep.fatto::after{background:var(--green)}
+.cstep.fatto b{color:var(--soft)}
+.cstep.qui i{background:var(--terra);border-color:var(--terra);box-shadow:0 0 0 4px var(--terra-soft)}
+.cstep.qui::before{background:var(--green)}
+.cstep.qui b{color:var(--ink);font-weight:700}
+.cstep.qui span{color:var(--soft)}
+.csteps.perso{opacity:.45}
+.cazioni{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid var(--line-soft)}
+.cazioni>.faint{flex:1;min-width:200px;font-size:.85rem}
+.cazioni .cbtn{display:flex;gap:8px;flex-wrap:wrap}
+@media(max-width:640px){.cstep b{font-size:.78rem}.cstep span{font-size:.72rem}}
+/* ---- catalogo delle figure professionali ---- */
+.figc{border-bottom:1px solid var(--line-soft)}
+.figc:last-child{border-bottom:0}
+.figt{width:100%;display:flex;align-items:center;gap:12px;background:none;border:0;font:inherit;
+  text-align:left;padding:11px 4px;cursor:pointer;color:var(--txt)}
+.figt b{font-weight:600;color:var(--ink)}
+.figt .faint{flex:1;font-size:.83rem}
+.figt .cnt{background:var(--terra-soft);color:var(--terra-ink);border-radius:999px;padding:1px 8px;font-size:.75rem;font-weight:600}
+.figt .chev{width:8px;height:8px;border-right:1.8px solid var(--faint);border-bottom:1.8px solid var(--faint);
+  transform:rotate(45deg);transition:transform .16s var(--ease)}
+.figc.ap .figt .chev{transform:rotate(-135deg)}
+.figc.ap .figt b{color:var(--terra-ink)}
+.figb{padding:2px 4px 16px}
+ol.fontil{margin:8px 0 0;padding:0 0 0 19px;font-size:.85rem;line-height:1.7}
+ol.fontil li{margin-bottom:2px}
+/* ---- bacheca: quello che ci diciamo ---- */
+.scrivi{display:flex;gap:12px;align-items:flex-start;padding:0 0 16px;border-bottom:1px solid var(--line-soft)}
+.scrivic{flex:1;display:flex;flex-direction:column;gap:8px}
+.scrivib{display:flex;gap:8px;align-items:center;justify-content:flex-end}
+.scrivib select{max-width:180px}
+.posts{margin-top:4px}
+.post{padding:14px 0;border-bottom:1px solid var(--line-soft)}
+.post:last-child{border-bottom:0;padding-bottom:0}
+.post.fisso{background:var(--cream);border-radius:var(--r-m);padding:14px;margin:8px 0;border-bottom:0}
+.posth{display:flex;align-items:center;gap:11px}
+.posth b{font-weight:600;color:var(--ink);display:block;line-height:1.3}
+.posth .faint{font-size:.78rem}
+.postaz{margin-left:auto;display:flex;gap:10px;opacity:0;transition:opacity .14s var(--ease)}
+.post:hover .postaz,.post:focus-within .postaz{opacity:1}
+.postt{margin:9px 0 0;padding-left:43px;white-space:pre-wrap}
+.postp{display:flex;gap:14px;padding-left:43px;margin-top:8px}
+.postp .lnk.on{color:var(--terra-ink);font-weight:600}
+.postr{margin:10px 0 0 43px;padding-left:14px;border-left:2px solid var(--line)}
+.rispo{display:flex;gap:9px;align-items:flex-start;padding:7px 0;font-size:.88rem}
+.rispo b{font-weight:600;color:var(--ink)}
+@media(max-width:640px){.postt,.postp{padding-left:0}.postr{margin-left:0}}
+/* ---- eventi e workshop ---- */
+.ev1{display:flex;gap:14px;padding:12px 0;border-bottom:1px solid var(--line-soft)}
+.ev1:last-child{border-bottom:0;padding-bottom:0}
+.evd{flex:0 0 58px;text-align:center;background:var(--cream);border-radius:var(--r-s);padding:8px 4px;height:fit-content}
+.evd b{display:block;font-size:.9rem;font-weight:700;color:var(--ink)}
+.evd span{display:block;font-size:.75rem;color:var(--soft)}
+.evc{flex:1;min-width:0}
+.evt{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.evt b{font-weight:600;color:var(--ink)}
+.evc>.faint{font-size:.83rem}
+.evx{margin-top:7px;font-size:.88rem;white-space:pre-wrap}
+.evi{display:flex;gap:-4px;margin-top:9px}
+.evi>*{margin-right:-6px;border:2px solid var(--card);border-radius:50%}
+.evb{display:flex;align-items:center;gap:12px;margin-top:10px}
+/* ---- chat a canali ---- */
+.chatw{display:grid;grid-template-columns:200px 1fr;gap:0;border:1px solid var(--line);
+  border-radius:var(--r-l);overflow:hidden;background:var(--card);box-shadow:var(--sh-2);min-height:460px}
+.chatl{background:var(--cream);border-right:1px solid var(--line);padding:10px 8px}
+.chatl button{width:100%;display:flex;align-items:center;gap:8px;background:none;border:0;font:inherit;
+  font-size:.87rem;color:var(--soft);text-align:left;padding:8px 10px;border-radius:var(--r-s);cursor:pointer}
+.chatl button:hover{background:var(--sand);color:var(--ink)}
+.chatl button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:var(--sh-1)}
+.chatl .cnt{margin-left:auto;background:var(--terra);color:#fff;border-radius:999px;padding:0 7px;font-size:.72rem;font-weight:700}
+.chatm{display:flex;flex-direction:column;min-width:0}
+.chatmh{display:flex;align-items:baseline;gap:10px;padding:13px 18px;border-bottom:1px solid var(--line)}
+.chatmh b{color:var(--ink)}
+.chatmh .faint{font-size:.82rem}
+.chatms{flex:1;overflow-y:auto;max-height:440px;padding:14px 18px}
+.msg{display:flex;gap:10px;align-items:flex-start;padding:7px 0;font-size:.9rem}
+.msg b{font-weight:600;color:var(--ink)}
+.msg .faint{font-size:.76rem}
+.chatm .qadd{padding:12px 18px;border-top:1px solid var(--line)}
+.chatm .qadd input{flex:1}
+@media(max-width:760px){.chatw{grid-template-columns:1fr}.chatl{border-right:0;border-bottom:1px solid var(--line);display:flex;gap:6px;overflow-x:auto}.chatl button{width:auto;white-space:nowrap}}
 /* prospetti: due fogli, i filtri sopra, e l'interruttore per il cliente */
 .seg2{display:inline-flex;background:var(--cream);border:1px solid var(--line);border-radius:var(--r-s);padding:2px;gap:2px}
 .seg2 button{background:none;border:0;font:inherit;font-size:.82rem;font-weight:500;color:var(--soft);
@@ -1172,6 +1265,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=45"></script>
+<script src="app.js?v=46"></script>
 </body>
 </html>
