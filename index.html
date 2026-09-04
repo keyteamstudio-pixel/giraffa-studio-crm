@@ -132,9 +132,17 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 .nav .cerca span{flex:1;text-align:left}
 .nav .cerca kbd{font:inherit;font-size:.7rem;opacity:.6;border:1px solid var(--line);border-radius:5px;padding:1px 5px}
 .nav .cerca:hover{border-color:var(--line);color:var(--ink);background:var(--card)}
-.navgroup{padding:18px 12px 6px;display:flex;flex-direction:column;gap:1px}
-.navgroup span{font-size:.7rem;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
-.navgroup i{font-style:normal;font-size:.7rem;color:var(--faint);letter-spacing:0;text-transform:none}
+.navtit{display:grid;grid-template-columns:1fr 14px;align-items:center;width:100%;
+  background:none;border:0;font:inherit;text-align:left;cursor:pointer;padding:16px 12px 6px;color:inherit}
+.navtit span{grid-column:1;font-size:.7rem;font-weight:650;letter-spacing:.08em;text-transform:uppercase;color:var(--soft)}
+.navtit i{grid-column:1;font-style:normal;font-size:.7rem;color:var(--faint);letter-spacing:0;text-transform:none}
+.navtit .chev{grid-column:2;grid-row:1/3;justify-self:end;width:8px;height:8px;border-right:1.6px solid var(--faint);
+  border-bottom:1.6px solid var(--faint);transform:rotate(-45deg);transition:transform .18s var(--ease)}
+.navtit.ap .chev{transform:rotate(45deg)}
+.navtit:hover span{color:var(--ink)}
+.navtit:hover .chev{border-color:var(--soft)}
+.navsec{display:flex;flex-direction:column;gap:1px;overflow:hidden}
+.navsec.chiusa{display:none}
 .nav button[data-go]{
   position:relative;background:none;border:0;color:var(--txt);font:inherit;font-size:.895rem;font-weight:450;
   text-align:left;padding:9px 11px;border-radius:10px;cursor:pointer;
@@ -767,11 +775,68 @@ table.ts td:first-child{min-width:210px}
   .main{padding:16px 12px 80px}
 }
 
+/* ---- preventivo impaginato ---- */
+.docbar{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin:14px 0 18px}
+.docbar .dbleft{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.docbar .dbright{display:flex;gap:8px}
+.a4{background:#fff;color:#1b1a18;width:100%;max-width:820px;margin:0 auto;padding:56px 60px 64px;
+  border:1px solid var(--line);border-radius:6px;box-shadow:0 18px 50px rgba(40,30,20,.09);font-size:.9rem;line-height:1.6}
+.a4 .dtop{display:flex;justify-content:space-between;align-items:flex-start;gap:30px;
+  padding-bottom:22px;border-bottom:2px solid var(--terra)}
+.dmitt{display:flex;gap:14px;align-items:flex-start}
+.dmitt .mark{height:44px;width:44px;flex:0 0 auto}
+.dmitt b{display:block;font-size:1.02rem;letter-spacing:-.01em}
+.dmitt span{display:block;font-size:.78rem;color:#6b665e;line-height:1.5}
+.ddoc{text-align:right}
+.ddoc h2{font-size:1.5rem;letter-spacing:-.02em;margin:0 0 8px;color:var(--terra-deep)}
+.ddoc table{width:auto;margin-left:auto}
+.ddoc td{padding:1px 0;font-size:.78rem;border:0}
+.ddoc td:first-child{color:#8a8479;padding-right:14px}
+.ddest{margin:26px 0 6px;font-size:.88rem}
+.ddest .lb,.dfirme .lb{display:block;font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;color:#8a8479;margin-bottom:3px}
+.ddest b{font-size:1rem}
+.ddest div{color:#57534b}
+.dtit{font-size:1.55rem;letter-spacing:-.025em;margin:26px 0 10px;line-height:1.25}
+.dpre{color:#413d37;margin-bottom:24px}
+.dsez{margin:22px 0}
+.dsh{display:flex;justify-content:space-between;align-items:baseline;gap:12px;
+  border-bottom:1px solid #e6e1d8;padding-bottom:5px;margin-bottom:2px}
+.dsh b{font-size:.94rem}
+.dsh .faint{font-size:.76rem;color:#8a8479}
+table.dtab{width:100%;border-collapse:collapse}
+table.dtab th{font-size:.68rem;text-transform:uppercase;letter-spacing:.08em;color:#8a8479;font-weight:600;
+  text-align:left;padding:8px 6px;border:0}
+table.dtab td{padding:9px 6px;border:0;border-bottom:1px solid #f0ece4;vertical-align:top}
+table.dtab tr:last-child td{border-bottom:0}
+table.dtab .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.dnota{font-size:.78rem;color:#8a8479;line-height:1.5}
+table.dtot{width:auto;min-width:290px;margin:18px 0 0 auto;border-collapse:collapse}
+table.dtot td{padding:5px 0;border:0}
+table.dtot td:last-child{text-align:right;font-variant-numeric:tabular-nums;padding-left:34px}
+table.dtot .big{font-size:1.12rem;color:var(--terra-deep)}
+.dchiusa{margin:24px 0 0;color:#413d37}
+.dfirme{display:grid;grid-template-columns:1fr 1fr;gap:44px;margin:44px 0 0}
+.dfirme i{display:block;border-bottom:1px solid #cdc6ba;height:44px}
+.dpie{margin-top:26px;padding-top:14px;border-top:1px solid #f0ece4;font-size:.74rem;color:#8a8479}
+/* testo che si riscrive sul posto */
+.ed,.edb{border-radius:4px;transition:background .14s var(--ease),box-shadow .14s var(--ease);outline:0}
+.ed{display:inline-block;min-width:22px}
+.edb{display:block;min-height:1.6em;white-space:pre-wrap}
+.ed:hover,.edb:hover{background:#faf7f1;box-shadow:0 0 0 4px #faf7f1}
+.ed:focus,.edb:focus{background:#fff;box-shadow:0 0 0 2px var(--terra)}
+.ed.n{text-align:right;font-variant-numeric:tabular-nums}
+.ed:empty::before,.edb:empty::before{content:attr(data-vuoto);color:#b8b1a5}
+
 @media print{
+  @page{size:A4;margin:14mm}
   body{background:#fff}body::before{display:none}
-  .side,.tools,.tabs,.btn,.lnk,.noprint{display:none!important}
+  .side,.tools,.tabs,.btn,.lnk,.noprint,.crumbs,.vbar,.docbar{display:none!important}
   .app{display:block}.main{padding:0;max-width:none}
   .card{border:0;padding:0;box-shadow:none}
+  .a4{max-width:none;width:auto;padding:0;border:0;border-radius:0;box-shadow:none;font-size:10.5pt}
+  .ed:hover,.edb:hover,.ed:focus,.edb:focus{background:none;box-shadow:none}
+  .ed:empty::before,.edb:empty::before{content:""}
+  .dsez,.dfirme{break-inside:avoid}
 }
 </style>
 </head>
@@ -883,6 +948,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=27"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>
