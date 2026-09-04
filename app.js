@@ -536,22 +536,24 @@ function buildNav() {
   if (vv === "nuovo" || vv === "mod") { var fs = FSEZ[current]; vv = fs ? fs[0] : "dash"; }
   if (vv === "riga") vv = "commesse";
   var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse", documento: "commesse", importa: "commesse" }[vv] || vv;
-  h += '<button class="cerca" data-pal="1" title="Cerca ovunque (⌘K)"><span>Cerca…</span><kbd>⌘K</kbd></button>';
+  h += '<button class="cerca" data-pal="1" title="Cerca ovunque (⌘K)"><span>Cerca o esegui un\'azione…</span><kbd>⌘K</kbd></button>';
   h += '<button class="cerca chiedi" data-chiedi="1" title="Fai una domanda sui tuoi dati"><span>Chiedi…</span></button>';
   var ap = navAperti(), qui = gruppoDi(cur), gr = null, gsub = "", buf = "";
+  var zona = 0;
   function chiudiZona() {
     if (gr === null) return;
     var aperta = ap[gr] !== false || gr === qui;
-    h += '<button class="navtit' + (aperta ? " ap" : "") + '" data-navg="' + esc(gr) + '"' +
+    var pri = zona++ === 0 ? " pri" : "";
+    h += '<button class="navtit' + pri + (aperta ? " ap" : "") + '" data-navg="' + esc(gr) + '"' +
       ' aria-expanded="' + (aperta ? "true" : "false") + '"><span>' + esc(gr) + "</span>" +
-      (gsub ? "<i>" + esc(gsub) + "</i>" : "") + '<em class="chev"></em></button>' +
-      '<div class="navsec' + (aperta ? "" : " chiusa") + '">' + buf + "</div>";
+      '<em class="chev"></em></button>' +
+      '<div class="navsec' + pri + (aperta ? "" : " chiusa") + '">' + buf + "</div>";
     buf = "";
   }
   navFor().forEach(function (n) {
     if (n.g) { chiudiZona(); gr = n.g; gsub = n.n || ""; return; }
     var c = n.c ? n.c() : null;
-    buf += '<button data-go="' + n.k + '" class="' + (cur === n.k ? "on" : "") + '" title="' + esc(n.d || n.t) + '"><span class="nt">' + esc(n.t) + "</span>" +
+    buf += '<button data-go="' + n.k + '" class="' + (cur === n.k ? "on" : "") + (c ? " conta" : "") + '" title="' + esc(n.d || n.t) + '"><span class="nt">' + esc(n.t) + "</span>" +
       (c ? '<span class="cnt">' + c + "</span>" : "") + "</button>";
   });
   chiudiZona();
@@ -565,7 +567,9 @@ function buildNav() {
     var t2 = timerMio(); if (!t2) { clearInterval(TICK); return; }
     Array.prototype.forEach.call(document.querySelectorAll("#timerlbl"), function (n) { n.textContent = durata(t2.iniziato); });
   }, 15000);
-  el("#mename").innerHTML = (me.pro_id ? avatar(me.pro_id, 26) : "") + "<span>" + esc(me.nome) + "</span>";
+  var ruoloEt = puoSistema() ? "Amministratore" : (RUOLO_ET[me.ruolo] || "Professionista");
+  el("#mename").innerHTML = (me.pro_id ? avatar(me.pro_id, 30) : "") +
+    '<span class="mnome"><span>' + esc(me.nome) + '</span><span class="mruolo">' + esc(ruoloEt) + "</span></span>";
   var mio = navMio(), suMe = mio.some(function (x) { return x.k === cur; });
   el("#mebtn").className = "mebtn" + (suMe ? " on" : "");
   el("#memenu").innerHTML =
@@ -578,6 +582,13 @@ function buildNav() {
     '<button data-esci="1" class="meesci"><span class="nt">Esci</span></button>';
 }
 /* il menu del proprio nome si apre e si chiude, e si chiude da solo se clicchi altrove */
+/* Il menu si riduce a una striscia di icone e si riallarga; la scelta resta. */
+function navMini(v) {
+  var ora = v === undefined ? !document.body.classList.contains("navmini") : !!v;
+  document.body.classList.toggle("navmini", ora);
+  try { localStorage.setItem("gs_mini", ora ? "1" : "0"); } catch (e) { }
+  var b = el("#sidetog"); if (b) b.title = ora ? "Allarga il menu" : "Riduci il menu";
+}
 function meMenu(apri) {
   var m = el("#memenu"), b = el("#mebtn");
   if (!m || !b) return;
@@ -4663,6 +4674,7 @@ document.addEventListener("click", async function (e) {
   if (d.proscarica) { var pp = d.proscarica.split("|"); scaricaProspetto(pp[0], pp[1]); return; }
   if (d.propNo) { propScarta(d.propNo); render(); return; }
   if (d.propSi) { await faiProposta(d.propSi, d.propId); return; }
+  if (d.sidetog) { navMini(); return; }
   if (d.mebtn) { meMenu(); return; }
   if (d.esci) {
     if (PLINK) { location.hash = ""; location.reload(); return; }
@@ -5499,6 +5511,7 @@ async function init() {
     var r = ev.reason;
     segnaErrore("promessa rifiutata: " + (r && r.message ? r.message : String(r)), r && r.stack ? r.stack : "");
   });
+  try { if (localStorage.getItem("gs_mini") === "1") navMini(true); } catch (e) { }
   var ham = el("#ham"), scrim = el("#scrim");
   if (ham) ham.addEventListener("click", function () { document.body.classList.toggle("navopen"); });
   if (scrim) scrim.addEventListener("click", function () { document.body.classList.remove("navopen"); });
