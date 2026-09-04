@@ -93,7 +93,7 @@ var FASE_COL = { "Da iniziare": "", "In corso": "b-terra", "In attesa cliente": 
 var PRIO_COL = { Alta: "b-red", Media: "b-amber", Bassa: "" };
 var MOV_COL = { Pagata: "b-green", Emessa: "b-blue", "Da emettere": "b-amber", Insoluta: "b-red" };
 var APPR_COL = { Approvata: "b-green", "In attesa": "b-amber", "Modifiche richieste": "b-red" };
-var TIPI_MAT = ["Brief", "Riferimenti", "Cartella", "Bozza", "Consegna", "Contratto", "Altro"];
+var TIPI_MAT = ["Cartella condivisa", "Brief", "Riferimenti", "Bozza", "Consegna", "Contratto", "Altro"];
 
 /* ---------------- calcoli ---------------- */
 function righeOf(k) { return D.righe.filter(function (r) { return r.commessa_id === k; }); }
@@ -493,7 +493,7 @@ function buildNav() {
   var vv = view;
   if (vv === "nuovo" || vv === "mod") { var fs = FSEZ[current]; vv = fs ? fs[0] : "dash"; }
   if (vv === "riga") vv = "commesse";
-  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse", documento: "commesse" }[vv] || vv;
+  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse", documento: "commesse", importa: "commesse" }[vv] || vv;
   h += '<button class="cerca" data-pal="1" title="Cerca ovunque (⌘K)"><span>Cerca…</span><kbd>⌘K</kbd></button>';
   var ap = navAperti(), qui = gruppoDi(cur), gr = null, gsub = "", buf = "";
   function chiudiZona() {
@@ -785,6 +785,7 @@ function vCommesse() {
   var nStud = tutte.length - nPers;
   var val = sum(list, function (k) { return budget(k).ricavo; });
   var h = head("Preventivi", list.length + " preventivi · " + eur(val) + " di valore",
+    '<button class="btn sm ghost" data-route="importa|-|">Importa da PDF</button>' +
     '<button class="btn sm" data-new="com">+ Nuovo preventivo</button>');
   h += barraViste([["personali", "I miei", nPers], ["studio", "Dello studio", nStud], ["tutti", "Tutti", tutte.length]], quali, "commesse",
     '<select data-comvista="1" title="Come li vuoi vedere">' + opzioni([["lista", "Lista"], ["bacheca", "Bacheca"], ["timeline", "Timeline"]], vista) + "</select>" +
@@ -976,12 +977,9 @@ function vCommessa() {
     h += '<div class="cardhead"><h2>Ore registrate</h2><span>' + (daFatt.length ? '<span class="faint">da fatturare: ' + num(sum(daFatt, function (o) { return o.ore; }), 1) + " h · " + eur(valDaFatt) + "</span> " : "") + '<button class="btn sm ghost" data-new="ore" data-ctx="' + k.id + '">+ Registra ore</button></span></div>' + tblOre(ore);
   }
   if (t === "materiali") {
-    h += '<div class="cardhead"><h2>Materiali del lavoro</h2><button class="btn sm ghost" data-new="mat" data-ctx="' + k.id + '">+ Aggiungi materiale</button></div>';
-    h += '<div class="drop" id="drop" data-kid="' + k.id + '"><b>Trascina qui i file</b><span class="faint">oppure <label class="lnk">scegli dal computer<input type="file" id="fileinp" multiple style="display:none"></label> · o aggiungi un link con il pulsante qui sopra</span></div>';
-    h += mt.length ? '<table><thead><tr><th>Materiale</th><th>Tipo</th><th>Fase</th><th>Visibilità</th><th>Data</th><th></th></tr></thead><tbody>' + mt.slice().sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; }).map(function (m) {
-      var nome = m.path ? '<button class="lnk" data-file="' + m.id + '">' + esc(m.nome) + "</button>" + (m.dim ? ' <span class="faint">' + (m.dim > 1048576 ? (m.dim / 1048576).toFixed(1) + " MB" : Math.round(m.dim / 1024) + " KB") + "</span>" : "") : m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome);
-      return "<tr><td>" + nome + (m.note ? '<div class="faint">' + esc(m.note) + "</div>" : "") + '</td><td><span class="badge">' + esc(m.tipo || "—") + "</span></td><td>" + esc(m.fase_id ? nameOf(D.fasi, m.fase_id) : "—") + '</td><td><button class="lnk" data-vis="' + m.id + '">' + (m.visibile_cliente ? '<span class="badge b-blue">cliente</span>' : '<span class="badge">solo studio</span>') + '</button></td><td class="faint">' + dshort(m.created_at) + '</td><td class="num"><button class="lnk" data-edit="mat:' + m.id + '">Modifica</button></td></tr>';
-    }).join("") + "</tbody></table>" : "";
+    h += '<div class="cardhead"><h2>Materiali del lavoro</h2><div style="display:flex;gap:8px"><button class="btn sm ghost" data-link="' + ctxAll(k.id) + '">+ Link</button><button class="btn sm ghost" data-new="mat" data-ctx="' + k.id + '">+ Materiale</button></div></div>';
+    h += zonaAllegati(ctxAll(k.id));
+    h += tabellaAllegati(mt, { fase: true });
   }
   if (t === "pagamenti") {
     h += '<div class="cardhead"><h2>Scadenzario pagamenti</h2><button class="btn sm ghost" data-new="pag" data-ctx="' + k.id + '">+ Nuova scadenza</button></div>';
@@ -1436,12 +1434,9 @@ function vAttivita() {
   }).join("") + "</ul>" : vuoto("Nessun commento.");
   h += '<form class="qadd" data-comm-task="' + t.id + '"><input name="testo" placeholder="Scrivi un commento…" autocomplete="off"><button class="btn sm" type="submit">Invia</button></form></div>';
 
-  h += '<div class="card"><div class="cardhead"><h2>Allegati</h2><button class="btn sm ghost" data-new="mat" data-ctx-task="' + t.id + '">+ Allega link</button></div>';
-  h += files.length ? "<table><tbody>" + files.map(function (m) {
-    return "<tr><td>" + (m.path ? '<button class="lnk" data-file="' + m.id + '">' + esc(m.nome) + "</button>" : m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome)) +
-      '</td><td class="faint">' + dshort(m.created_at) + '</td><td class="num"><button class="lnk" data-del="mat:' + m.id + '">elimina</button></td></tr>';
-  }).join("") + "</tbody></table>" : vuoto("Nessun allegato.");
-  h += '<div class="drop" id="drop" data-tid="' + t.id + '"' + (t.commessa_id ? ' data-kid="' + t.commessa_id + '"' : "") + '><b>Trascina qui i file</b><span class="faint">oppure <label class="lnk">scegli dal computer<input type="file" id="fileinp" multiple style="display:none"></label></span></div>';
+  h += '<div class="card"><div class="cardhead"><h2>Allegati</h2><button class="btn sm ghost" data-link="' + ctxAll(t.commessa_id, t.progetto_id, t.lavorazione_id, t.id) + '">+ Link</button></div>';
+  h += tabellaAllegati(files, { tipo: false });
+  h += zonaAllegati(ctxAll(t.commessa_id, t.progetto_id, t.lavorazione_id, t.id));
   h += "</div>";
 
   h += "</div><div>";
@@ -1978,6 +1973,107 @@ function vPool() {
   return h;
 }
 /* portare un servizio di un collega dentro un proprio preventivo */
+/* ---------------- allegati: file caricati e link, nello stesso elenco ----------------
+   Un link a una cartella condivisa vale quanto un file: sta nella stessa lista,
+   con scritto dove porta, e ha lo stesso interruttore di visibilità al cliente. */
+var DOMINI = {
+  "drive.google.com": "Google Drive", "docs.google.com": "Google Docs", "dropbox.com": "Dropbox",
+  "wetransfer.com": "WeTransfer", "we.tl": "WeTransfer", "figma.com": "Figma", "notion.so": "Notion",
+  "onedrive.live.com": "OneDrive", "sharepoint.com": "SharePoint", "icloud.com": "iCloud",
+  "youtube.com": "YouTube", "youtu.be": "YouTube", "vimeo.com": "Vimeo", "canva.com": "Canva",
+  "github.com": "GitHub", "miro.com": "Miro", "loom.com": "Loom"
+};
+function dominioDi(u) {
+  try {
+    var h = new URL(u).hostname.replace(/^www\./, "");
+    var k = Object.keys(DOMINI).filter(function (d) { return h === d || h.indexOf("." + d) > -1; })[0];
+    return k ? DOMINI[k] : h;
+  } catch (e) { return ""; }
+}
+function nomeDaUrl(u) {
+  try {
+    var p = new URL(u);
+    var ultimo = decodeURIComponent(p.pathname.split("/").filter(Boolean).pop() || "");
+    if (ultimo && ultimo.length < 60 && !/^[0-9a-f-]{20,}$/i.test(ultimo)) return ultimo.replace(/[-_+]/g, " ");
+    return dominioDi(u) || p.hostname;
+  } catch (e) { return ""; }
+}
+function urlValido(u) {
+  try { var p = new URL(u); return p.protocol === "http:" || p.protocol === "https:"; } catch (e) { return false; }
+}
+/* contesto di un allegato: preventivo|progetto|lavorazione|attività, come stringa */
+function ctxAll(kid, pid, lid, tid) { return [kid || "", pid || "", lid || "", tid || ""].join("|"); }
+function ctxLeggi(s) { var p = String(s || "").split("|"); return { commessa_id: p[0] || null, progetto_id: p[1] || null, lavorazione_id: p[2] || null, task_id: p[3] || null }; }
+
+/* la zona per trascinare, con accanto il pulsante per incollare un link */
+function zonaAllegati(ctx) {
+  return '<div class="drop" id="drop" data-ctx-all="' + esc(ctx) + '">' +
+    "<b>Trascina qui i file</b>" +
+    '<span class="faint">oppure <label class="lnk">scegli dal computer<input type="file" id="fileinp" multiple style="display:none"></label>' +
+    ' · <button class="lnk" data-link="' + esc(ctx) + '">incolla un link</button></span>' +
+    '<span class="faint dropsub">vale anche trascinare qui un indirizzo dal browser</span></div>';
+}
+/* una riga sola per file e link, così si leggono allo stesso modo */
+function rigaAllegato(m, opz) {
+  var o = opz || {};
+  var nome = m.path
+    ? '<button class="lnk" data-file="' + m.id + '">' + esc(m.nome) + "</button>"
+    : m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome);
+  var sotto = m.path
+    ? (m.dim ? (m.dim > 1048576 ? (m.dim / 1048576).toFixed(1) + " MB" : Math.round(m.dim / 1024) + " KB") : "")
+    : (m.url ? dominioDi(m.url) : "");
+  return '<tr><td><span class="allx' + (m.path ? " file" : " link") + '"></span></td>' +
+    "<td>" + nome +
+    (sotto ? '<div class="faint">' + esc(sotto) + "</div>" : "") +
+    (m.note ? '<div class="faint">' + esc(m.note) + "</div>" : "") + "</td>" +
+    (o.tipo === false ? "" : '<td><span class="badge">' + esc(m.tipo || (m.path ? "File" : "Link")) + "</span></td>") +
+    (o.fase ? "<td>" + esc(m.fase_id ? nameOf(D.fasi, m.fase_id) : "—") + "</td>" : "") +
+    '<td><button class="lnk" data-vis="' + m.id + '">' + (m.visibile_cliente ? '<span class="badge b-blue">cliente</span>' : '<span class="badge">solo studio</span>') + "</button></td>" +
+    '<td class="faint">' + dshort(m.created_at) + "</td>" +
+    '<td class="num"><button class="lnk" data-edit="mat:' + m.id + '">Modifica</button> <button class="lnk" data-del="mat:' + m.id + '">elimina</button></td></tr>';
+}
+function tabellaAllegati(list, opz) {
+  var o = opz || {};
+  if (!list.length) return vuoto("Ancora niente qui: trascina un file o incolla il link di una cartella condivisa.");
+  return '<table class="alleg"><thead><tr><th></th><th>Nome</th>' + (o.tipo === false ? "" : "<th>Tipo</th>") +
+    (o.fase ? "<th>Fase</th>" : "") + "<th>Visibilità</th><th>Data</th><th></th></tr></thead><tbody>" +
+    list.slice().sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; })
+      .map(function (m) { return rigaAllegato(m, o); }).join("") + "</tbody></table>";
+}
+function apriLink(ctx, url) {
+  modal('<form class="box" data-link-save="' + esc(ctx) + '"><h2>Aggiungi un link</h2>' +
+    '<p class="faint" style="margin-bottom:14px">Una cartella condivisa, un WeTransfer, un Figma, la pagina di un fornitore. Sta insieme ai file e vale come loro.</p>' +
+    fld("url", "Indirizzo", "text", url || "", true) +
+    fld("nome", "Come si chiama", "text", url ? nomeDaUrl(url) : "") +
+    '<div class="row2">' + selField("tipo", "Tipo", sel(TIPI_MAT, "Cartella condivisa")) +
+    selField("visibile_cliente", "Visibile al cliente", sel(["no", "si"], "no")) + "</div>" +
+    fld("note", "Note", "text", "") +
+    '<div class="actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn" type="submit">Aggiungi</button></div></form>');
+  setTimeout(function () {
+    var f = document.querySelector("[data-link-save]"); if (!f) return;
+    f.url.addEventListener("input", function () {
+      if (!f.nome.value.trim() && urlValido(f.url.value)) f.nome.value = nomeDaUrl(f.url.value);
+    });
+    f.url.focus();
+  }, 60);
+}
+async function salvaLink(ctx, dati) {
+  if (!urlValido(dati.url)) { toast("L'indirizzo non sembra valido: deve iniziare con http:// o https://", true); return false; }
+  var riga = ctxLeggi(ctx);
+  riga.url = dati.url.trim();
+  riga.nome = (dati.nome || "").trim() || nomeDaUrl(dati.url) || dati.url;
+  riga.tipo = dati.tipo || "Cartella condivisa";
+  riga.note = dati.note || null;
+  riga.visibile_cliente = !!dati.visibile_cliente;
+  riga.caricato_da = me.pro_id;
+  var r = await sb.from("materiali").insert(riga);
+  if (r.error) { toast(r.error.message, true); return false; }
+  if (riga.commessa_id) await logEv(riga.commessa_id, "Aggiunto link: " + riga.nome);
+  await reload(["mat", "ev"]);
+  toast("Link aggiunto");
+  return true;
+}
+
 function apriAggiungiServizio(sid) {
   var x = by(D.serv, sid); if (!x) return;
   var miei = fcom().filter(function (k) { return ["Bozza", "Preventivo", "Approvata", "In corso"].indexOf(k.stato) > -1; });
@@ -2387,11 +2483,9 @@ function vProgetto() {
     h += tk.length ? '<div class="checklist">' + tk.filter(function (x) { return !x.padre_id; }).map(function (x) { return riga(x, tk); }).join("") + "</div>" : vuoto("Nessuna attività.");
   }
   if (t === "materiali") {
-    h += '<div class="cardhead"><h2>Materiali del progetto</h2><button class="btn sm ghost" data-new="mat" data-ctx="' + p.commessa_id + '">+ Aggiungi</button></div>';
-    h += '<div class="drop" id="drop" data-kid="' + p.commessa_id + '"><b>Trascina qui i file</b><span class="faint">oppure <label class="lnk">scegli dal computer<input type="file" id="fileinp" multiple style="display:none"></label></span></div>';
-    h += mt.length ? "<table><tbody>" + mt.map(function (m) {
-      return "<tr><td>" + (m.path ? '<button class="lnk" data-file="' + m.id + '">' + esc(m.nome) + "</button>" : m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome)) + '</td><td><span class="badge">' + esc(m.tipo || "") + '</span></td><td class="num"><button class="lnk" data-vis="' + m.id + '">' + (m.visibile_cliente ? '<span class="badge b-blue">cliente</span>' : '<span class="badge">solo studio</span>') + "</button></td></tr>";
-    }).join("") + "</tbody></table>" : "";
+    h += '<div class="cardhead"><h2>Materiali del progetto</h2><div style="display:flex;gap:8px"><button class="btn sm ghost" data-link="' + ctxAll(p.commessa_id, p.id) + '">+ Link</button><button class="btn sm ghost" data-new="mat" data-ctx="' + p.commessa_id + '">+ Materiale</button></div></div>';
+    h += zonaAllegati(ctxAll(p.commessa_id, p.id));
+    h += tabellaAllegati(mt);
   }
   if (t === "ore") {
     h += '<div class="cardhead"><h2>Le mie ore su questo progetto</h2><button class="btn sm ghost" data-new="ore" data-ctx-prog="' + p.id + '">+ Registra ore</button></div>';
@@ -2638,6 +2732,309 @@ async function apprRispondi(id, esito) {
 }
 
 /* ---------------- preventivo / anteprima ---------------- */
+/* ---------------- importare un preventivo già fatto ----------------
+   Il PDF lo legge il browser, qui dentro: il documento non esce mai da questo
+   computer finché non sei tu a confermare. Quello che il CRM capisce te lo fa
+   vedere prima, perché un preventivo indovinato male è peggio di uno scritto
+   a mano. */
+var IMP = null;
+var PDFJS = null;
+async function caricaPdfJs() {
+  if (PDFJS) return PDFJS;
+  await new Promise(function (ok, no) {
+    var s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+    s.onload = ok; s.onerror = function () { no(new Error("libreria non raggiungibile")); };
+    document.head.appendChild(s);
+  });
+  var lib = window.pdfjsLib;
+  lib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  PDFJS = lib;
+  return lib;
+}
+/* rimette insieme le righe: il PDF dà pezzetti sparsi, li raggruppo per altezza */
+async function testoDelPdf(file) {
+  var lib = await caricaPdfJs();
+  var buf = await file.arrayBuffer();
+  var pdf = await lib.getDocument({ data: buf }).promise;
+  var righe = [];
+  for (var p = 1; p <= pdf.numPages; p++) {
+    var pag = await pdf.getPage(p);
+    var tc = await pag.getTextContent();
+    var per = {};
+    tc.items.forEach(function (it) {
+      if (!it.str || !it.str.trim()) return;
+      var y = Math.round(it.transform[5]);
+      var chiave = Math.round(y / 3) * 3;
+      (per[chiave] = per[chiave] || []).push({ x: it.transform[4], t: it.str });
+    });
+    Object.keys(per).map(Number).sort(function (a, b) { return b - a; }).forEach(function (y) {
+      var testo = per[y].sort(function (a, b) { return a.x - b.x; }).map(function (x) { return x.t; }).join(" ");
+      testo = testo.replace(/\s+/g, " ").trim();
+      if (testo) righe.push(testo);
+    });
+  }
+  return righe;
+}
+/* i numeri all'italiana: 1.234,56 è milleduecentotrentaquattro e cinquantasei */
+function numIt(s) {
+  if (s == null) return null;
+  var t = String(s).replace(/[€\s ]/g, "");
+  if (!/[\d]/.test(t)) return null;
+  if (t.indexOf(",") > -1) t = t.replace(/\./g, "").replace(",", ".");
+  else if ((t.match(/\./g) || []).length > 1) t = t.replace(/\./g, "");
+  else if (/\.\d{3}$/.test(t)) t = t.replace(/\./g, "");
+  var n = parseFloat(t);
+  return isNaN(n) ? null : n;
+}
+var RE_CODA = /(?:€\s*)?-?\d[\d.,]*\s*(?:€|%)?\s*$/;
+var SALTA = /^(totale|imponibile|iva|subtotale|sconto|arrotondamento|acconto|saldo|spett|spettabile|preventivo|offerta|data|numero|pag(ina)?\b|iban|banca|firma|condizioni|validit|note|oggetto|descrizione|quantit|prezzo|importo|cliente|destinatario|via|viale|piazza|corso|c\.so|tel|cell|email|e-mail|pec)/i;
+var SALTA_DENTRO = /(p\.?\s?iva|c\.?\s?f\.?|codice fiscale|iban|@|tel\.|cell\.|www\.|https?:)/i;
+/* stacca dalla coda della riga i numeri, uno alla volta, e restituisce
+   il testo pulito insieme ai numeri trovati nell'ordine in cui stavano */
+function staccaNumeri(riga) {
+  var testo = riga, numeri = [], g = 0;
+  while (g++ < 5) {
+    var m = testo.match(RE_CODA);
+    if (!m || !m[0].trim()) break;
+    var grezzo = m[0].trim();
+    if (/%\s*$/.test(grezzo)) { testo = testo.slice(0, m.index).trim(); continue; }
+    numeri.unshift(grezzo);
+    testo = testo.slice(0, m.index).replace(/[\s.·•\-–|:]+$/, "").trim();
+    if (!testo) break;
+  }
+  return { testo: testo, numeri: numeri };
+}
+function sembraSoldi(t) {
+  var n = numIt(t);
+  if (n == null) return false;
+  if (/[.,]\d{2}\s*€?\s*$/.test(t)) return true;
+  return n >= 50 && n % 1 === 0;
+}
+function leggiPreventivo(righe) {
+  var testo = righe.join("\n");
+  var out = { righe: [], cliente: "", numero: "", data: "", iva: null, totale: null, imponibile: null, scontoImporto: null, titolo: "" };
+
+  /* numero e data */
+  var m = testo.match(/(?:preventivo|offerta|documento)\s*(?:n[.°ro]*\s*)?[:#]?\s*([A-Za-z0-9][A-Za-z0-9\/\-\._]{1,18})/i);
+  if (m && /\d/.test(m[1]) && !/^(del|di|per|al|n)$/i.test(m[1])) out.numero = m[1];
+  var d = testo.match(/(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+  if (d) {
+    var anno = d[3].length === 2 ? "20" + d[3] : d[3];
+    out.data = anno + "-" + ("0" + d[2]).slice(-2) + "-" + ("0" + d[1]).slice(-2);
+  }
+  var iv = testo.match(/IVA[^\d%]{0,12}(\d{1,2})\s*%/i) || testo.match(/(\d{1,2})\s*%\s*IVA/i);
+  if (iv) out.iva = +iv[1];
+
+  /* il cliente: dopo "Spett.le", oppure dopo "Cliente:" */
+  for (var i = 0; i < righe.length; i++) {
+    var r = righe[i];
+    var sp = r.match(/spett(?:\.?le|abile)?\.?\s*[:,]?\s*(.+)/i);
+    var cand = sp ? sp[1].replace(/^[.\s:,]+/, "").trim() : "";
+    if (cand.length > 2 && !/^(le|abile)$/i.test(cand)) { out.cliente = cand; break; }
+    if (/^spett/i.test(r) && righe[i + 1]) { out.cliente = righe[i + 1].trim(); break; }
+    var cl = r.match(/^\s*(?:cliente|destinatario)\s*[:\-]\s*(.+)/i);
+    if (cl) { out.cliente = cl[1].trim(); break; }
+  }
+  if (out.cliente) out.cliente = out.cliente.replace(/\s*[-–]\s*(p\.?\s?iva|c\.?f\.?).*$/i, "").trim();
+
+  /* oggetto del lavoro */
+  var og = testo.match(/ogg?etto\s*[:\-]\s*(.+)/i);
+  if (og) out.titolo = og[1].trim().slice(0, 90);
+
+  /* totali dichiarati, per il controllo */
+  righe.forEach(function (r) {
+    var sc = r.match(/sconto[^\d-]{0,24}(-?[\d., ]+)/i);
+    if (sc) { var vs = numIt(sc[1]); if (vs != null && vs !== 0) out.scontoImporto = Math.abs(vs); }
+    var im = r.match(/imponibile[^\d-]{0,20}([\d., ]+)/i);
+    if (im) out.imponibile = numIt(im[1]);
+    var to = r.match(/totale(?:\s+documento|\s+generale|\s+da\s+pagare|\s+ivato)?[^\d-]{0,20}([\d., ]+)/i);
+    if (to) { var v = numIt(to[1]); if (v != null && (out.totale == null || v > out.totale)) out.totale = v; }
+  });
+
+  /* le voci: righe con del testo e almeno un importo in coda */
+  righe.forEach(function (r0) {
+    if (SALTA.test(r0) || SALTA_DENTRO.test(r0)) return;
+    /* code di cortesia dopo il prezzo: "450,00 al mese", "12,00 cad." */
+    var r = r0.replace(/\s*(al mese|\/\s*mese|mensili?|cad(auno)?\.?|\bciascuno\b|iva esclusa|\+\s*iva|oltre iva)\s*$/i, "").trim();
+    var st = staccaNumeri(r);
+    if (!st.numeri.length) return;
+    var testoVoce = st.testo;
+    if (testoVoce.length < 3) return;
+    if ((testoVoce.match(/[a-zàèéìòùA-ZÀÈÉÌÒÙ]/g) || []).length < 4) return;
+    if (!st.numeri.some(sembraSoldi)) return;
+    var v = st.numeri.slice(-3).map(numIt).filter(function (x) { return x != null; });
+    var qta = 1, prezzo = null;
+    if (v.length >= 3) { qta = v[0] > 0 && v[0] < 10000 && v[0] % 1 === 0 ? v[0] : 1; prezzo = v[1]; }
+    else if (v.length === 2) {
+      if (v[0] === v[1]) { qta = 1; prezzo = v[0]; }
+      else if (v[0] % 1 === 0 && v[0] > 0 && v[0] <= 1000 && Math.abs(v[0] * v[1] - v[1]) > 0.01 && Math.abs(v[0] * v[1] - v[v.length - 1]) < 0.02) { qta = v[0]; prezzo = v[1]; }
+      else if (v[0] !== 0 && v[1] > v[0] && Math.abs(v[1] / v[0] - Math.round(v[1] / v[0])) < 0.005) { qta = Math.round(v[1] / v[0]); prezzo = v[0]; }
+      else { qta = 1; prezzo = v[1]; }
+    } else { qta = 1; prezzo = v[0]; }
+    if (prezzo == null || prezzo === 0) return;
+    out.righe.push({ nome: testoVoce.slice(0, 120), qty: qta, prezzo_unit: Math.round(prezzo * 100) / 100 });
+  });
+
+  /* se una voce coincide col totale è la riga del totale, non un servizio */
+  if (out.totale != null && out.righe.length > 1) {
+    out.righe = out.righe.filter(function (r) { return Math.abs(r.qty * r.prezzo_unit - out.totale) > 0.02; });
+  }
+  return out;
+}
+function clienteSimile(nome) {
+  if (!nome) return null;
+  var n = nome.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (!n) return null;
+  var trovato = null;
+  fcli().forEach(function (c) {
+    var k = String(c.nome || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!k) return;
+    if (k === n || k.indexOf(n) > -1 || n.indexOf(k) > -1) trovato = trovato || c;
+  });
+  return trovato;
+}
+async function importaPdf(file) {
+  if (!file) return;
+  if (!/pdf$/i.test(file.name) && file.type !== "application/pdf") { toast("Per ora leggo solo i PDF", true); return; }
+  toast("Leggo il documento…");
+  var righe;
+  try { righe = await testoDelPdf(file); }
+  catch (e) { toast("Non riesco a leggere il PDF: " + e.message, true); return; }
+  if (!righe.length) {
+    toast("Questo PDF non ha testo dentro: è una scansione. Riscrivilo a mano o esportalo di nuovo dal programma che l'ha creato.", true);
+    return;
+  }
+  var letto = leggiPreventivo(righe);
+  var cl = clienteSimile(letto.cliente);
+  IMP = {
+    file: file, testo: righe, letto: letto,
+    cliente_id: cl ? cl.id : "", cliente_nome: letto.cliente || "",
+    titolo: letto.titolo || file.name.replace(/\.pdf$/i, ""),
+    numero: letto.numero || "", data: letto.data || today(),
+    iva: letto.iva == null ? 22 : letto.iva,
+    righe: letto.righe.slice(), sconto: 0, mostraTesto: false
+  };
+  /* se sul documento c'era uno sconto, lo riporto in percentuale così i conti tornano */
+  var somma = sum(IMP.righe, function (r) { return (+r.qty || 0) * (+r.prezzo_unit || 0); });
+  if (letto.scontoImporto && somma > 0) IMP.sconto = Math.round(letto.scontoImporto / somma * 1000) / 10;
+  else if (letto.imponibile != null && somma > letto.imponibile + 0.5) IMP.sconto = Math.round((1 - letto.imponibile / somma) * 1000) / 10;
+  go("importa");
+}
+function vImporta() {
+  var h = crumbs([["Amministrazione"], ["Preventivi", "commesse"], ["Importa"]]);
+  h += '<div class="top"><h1>Importa un preventivo<span class="sub">Da un PDF che hai già fatto</span></h1><div class="tools">' +
+    '<button class="btn sm ghost" data-route="commesse|-|personali">Torna ai preventivi</button></div></div>';
+
+  if (!IMP) {
+    h += '<div class="card"><div class="drop" id="drop" data-imp="1"><b>Trascina qui il PDF del preventivo</b>' +
+      '<span class="faint">oppure <label class="lnk">scegli dal computer<input type="file" id="impinp" accept="application/pdf,.pdf" style="display:none"></label></span>' +
+      '<span class="faint dropsub">il documento resta sul tuo computer: viene letto qui dentro, non caricato da nessuna parte</span></div>' +
+      '<p class="faint">Serve un PDF con del testo vero dentro, quelli che escono da Word, Fatture in Cloud, Canva o dal tuo gestionale. ' +
+      "Una scansione o una foto non si possono leggere.</p></div>";
+    return h;
+  }
+
+  var lordo = sum(IMP.righe, function (r) { return (+r.qty || 0) * (+r.prezzo_unit || 0); });
+  var sconto = Math.round(lordo * (+IMP.sconto || 0) / 100);
+  var tot = lordo - sconto;
+  var iva = Math.round(tot * (+IMP.iva || 0) / 100);
+  var scarto = IMP.letto.totale != null ? Math.round((tot + iva - IMP.letto.totale) * 100) / 100 : null;
+
+  h += '<div class="card"><div class="cardhead"><h2>Cosa ho capito</h2><span class="faint">' + esc(IMP.file.name) + " · " + IMP.testo.length + " righe di testo</span></div>";
+  h += '<p class="faint" style="margin-bottom:16px">Controlla e correggi: finché non premi il pulsante in fondo non viene creato niente.</p>';
+  h += '<div class="grid g2">' +
+    '<div class="field"><label>Cliente</label><select data-imp-set="cliente_id"><option value="">— crea un cliente nuovo —</option>' +
+    fcli().map(function (c) { return '<option value="' + c.id + '"' + (IMP.cliente_id === c.id ? " selected" : "") + ">" + esc(c.nome) + "</option>"; }).join("") + "</select>" +
+    (IMP.cliente_id ? "" : '<input type="text" data-imp-set="cliente_nome" value="' + esc(IMP.cliente_nome) + '" placeholder="Nome del cliente nuovo" style="margin-top:8px">') +
+    (IMP.cliente_id ? '<p class="faint" style="margin-top:6px">Riconosciuto dal documento: ' + esc(IMP.cliente_nome || "—") + "</p>" : "") + "</div>" +
+    '<div class="field"><label>Titolo del preventivo</label><input type="text" data-imp-set="titolo" value="' + esc(IMP.titolo) + '"></div>' +
+    "</div>";
+  h += '<div class="grid g4">' +
+    '<div class="field"><label>Numero</label><input type="text" data-imp-set="numero" value="' + esc(IMP.numero) + '"></div>' +
+    '<div class="field"><label>Data</label><input type="date" data-imp-set="data" value="' + esc(IMP.data) + '"></div>' +
+    '<div class="field"><label>Sconto %</label><input type="number" step="0.1" data-imp-set="sconto" value="' + (IMP.sconto || 0) + '"></div>' +
+    '<div class="field"><label>IVA %</label><input type="number" data-imp-set="iva" value="' + (IMP.iva == null ? "" : IMP.iva) + '"></div>' +
+    "</div></div>";
+
+  h += '<div class="card"><div class="cardhead"><h2>Voci trovate</h2><button class="btn sm ghost" data-imp-riga="new">+ Aggiungi voce</button></div>';
+  h += IMP.righe.length
+    ? '<table><thead><tr><th>Voce</th><th class="num" style="width:90px">Q.tà</th><th class="num" style="width:130px">Prezzo</th><th class="num" style="width:120px">Importo</th><th></th></tr></thead><tbody>' +
+      IMP.righe.map(function (r, i) {
+        return '<tr><td><input type="text" data-imp-riga="' + i + '|nome" value="' + esc(r.nome) + '"></td>' +
+          '<td class="num"><input type="number" step="0.5" data-imp-riga="' + i + '|qty" value="' + (r.qty == null ? "" : r.qty) + '"></td>' +
+          '<td class="num"><input type="number" step="0.01" data-imp-riga="' + i + '|prezzo_unit" value="' + (r.prezzo_unit == null ? "" : r.prezzo_unit) + '"></td>' +
+          '<td class="num"><b>' + eur((+r.qty || 0) * (+r.prezzo_unit || 0)) + "</b></td>" +
+          '<td class="num"><button class="lnk" data-imp-riga="' + i + '|togli">togli</button></td></tr>';
+      }).join("") + "</tbody></table>"
+    : vuoto("Non ho riconosciuto nessuna voce. Aggiungile a mano, oppure apri il testo qui sotto e copia da lì.");
+  h += '<table class="dtot" style="margin-top:14px"><tbody>' +
+    (sconto ? row2("Somma delle voci", eur(lordo)) + row2("Sconto " + IMP.sconto + "%", "−" + eur(sconto)) : "") +
+    row2("Imponibile", eur(tot)) +
+    row2("IVA " + (IMP.iva || 0) + "%", eur(iva)) +
+    row2('<b class="big">Totale</b>', '<b class="big">' + eur(tot + iva) + "</b>") +
+    (IMP.letto.totale != null ? row2("Totale scritto sul documento", eur(IMP.letto.totale)) : "") +
+    "</tbody></table>";
+  if (scarto !== null && Math.abs(scarto) > 0.5) {
+    h += '<p class="impnota"><b>Attenzione:</b> il totale che viene fuori dalle voci è di ' + eur(Math.abs(scarto)) +
+      (scarto > 0 ? " più alto" : " più basso") + ' di quello scritto sul documento. Probabilmente una voce è stata letta male, oppure c\'è uno sconto che non ho visto.</p>';
+  }
+  h += "</div>";
+
+  h += '<div class="card"><div class="cardhead"><h2>Il testo del documento</h2><button class="btn sm ghost" data-imp-testo="1">' + (IMP.mostraTesto ? "Nascondi" : "Mostra") + "</button></div>";
+  h += IMP.mostraTesto
+    ? '<pre class="imptesto">' + esc(IMP.testo.join("\n")) + "</pre>"
+    : '<p class="faint">Se qualcosa manca, aprilo e copia da qui: è tutto quello che c\'era scritto nel PDF.</p>';
+  h += "</div>";
+
+  h += '<div class="fpage"><div class="actionbar">' +
+    '<span class="faint grow">Verranno creati: ' + (IMP.cliente_id ? "il preventivo" : "il cliente e il preventivo") +
+    ", " + IMP.righe.length + (IMP.righe.length === 1 ? " voce" : " voci") + ", e il PDF resta allegato.</span>" +
+    '<button class="btn ghost" data-imp-annulla="1">Ricomincia</button>' +
+    '<button class="btn" data-imp-crea="1">Crea il preventivo</button></div></div>';
+  return h;
+}
+async function creaDaImport() {
+  if (!IMP) return;
+  if (!IMP.righe.length && !confirm("Non c'è nessuna voce. Creo lo stesso il preventivo vuoto?")) return;
+  var cid = IMP.cliente_id;
+  if (!cid) {
+    var nome = (IMP.cliente_nome || "").trim();
+    if (!nome) { toast("Dimmi come si chiama il cliente, oppure scegline uno dall'elenco", true); return; }
+    var rc = await sb.from("clienti").insert({ nome: nome, owner_id: me.pro_id, stato: "Attivo" }).select().single();
+    if (rc.error) { toast(rc.error.message, true); return; }
+    cid = rc.data.id;
+  }
+  var rk = await sb.from("commesse").insert({
+    titolo: (IMP.titolo || "Preventivo importato").slice(0, 140),
+    cliente_id: cid, owner_id: me.pro_id, pm_id: me.pro_id, stato: "Preventivo",
+    numero: IMP.numero || null, iva: IMP.iva == null ? 22 : +IMP.iva, sconto: +IMP.sconto || 0,
+    note: "Importato da " + IMP.file.name
+  }).select().single();
+  if (rk.error) { toast(rk.error.message, true); return; }
+  var kid = rk.data.id;
+  if (IMP.righe.length) {
+    var righe = IMP.righe.map(function (r, i) {
+      return { commessa_id: kid, tipo: "Servizio", nome: (r.nome || "Voce").slice(0, 200),
+        qty: +r.qty || 1, prezzo_unit: +r.prezzo_unit || 0, assegnato_id: me.pro_id, ordine: i + 1 };
+    });
+    var rr = await sb.from("righe").insert(righe);
+    if (rr.error) toast("Preventivo creato, ma le voci no: " + rr.error.message, true);
+  }
+  /* il documento di partenza resta attaccato: serve per controllare cosa avevi promesso */
+  try {
+    var path = kid + "/" + Date.now() + "-" + IMP.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    var up = await sb.storage.from("materiali").upload(path, IMP.file);
+    if (!up.error) await sb.from("materiali").insert({ commessa_id: kid, nome: IMP.file.name, path: path,
+      dim: IMP.file.size, tipo: "Contratto", visibile_cliente: false, caricato_da: me.pro_id, note: "Il preventivo originale da cui è stato importato" });
+  } catch (e) { }
+  await logEv(kid, "Importato da " + IMP.file.name);
+  await reload(["com", "righe", "cli", "mat", "ev"]);
+  IMP = null;
+  toast("Preventivo importato");
+  go("commessa", kid, "servizi");
+}
+
 /* ---------------- preventivo impaginato ----------------
    Personale o dello studio: lo decide chi ci lavora dentro. Se le righe sono solo
    tue esce a tuo nome, se ci sono colleghi esce a nome Giraffa Studio. Puoi sempre
@@ -3227,7 +3624,7 @@ function render() {
     return;
   }
   buildNav();
-  var V = { attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento };
+  var V = { attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search") || el("#tcerca") || el("#fcerca");
@@ -3276,6 +3673,16 @@ document.addEventListener("click", async function (e) {
   if (d.openLav) { go("lavorazione", d.openLav); return; }
   if (d.cal !== undefined) { CAL = d.cal === "0" ? 0 : CAL + (+d.cal); render(); return; }
   if (d.navg) { navToggle(d.navg); buildNav(); return; }
+  if (d.link) { apriLink(d.link); return; }
+  if (d.impTesto) { IMP.mostraTesto = !IMP.mostraTesto; render(); return; }
+  if (d.impAnnulla) { IMP = null; render(); return; }
+  if (d.impCrea) { await creaDaImport(); return; }
+  if (d.impRiga) {
+    if (d.impRiga === "new") { IMP.righe.push({ nome: "", qty: 1, prezzo_unit: 0 }); render(); return; }
+    var pz9 = d.impRiga.split("|");
+    if (pz9[1] === "togli") { IMP.righe.splice(+pz9[0], 1); render(); return; }
+    return;
+  }
   if (d.stampa) { window.print(); return; }
   if (d.calCopia) {
     var inp = el("#icslink"); if (!inp) return;
@@ -3565,9 +3972,10 @@ function totaliTs() {
   });
   var g = el("#tstot"); if (g) g.innerHTML = "<b>" + num(tot, 1) + "</b>";
 }
-async function uploadFile(files, kid, tid) {
-  toast("Carico " + files.length + " file…");
-  var cartella = kid || tid || "personali";
+async function uploadFile(files, ctx) {
+  var dove = ctxLeggi(ctx);
+  toast("Carico " + files.length + (files.length === 1 ? " file…" : " file…"));
+  var cartella = dove.commessa_id || dove.progetto_id || dove.task_id || "personali";
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
     var path = cartella + "/" + Date.now() + "-" + f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -3575,9 +3983,13 @@ async function uploadFile(files, kid, tid) {
     if (up.error) { toast(up.error.message, true); continue; }
     var est = (f.name.split(".").pop() || "").toLowerCase();
     var tipo = ["jpg", "jpeg", "png", "gif", "webp", "heic"].indexOf(est) > -1 ? "Immagine" : ["pdf"].indexOf(est) > -1 ? "Documento" : ["mp4", "mov"].indexOf(est) > -1 ? "Video" : "File";
-    await sb.from("materiali").insert({ commessa_id: kid || null, task_id: tid || null, nome: f.name, path: path, dim: f.size, tipo: tipo, visibile_cliente: false, caricato_da: me.pro_id });
+    var riga = { nome: f.name, path: path, dim: f.size, tipo: tipo, visibile_cliente: false, caricato_da: me.pro_id };
+    riga.commessa_id = dove.commessa_id; riga.progetto_id = dove.progetto_id;
+    riga.lavorazione_id = dove.lavorazione_id; riga.task_id = dove.task_id;
+    var ri = await sb.from("materiali").insert(riga);
+    if (ri.error) { toast(ri.error.message, true); }
   }
-  if (kid) await logEv(kid, "Caricati file nei materiali");
+  if (dove.commessa_id) await logEv(dove.commessa_id, "Caricati file nei materiali");
   await reload(["mat", "ev"]); toast("File caricati"); render();
 }
 
@@ -3615,6 +4027,15 @@ document.addEventListener("submit", async function (e) {
     await reload(["righe"]); closeModal(); toast("Voce salvata");
     if (f.dataset.page) { FDIRTY = false; FBACK = null; go("commessa", kid, "servizi"); return; }
     render(); return;
+  }
+  if (f.dataset.linkSave) {
+    e.preventDefault();
+    var ok = await salvaLink(f.dataset.linkSave, {
+      url: f.url.value, nome: f.nome.value, tipo: f.tipo.value,
+      note: f.note.value, visibile_cliente: f.visibile_cliente.value === "si"
+    });
+    if (ok) { closeModal(); render(); }
+    return;
   }
   if (f.dataset.servAddSave) {
     e.preventDefault();
@@ -3838,9 +4259,25 @@ document.addEventListener("change", async function (e) {
     await salvaTs(p[0], p[1], e.target.value);
     return;
   }
+  if (e.target.id === "impinp" && e.target.files && e.target.files.length) {
+    await importaPdf(e.target.files[0]);
+    return;
+  }
+  if (e.target.dataset && e.target.dataset.impSet && IMP) {
+    var campoImp = e.target.dataset.impSet;
+    IMP[campoImp] = (campoImp === "iva" || campoImp === "sconto") ? (+e.target.value || 0) : e.target.value;
+    if (campoImp === "iva" || campoImp === "sconto") { render(); return; }
+    if (campoImp === "cliente_id") render();
+    return;
+  }
+  if (e.target.dataset && e.target.dataset.impRiga && IMP) {
+    var pi = e.target.dataset.impRiga.split("|"), ri = IMP.righe[+pi[0]];
+    if (ri) { ri[pi[1]] = pi[1] === "nome" ? e.target.value : (e.target.value === "" ? null : +e.target.value); render(); }
+    return;
+  }
   if (e.target.id === "fileinp" && e.target.files && e.target.files.length) {
     var dz = el("#drop");
-    await uploadFile(e.target.files, dz ? dz.dataset.kid : current);
+    await uploadFile(e.target.files, dz ? dz.dataset.ctxAll : ctxAll(current));
 }
 });
 
@@ -3856,7 +4293,13 @@ document.addEventListener("drop", async function (e) {
   var z = e.target.closest && e.target.closest("#drop");
   if (!z) return;
   e.preventDefault(); z.classList.remove("over");
-  if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) await uploadFile(e.dataTransfer.files, z.dataset.kid, z.dataset.tid);
+  var dt = e.dataTransfer;
+  if (z.dataset.imp) { if (dt && dt.files && dt.files.length) await importaPdf(dt.files[0]); return; }
+  if (dt && dt.files && dt.files.length) { await uploadFile(dt.files, z.dataset.ctxAll); return; }
+  /* trascinare un indirizzo dalla barra del browser vale come incollare un link */
+  var testo = dt ? (dt.getData("text/uri-list") || dt.getData("text/plain") || "").trim().split(/\s+/)[0] : "";
+  if (urlValido(testo)) { apriLink(z.dataset.ctxAll, testo); return; }
+  if (testo) toast("Quello non sembra un indirizzo web", true);
 });
 
 document.addEventListener("keydown", function (e) {
