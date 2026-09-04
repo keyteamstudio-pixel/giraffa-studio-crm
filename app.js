@@ -785,7 +785,7 @@ function vCommesse() {
   var nStud = tutte.length - nPers;
   var val = sum(list, function (k) { return budget(k).ricavo; });
   var h = head("Preventivi", list.length + " preventivi · " + eur(val) + " di valore",
-    '<button class="btn sm ghost" data-route="importa|-|">Importa da PDF</button>' +
+    '<button class="btn sm ghost" data-route="importa|-|">Importa un preventivo</button>' +
     '<button class="btn sm" data-new="com">+ Nuovo preventivo</button>');
   h += barraViste([["personali", "I miei", nPers], ["studio", "Dello studio", nStud], ["tutti", "Tutti", tutte.length]], quali, "commesse",
     '<select data-comvista="1" title="Come li vuoi vedere">' + opzioni([["lista", "Lista"], ["bacheca", "Bacheca"], ["timeline", "Timeline"]], vista) + "</select>" +
@@ -2733,10 +2733,11 @@ async function apprRispondi(id, esito) {
 
 /* ---------------- preventivo / anteprima ---------------- */
 /* ---------------- importare un preventivo già fatto ----------------
-   Il PDF lo legge il browser, qui dentro: il documento non esce mai da questo
-   computer finché non sei tu a confermare. Quello che il CRM capisce te lo fa
-   vedere prima, perché un preventivo indovinato male è peggio di uno scritto
-   a mano. */
+   Il documento lo apre il browser; il testo (e le pagine come immagini, se è una
+   scansione o una foto) vanno a una funzione sul server, che le passa a OpenAI e
+   ridà indietro dei campi puliti. La chiave OpenAI sta solo là dentro, mai qui.
+   Quello che viene capito te lo faccio vedere prima di creare qualsiasi cosa,
+   perché un preventivo indovinato male è peggio di uno scritto a mano. */
 var IMP = null;
 var PDFJS = null;
 async function caricaPdfJs() {
@@ -2775,6 +2776,53 @@ async function testoDelPdf(file) {
     });
   }
   return righe;
+}
+/* le pagine come immagini: serve quando dentro il PDF non c'è testo, cioè
+   quando qualcuno ha scansionato un foglio invece di esportarlo */
+async function immaginiDelPdf(file, max) {
+  var lib = await caricaPdfJs();
+  var buf = await file.arrayBuffer();
+  var pdf = await lib.getDocument({ data: buf }).promise;
+  var out = [], n = Math.min(pdf.numPages, max || 4);
+  for (var p = 1; p <= n; p++) {
+    var pag = await pdf.getPage(p);
+    var base = pag.getViewport({ scale: 1 });
+    var vp = pag.getViewport({ scale: Math.min(1500 / base.width, 2) });
+    var cv = document.createElement("canvas");
+    cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+    await pag.render({ canvasContext: cv.getContext("2d"), viewport: vp }).promise;
+    out.push(cv.toDataURL("image/jpeg", 0.7));
+  }
+  return out;
+}
+function eImmagine(file) {
+  return /^image\//.test(file.type || "") || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || "");
+}
+function dataUrlDi(file) {
+  return new Promise(function (ok, no) {
+    var fr = new FileReader();
+    fr.onload = function () { ok(fr.result); };
+    fr.onerror = function () { no(new Error("non riesco ad aprire il file")); };
+    fr.readAsDataURL(file);
+  });
+}
+/* la lettura vera la fa OpenAI, ma dietro una funzione sul server: la chiave
+   non passa mai da qui, e chiamare la funzione può farlo solo chi è dentro */
+async function leggeIlServer(dati) {
+  var s = await sb.auth.getSession();
+  var ses = s && s.data ? s.data.session : null;
+  if (!ses) throw new Error("la sessione è scaduta, rientra e riprova");
+  var r = await fetch(String(cfg.SUPABASE_URL || "").replace(/\/+$/, "") + "/functions/v1/leggi-preventivo", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + ses.access_token },
+    body: JSON.stringify(dati)
+  });
+  var j = null;
+  try { j = await r.json(); } catch (e) { }
+  if (r.status === 501) { var em = new Error("chiave non configurata"); em.chiaveMancante = true; throw em; }
+  if (!r.ok) throw new Error((j && (j.errore || j.messaggio)) || "il server ha risposto " + r.status);
+  if (!j) throw new Error("risposta vuota dal server");
+  return j;
 }
 /* i numeri all'italiana: 1.234,56 è milleduecentotrentaquattro e cinquantasei */
 function numIt(s) {
@@ -2896,21 +2944,54 @@ function clienteSimile(nome) {
 }
 async function importaPdf(file) {
   if (!file) return;
-  if (!/pdf$/i.test(file.name) && file.type !== "application/pdf") { toast("Per ora leggo solo i PDF", true); return; }
-  toast("Leggo il documento…");
-  var righe;
-  try { righe = await testoDelPdf(file); }
-  catch (e) { toast("Non riesco a leggere il PDF: " + e.message, true); return; }
-  if (!righe.length) {
-    toast("Questo PDF non ha testo dentro: è una scansione. Riscrivilo a mano o esportalo di nuovo dal programma che l'ha creato.", true);
-    return;
+  var ePdf = /pdf$/i.test(file.name || "") || file.type === "application/pdf";
+  if (!ePdf && !eImmagine(file)) { toast("Posso leggere un PDF, una scansione o una foto del preventivo", true); return; }
+  if (file.size > 20 * 1024 * 1024) { toast("Il file pesa troppo: sopra i 20 MB non ce la faccio", true); return; }
+
+  toast("Apro il documento…");
+  var righe = [], immagini = [];
+  try {
+    if (ePdf) {
+      try { righe = await testoDelPdf(file); } catch (e) { righe = []; }
+      /* poco testo vuol dire scansione: allora mando le pagine come immagini */
+      if (righe.join("").replace(/\s/g, "").length < 120) {
+        try { immagini = await immaginiDelPdf(file, 4); } catch (e) { }
+      }
+    } else {
+      immagini = [await dataUrlDi(file)];
+    }
+  } catch (e) { toast("Non riesco ad aprire il documento: " + e.message, true); return; }
+  if (!righe.length && !immagini.length) { toast("Dentro questo documento non c'è niente da leggere", true); return; }
+
+  var letto = null, fonte = "";
+  try {
+    toast(immagini.length ? "Sto guardando le pagine…" : "Sto leggendo il preventivo…");
+    var ai = await leggeIlServer({ nome: file.name, testo: righe, immagini: immagini });
+    letto = {
+      righe: ai.righe || [], cliente: ai.cliente || "", numero: ai.numero || "", data: ai.data || "",
+      iva: ai.iva == null ? null : +ai.iva, totale: ai.totale, imponibile: ai.imponibile,
+      scontoImporto: ai.scontoImporto, titolo: ai.titolo || ""
+    };
+    fonte = "openai";
+  } catch (e) {
+    if (!righe.length) {
+      toast(e.chiaveMancante
+        ? "Per leggere una scansione o una foto serve la chiave OpenAI su Supabase. Senza, riesco a leggere solo i PDF con del testo dentro."
+        : "Lettura non riuscita: " + e.message, true);
+      return;
+    }
+    letto = leggiPreventivo(righe);
+    fonte = e.chiaveMancante ? "locale" : "ripiego";
+    toast(e.chiaveMancante
+      ? "Letto qui in locale: la chiave OpenAI non è ancora configurata"
+      : "OpenAI non ha risposto (" + e.message + "), ho letto qui in locale", true);
   }
-  var letto = leggiPreventivo(righe);
+
   var cl = clienteSimile(letto.cliente);
   IMP = {
-    file: file, testo: righe, letto: letto,
+    file: file, testo: righe, immagini: immagini.length, fonte: fonte, letto: letto,
     cliente_id: cl ? cl.id : "", cliente_nome: letto.cliente || "",
-    titolo: letto.titolo || file.name.replace(/\.pdf$/i, ""),
+    titolo: letto.titolo || file.name.replace(/\.[a-z0-9]+$/i, ""),
     numero: letto.numero || "", data: letto.data || today(),
     iva: letto.iva == null ? 22 : letto.iva,
     righe: letto.righe.slice(), sconto: 0, mostraTesto: false
@@ -2923,15 +3004,16 @@ async function importaPdf(file) {
 }
 function vImporta() {
   var h = crumbs([["Amministrazione"], ["Preventivi", "commesse"], ["Importa"]]);
-  h += '<div class="top"><h1>Importa un preventivo<span class="sub">Da un PDF che hai già fatto</span></h1><div class="tools">' +
+  h += '<div class="top"><h1>Importa un preventivo<span class="sub">Da un PDF, una scansione o una foto</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-route="commesse|-|personali">Torna ai preventivi</button></div></div>';
 
   if (!IMP) {
-    h += '<div class="card"><div class="drop" id="drop" data-imp="1"><b>Trascina qui il PDF del preventivo</b>' +
-      '<span class="faint">oppure <label class="lnk">scegli dal computer<input type="file" id="impinp" accept="application/pdf,.pdf" style="display:none"></label></span>' +
-      '<span class="faint dropsub">il documento resta sul tuo computer: viene letto qui dentro, non caricato da nessuna parte</span></div>' +
-      '<p class="faint">Serve un PDF con del testo vero dentro, quelli che escono da Word, Fatture in Cloud, Canva o dal tuo gestionale. ' +
-      "Una scansione o una foto non si possono leggere.</p></div>";
+    h += '<div class="card"><div class="drop" id="drop" data-imp="1"><b>Trascina qui il preventivo</b>' +
+      '<span class="faint">oppure <label class="lnk">scegli dal computer<input type="file" id="impinp" accept="application/pdf,.pdf,image/*" style="display:none"></label></span>' +
+      '<span class="faint dropsub">PDF, scansione o foto — va bene anche storta</span></div>' +
+      '<p class="faint">Il documento passa da OpenAI, che lo legge per tirarne fuori cliente, voci e importi. ' +
+      "Quello che arriva dall'API non viene usato per addestrare i loro modelli. " +
+      "Prima di creare qualsiasi cosa ti faccio vedere cosa ha capito, e puoi correggere tutto.</p></div>";
     return h;
   }
 
@@ -2941,7 +3023,10 @@ function vImporta() {
   var iva = Math.round(tot * (+IMP.iva || 0) / 100);
   var scarto = IMP.letto.totale != null ? Math.round((tot + iva - IMP.letto.totale) * 100) / 100 : null;
 
-  h += '<div class="card"><div class="cardhead"><h2>Cosa ho capito</h2><span class="faint">' + esc(IMP.file.name) + " · " + IMP.testo.length + " righe di testo</span></div>";
+  var comeLetto = IMP.fonte === "openai"
+    ? (IMP.immagini ? "letto da OpenAI guardando le pagine" : "letto da OpenAI")
+    : IMP.fonte === "ripiego" ? "letto qui in locale, OpenAI non ha risposto" : "letto qui in locale";
+  h += '<div class="card"><div class="cardhead"><h2>Cosa ho capito</h2><span class="faint">' + esc(IMP.file.name) + " · " + comeLetto + "</span></div>";
   h += '<p class="faint" style="margin-bottom:16px">Controlla e correggi: finché non premi il pulsante in fondo non viene creato niente.</p>';
   h += '<div class="grid g2">' +
     '<div class="field"><label>Cliente</label><select data-imp-set="cliente_id"><option value="">— crea un cliente nuovo —</option>' +
@@ -2967,7 +3052,7 @@ function vImporta() {
           '<td class="num"><b>' + eur((+r.qty || 0) * (+r.prezzo_unit || 0)) + "</b></td>" +
           '<td class="num"><button class="lnk" data-imp-riga="' + i + '|togli">togli</button></td></tr>';
       }).join("") + "</tbody></table>"
-    : vuoto("Non ho riconosciuto nessuna voce. Aggiungile a mano, oppure apri il testo qui sotto e copia da lì.");
+    : vuoto("Non è stata riconosciuta nessuna voce. Aggiungile a mano, oppure apri il testo qui sotto e copia da lì.");
   h += '<table class="dtot" style="margin-top:14px"><tbody>' +
     (sconto ? row2("Somma delle voci", eur(lordo)) + row2("Sconto " + IMP.sconto + "%", "−" + eur(sconto)) : "") +
     row2("Imponibile", eur(tot)) +
@@ -2981,15 +3066,23 @@ function vImporta() {
   }
   h += "</div>";
 
-  h += '<div class="card"><div class="cardhead"><h2>Il testo del documento</h2><button class="btn sm ghost" data-imp-testo="1">' + (IMP.mostraTesto ? "Nascondi" : "Mostra") + "</button></div>";
-  h += IMP.mostraTesto
-    ? '<pre class="imptesto">' + esc(IMP.testo.join("\n")) + "</pre>"
-    : '<p class="faint">Se qualcosa manca, aprilo e copia da qui: è tutto quello che c\'era scritto nel PDF.</p>';
-  h += "</div>";
+  if (IMP.testo.length) {
+    h += '<div class="card"><div class="cardhead"><h2>Il testo del documento</h2><span class="faint" style="margin-right:auto">' + IMP.testo.length + " righe</span>" +
+      '<button class="btn sm ghost" data-imp-testo="1">' + (IMP.mostraTesto ? "Nascondi" : "Mostra") + "</button></div>";
+    h += IMP.mostraTesto
+      ? '<pre class="imptesto">' + esc(IMP.testo.join("\n")) + "</pre>"
+      : '<p class="faint">Se qualcosa manca, aprilo e copia da qui: è tutto quello che c\'era scritto nel documento.</p>';
+    h += "</div>";
+  } else {
+    h += '<div class="card"><div class="cardhead"><h2>Il testo del documento</h2></div>' +
+      '<p class="faint">Dentro non c\'era testo da copiare: è una scansione o una foto, ' +
+      "ed è stata letta guardando le pagine (" + IMP.immagini + (IMP.immagini === 1 ? " pagina" : " pagine") + "). " +
+      "Controlla i numeri con più attenzione del solito.</p></div>";
+  }
 
   h += '<div class="fpage"><div class="actionbar">' +
     '<span class="faint grow">Verranno creati: ' + (IMP.cliente_id ? "il preventivo" : "il cliente e il preventivo") +
-    ", " + IMP.righe.length + (IMP.righe.length === 1 ? " voce" : " voci") + ", e il PDF resta allegato.</span>" +
+    ", " + IMP.righe.length + (IMP.righe.length === 1 ? " voce" : " voci") + ", e il documento resta allegato.</span>" +
     '<button class="btn ghost" data-imp-annulla="1">Ricomincia</button>' +
     '<button class="btn" data-imp-crea="1">Crea il preventivo</button></div></div>';
   return h;
