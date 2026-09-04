@@ -444,28 +444,36 @@ function mieiDatiPersonali() {
 
 /* ---------------- nav ---------------- */
 /* Il menu: quattro zone. I numeri contano solo cose che ti aspettano. */
+/* Tre zone e basta: quello che fai oggi, i clienti, lo studio. Niente frasi di
+   spiegazione sotto i titoli — un menu si legge, non si studia — ed etichette
+   di una parola dove la parola basta. Quello che riguarda solo te (profilo,
+   listino, impostazioni) sta sotto il tuo nome, in fondo, come in ogni app. */
 function navFor() {
   return [
-    { g: "Studio", n: "quello che è di tutti" },
-    { k: "studio", t: "Bacheca", d: "Cosa condividiamo" },
-    { k: "pool", t: "Professionisti", d: "Chi c'è e cosa sa fare" },
-    { k: "fornitori", t: "Fornitori", d: "La rubrica dello studio" },
-    { k: "spazi", t: "Coworking & spazi", d: "Sale e postazioni" },
-    { g: "Lavoro", n: "quello che stai facendo" },
-    { k: "dash", t: "La mia giornata", d: "Cosa guardare adesso" },
+    { g: "Lavoro" },
+    { k: "dash", t: "Oggi", d: "Cosa guardare adesso" },
     { k: "calendario", t: "Calendario", d: "Scadenze e consegne sul mese" },
     { k: "progetti", t: "Progetti", d: "Progetti aperti in cui sei dentro", c: function () { return progVisibili().filter(function (p) { return p.stato !== "Completato"; }).length; } },
     { k: "task", t: "Attività", d: "Attività aperte assegnate a te", c: function () { return ftask().filter(function (t) { return t.stato !== "Fatto" && t.assegnato_id === me.pro_id; }).length; } },
-    { k: "ore", t: "Ore & timesheet", d: "La tua settimana, ora per ora" },
-    { k: "carico", t: "Il mio carico", d: "Quanto lavoro hai davanti" },
-    { g: "Amministrazione", n: "i tuoi soldi e i tuoi clienti" },
-    { k: "amm", t: "Quadro amministrativo", d: "Incassi, scadenze, pipeline" },
+    { k: "ore", t: "Ore", d: "La tua settimana, ora per ora" },
+    { k: "carico", t: "Carico", d: "Quanto lavoro hai davanti" },
+    { g: "Clienti" },
     { k: "clienti", t: "Clienti", d: "I tuoi clienti", c: function () { return fcli().length; } },
     { k: "commesse", t: "Preventivi", d: "I tuoi e quelli dello studio", c: function () { return fcom().filter(function (k) { return ["Bozza", "Preventivo"].indexOf(k.stato) > -1; }).length; } },
+    { k: "amm", t: "Amministrazione", d: "Incassi, scadenze, pipeline" },
     { k: "report", t: "Report", d: "Numeri e andamenti" },
-    { g: "Profilo", n: "come ti vedono i colleghi" },
+    { g: "Studio" },
+    { k: "studio", t: "Bacheca", d: "Cosa condividiamo" },
+    { k: "pool", t: "Professionisti", d: "Chi c'è e cosa sa fare" },
+    { k: "fornitori", t: "Fornitori", d: "La rubrica dello studio" },
+    { k: "spazi", t: "Spazi", d: "Sale, postazioni e prenotazioni" }
+  ];
+}
+/* Le tue cose, dentro il menu del tuo nome. */
+function navMio() {
+  return [
     { k: "profilo", t: "Il mio profilo", d: "La tua scheda e quanto è completa" },
-    { k: "servizi", t: "I miei servizi", d: "Il tuo listino: è così che ti trovano", c: function () { return D.serv.filter(function (x) { return x.pro_id === me.pro_id; }).length; } },
+    { k: "servizi", t: "Il mio listino", d: "È così che i colleghi ti trovano", c: function () { return D.serv.filter(function (x) { return x.pro_id === me.pro_id; }).length; } },
     { k: "impostazioni", t: "Impostazioni", d: "Il tuo accesso e le regole" }
   ];
 }
@@ -523,7 +531,24 @@ function buildNav() {
     Array.prototype.forEach.call(document.querySelectorAll("#timerlbl"), function (n) { n.textContent = durata(t2.iniziato); });
   }, 15000);
   el("#mename").innerHTML = (me.pro_id ? avatar(me.pro_id, 26) : "") + "<span>" + esc(me.nome) + "</span>";
-  el("#meemail").innerHTML = esc(me.email) + (permEt() ? '<br><span class="cura">' + esc(permEt()) + "</span>" : "");
+  var mio = navMio(), suMe = mio.some(function (x) { return x.k === cur; });
+  el("#mebtn").className = "mebtn" + (suMe ? " on" : "");
+  el("#memenu").innerHTML =
+    '<div class="meinfo">' + esc(me.email) + (permEt() ? '<span class="cura">' + esc(permEt()) + "</span>" : "") + "</div>" +
+    mio.map(function (x) {
+      var c = x.c ? x.c() : null;
+      return '<button data-go="' + x.k + '" class="' + (cur === x.k ? "on" : "") + '" title="' + esc(x.d || x.t) + '"><span class="nt">' + esc(x.t) + "</span>" +
+        (c ? '<span class="cnt">' + c + "</span>" : "") + "</button>";
+    }).join("") +
+    '<button data-esci="1" class="meesci"><span class="nt">Esci</span></button>';
+}
+/* il menu del proprio nome si apre e si chiude, e si chiude da solo se clicchi altrove */
+function meMenu(apri) {
+  var m = el("#memenu"), b = el("#mebtn");
+  if (!m || !b) return;
+  var ora = apri === undefined ? m.classList.contains("chiusa") : apri;
+  m.classList.toggle("chiusa", !ora);
+  b.setAttribute("aria-expanded", ora ? "true" : "false");
 }
 /* il filtro "di chi" vive dentro la barra dei preventivi, non su ogni pagina */
 /* percorso: [testo] oppure [testo, vista, id, scheda] */
@@ -538,10 +563,12 @@ function crumbs(items) {
 function gruppoDi(v) {
   var n = navFor(), g = "";
   for (var i = 0; i < n.length; i++) { if (n[i].g) g = n[i].g; if (n[i].k === v) return g; }
+  var m = navMio();
+  for (var j = 0; j < m.length; j++) if (m[j].k === v) return "Profilo";
   return "";
 }
 function etichettaDi(v) {
-  var n = navFor();
+  var n = navFor().concat(navMio());
   for (var i = 0; i < n.length; i++) if (n[i].k === v) return n[i].t;
   return "";
 }
@@ -2717,7 +2744,8 @@ function vCliProgetto() {
 function buildNavCliente() {
   el("#nav").innerHTML = '<div class="navgroup">Area cliente</div><button data-go="progetti" class="' + (view === "progetti" || view === "progetto" ? "on" : "") + '">I miei progetti<span class="cnt">' + PORT.length + "</span></button>";
   el("#mename").textContent = "Area cliente";
-  el("#meemail").innerHTML = esc(me.email) + '<br><span class="badge" style="margin-top:6px">Cliente</span>';
+  el("#memenu").innerHTML = '<div class="meinfo">' + esc(me.email) + '<span class="badge" style="margin-top:6px">Cliente</span></div>' +
+    '<button data-esci="1" class="meesci"><span class="nt">Esci</span></button>';
 }
 async function apprRispondi(id, esito) {
   var nota = esito === "Modifiche richieste" ? prompt("Cosa vuoi far modificare?") : null;
@@ -3935,7 +3963,7 @@ document.addEventListener("click", async function (e) {
   if (t.hasAttribute("data-fs")) { FSTATO = d.fs || ""; render(); return; }
   if (t.hasAttribute("data-fh")) { FSAL = d.fh || ""; render(); return; }
   if (d.exp) { EXP[d.exp] = !EXP[d.exp]; render(); return; }
-  if (d.go) { go(d.go); return; }
+  if (d.go) { meMenu(false); go(d.go); return; }
   if (d.route) { var rq = d.route.split("|"); go(rq[0], rq[1] || null, rq[2] || ""); return; }
   if (d.annulla) { tornaIndietro(); return; }
   if (d.openCom) { go("commessa", d.openCom, "servizi"); return; }
@@ -3952,6 +3980,11 @@ document.addEventListener("click", async function (e) {
     var pz9 = d.impRiga.split("|");
     if (pz9[1] === "togli") { IMP.righe.splice(+pz9[0], 1); render(); return; }
     return;
+  }
+  if (d.mebtn) { meMenu(); return; }
+  if (d.esci) {
+    if (PLINK) { location.hash = ""; location.reload(); return; }
+    await sb.auth.signOut(); location.reload(); return;
   }
   if (d.seznuova) {
     var pn = d.seznuova.split("|"), kn = by(D.com, pn[0]); if (!kn) return;
@@ -4750,9 +4783,10 @@ async function start() {
 async function init() {
   if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) { show("setup"); return; }
   sb = window.supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
-  el("#logout").addEventListener("click", async function () {
-    if (PLINK) { location.hash = ""; location.reload(); return; }
-    await sb.auth.signOut(); location.reload();
+  document.addEventListener("click", function (e) {
+    /* il menu del nome si chiude se clicchi fuori */
+    var m = el("#memenu");
+    if (m && !m.classList.contains("chiusa") && !e.target.closest(".sidefoot")) meMenu(false);
   });
   var ham = el("#ham"), scrim = el("#scrim");
   if (ham) ham.addEventListener("click", function () { document.body.classList.toggle("navopen"); });
