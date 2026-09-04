@@ -3062,6 +3062,21 @@ async function saveForm(f) {
     F.priv.forEach(function (c) { if (c in obj) { privati[c] = obj[c]; delete obj[c]; } });
   }
   if (entity === "ev" && !obj.pro_id) obj.pro_id = me.pro_id;
+  /* Chi apre una lavorazione o un'attività sceglie il progetto, non il preventivo:
+     il preventivo lo ricavo io risalendo la catena. Senza, il database rifiuta la
+     riga perché non capisce a quale lavoro appartiene. */
+  if (!obj.commessa_id && obj.lavorazione_id) {
+    var lv0 = by(D.lav, obj.lavorazione_id);
+    if (lv0) { obj.commessa_id = lv0.commessa_id; if (!obj.progetto_id) obj.progetto_id = lv0.progetto_id; }
+  }
+  if (!obj.commessa_id && obj.progetto_id) {
+    var pg0 = by(D.prog, obj.progetto_id);
+    if (pg0) obj.commessa_id = pg0.commessa_id;
+  }
+  if (!obj.commessa_id && obj.fase_id) {
+    var fa0 = by(D.fasi, obj.fase_id);
+    if (fa0) obj.commessa_id = fa0.commessa_id;
+  }
   var inPagina = !!f.dataset.page;
   var btn = f.querySelector('button[type="submit"]'), lbl = btn ? btn.textContent : "";
   if (btn) { btn.disabled = true; btn.textContent = "Salvo…"; }
@@ -3790,11 +3805,10 @@ document.addEventListener("change", async function (e) {
     else if (val === "") val = null;
     else if (e.target.type === "number") val = +val;
     var patch = {}; patch[campo] = val;
-    if (tbk === "task") {
-      if (campo === "progetto_id" && val) { var pg9 = by(D.prog, val); if (pg9) patch.commessa_id = pg9.commessa_id; }
-      if (campo === "lavorazione_id" && val) { var lv9 = by(D.lav, val); if (lv9) { patch.progetto_id = lv9.progetto_id; patch.commessa_id = lv9.commessa_id; } }
-      if (campo === "stato" && val === "Fatto") patch.completata_il = new Date().toISOString();
-    }
+    /* spostare una cosa da un progetto a un altro sposta anche il preventivo sotto */
+    if (campo === "progetto_id" && val) { var pg9 = by(D.prog, val); if (pg9) patch.commessa_id = pg9.commessa_id; }
+    if (campo === "lavorazione_id" && val) { var lv9 = by(D.lav, val); if (lv9) { patch.progetto_id = lv9.progetto_id; patch.commessa_id = lv9.commessa_id; } }
+    if (tbk === "task" && campo === "stato" && val === "Fatto") patch.completata_il = new Date().toISOString();
     var rq = await sb.from(TB[tbk]).update(patch).eq("id", rid);
     if (rq.error) { toast(rq.error.message, true); return; }
     await reload([tbk]);
