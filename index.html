@@ -617,9 +617,16 @@ table.ts td:first-child{min-width:210px}
 .tsr{font-variant-numeric:tabular-nums;color:var(--soft)}
 
 /* ---------- progetti e lavorazioni ---------- */
-.pcard{cursor:pointer;transition:transform .16s var(--ease),box-shadow .16s var(--ease)}
+.pcard{cursor:pointer;transition:transform .16s var(--ease),box-shadow .16s var(--ease);display:flex;flex-direction:column;gap:14px}
 .pcard:hover{transform:translateY(-3px);box-shadow:var(--sh-2)}
-.pfoot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line-soft);padding-top:12px}
+.pctop{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.pctop h2{font-size:1.02rem;letter-spacing:-.02em;line-height:1.25}
+.pcsub{font-size:.8rem;color:var(--soft);margin-top:3px}
+.pcbody{display:flex;align-items:center;gap:16px}
+.pcbody table{flex:1;margin:0}
+.pcbody td{padding:3px 0;font-size:.82rem;border:0}
+.pfoot{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line-soft);padding-top:12px;margin-top:auto}
+.pfoot span{display:flex;align-items:center;gap:7px;font-size:.82rem;color:var(--soft)}
 .pfoot b{color:var(--ink);font-variant-numeric:tabular-nums}
 .lav{border:1px solid var(--line);border-radius:16px;padding:16px 18px;margin-bottom:14px}
 .lavtop{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
@@ -833,6 +840,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>
