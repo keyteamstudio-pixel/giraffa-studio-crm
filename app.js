@@ -2970,7 +2970,11 @@ async function importaPdf(file) {
     letto = {
       righe: ai.righe || [], cliente: ai.cliente || "", numero: ai.numero || "", data: ai.data || "",
       iva: ai.iva == null ? null : +ai.iva, totale: ai.totale, imponibile: ai.imponibile,
-      scontoImporto: ai.scontoImporto, titolo: ai.titolo || ""
+      scontoImporto: ai.scontoImporto, titolo: ai.titolo || "",
+      premessa: ai.premessa || "", chiusura: ai.chiusura || "", condizioni: ai.condizioni || "",
+      validita: ai.validita, sezioni: ai.sezioni || [], pagamenti: ai.pagamenti || [],
+      referente: ai.cliente_referente || "", piva: ai.cliente_piva || "",
+      indirizzo: ai.cliente_indirizzo || "", email: ai.cliente_email || ""
     };
     fonte = "openai";
   } catch (e) {
@@ -2994,7 +2998,14 @@ async function importaPdf(file) {
     titolo: letto.titolo || file.name.replace(/\.[a-z0-9]+$/i, ""),
     numero: letto.numero || "", data: letto.data || today(),
     iva: letto.iva == null ? 22 : letto.iva,
-    righe: letto.righe.slice(), sconto: 0, mostraTesto: false
+    righe: (letto.righe || []).slice(), sconto: 0, mostraTesto: false,
+    /* le parti discorsive: quello che il preventivo prometteva, non solo quanto costava */
+    premessa: letto.premessa || "", chiusura: letto.chiusura || "", condizioni: letto.condizioni || "",
+    validita: letto.validita == null ? 30 : letto.validita,
+    sezioni: (letto.sezioni || []).slice(),
+    pagamenti: (letto.pagamenti || []).slice(),
+    anag: { referente: letto.referente || "", piva: letto.piva || "", indirizzo: letto.indirizzo || "", email: letto.email || "" },
+    salvaAnag: true, creaPag: true, tieniSez: true
   };
   /* se sul documento c'era uno sconto, lo riporto in percentuale così i conti tornano */
   var somma = sum(IMP.righe, function (r) { return (+r.qty || 0) * (+r.prezzo_unit || 0); });
@@ -3066,6 +3077,10 @@ function vImporta() {
   }
   h += "</div>";
 
+  h += cardTestoImport();
+  h += cardPagImport(tot);
+  h += cardAnagImport();
+
   if (IMP.testo.length) {
     h += '<div class="card"><div class="cardhead"><h2>Il testo del documento</h2><span class="faint" style="margin-right:auto">' + IMP.testo.length + " righe</span>" +
       '<button class="btn sm ghost" data-imp-testo="1">' + (IMP.mostraTesto ? "Nascondi" : "Mostra") + "</button></div>";
@@ -3081,27 +3096,106 @@ function vImporta() {
   }
 
   h += '<div class="fpage"><div class="actionbar">' +
-    '<span class="faint grow">Verranno creati: ' + (IMP.cliente_id ? "il preventivo" : "il cliente e il preventivo") +
-    ", " + IMP.righe.length + (IMP.righe.length === 1 ? " voce" : " voci") + ", e il documento resta allegato.</span>" +
+    '<span class="faint grow">' + esc(riepilogoImport()) + "</span>" +
     '<button class="btn ghost" data-imp-annulla="1">Ricomincia</button>' +
     '<button class="btn" data-imp-crea="1">Crea il preventivo</button></div></div>';
   return h;
+}
+/* quanto vale ogni scadenza: la percentuale sul totale, o l'importo se c'era già */
+function impPagImporti(tot) {
+  return (IMP.pagamenti || []).map(function (p) {
+    var v = p.importo != null ? +p.importo : (p.percentuale != null ? Math.round(tot * p.percentuale) / 100 : null);
+    return { nome: p.nome, percentuale: p.percentuale, importo: v };
+  });
+}
+function riepilogoImport() {
+  var pezzi = [IMP.cliente_id ? "il preventivo" : "il cliente e il preventivo"];
+  if (IMP.righe.length) pezzi.push(IMP.righe.length + (IMP.righe.length === 1 ? " voce" : " voci"));
+  if (IMP.tieniSez && IMP.sezioni.length) pezzi.push(IMP.sezioni.length + (IMP.sezioni.length === 1 ? " sezione di testo" : " sezioni di testo"));
+  if (IMP.creaPag && IMP.pagamenti.length) pezzi.push(IMP.pagamenti.length + " scadenze di pagamento");
+  return "Verranno creati: " + pezzi.join(", ") + ". Il documento resta allegato.";
+}
+/* Il testo del preventivo: la parte che spiega, che è quella che il cliente
+   legge davvero. Qui si controlla prima di portarla dentro. */
+function cardTestoImport() {
+  var h = '<div class="card"><div class="cardhead"><h2>Il testo del preventivo</h2>' +
+    '<label class="chk"><input type="checkbox" data-imp-flag="tieniSez"' + (IMP.tieniSez ? " checked" : "") + "> tieni le sezioni</label></div>";
+  h += '<div class="field"><label>Premessa</label><textarea data-imp-set="premessa" rows="4" placeholder="Il testo di apertura del documento">' + esc(IMP.premessa || "") + "</textarea></div>";
+  if (IMP.sezioni.length) {
+    h += '<div class="impsez">' + IMP.sezioni.map(function (s, i) {
+      return '<div class="impsr"><div class="impst"><b>' + esc(s.t) + '</b><span class="badge ' + (s.d === "dopo" ? "b-amber" : "b-blue") + '">' +
+        (s.d === "dopo" ? "dopo i prezzi" : "prima dei prezzi") + "</span>" +
+        '<button class="lnk mini2" data-imp-sez="' + i + '|togli">togli</button></div>' +
+        (s.x ? '<p class="faint">' + esc(s.x.length > 220 ? s.x.slice(0, 220) + "…" : s.x) + "</p>" : "") +
+        (s.v.length ? "<ul>" + s.v.slice(0, 6).map(function (v) { return "<li>" + esc(v) + "</li>"; }).join("") +
+          (s.v.length > 6 ? '<li class="faint">e altre ' + (s.v.length - 6) + "</li>" : "") + "</ul>" : "") + "</div>";
+    }).join("") + "</div>";
+  } else {
+    h += '<p class="faint">Nessuna sezione discorsiva: questo documento era solo una tabella di prezzi.</p>';
+  }
+  h += '<div class="grid g2" style="margin-top:14px">' +
+    '<div class="field"><label>Condizioni</label><textarea data-imp-set="condizioni" rows="3" placeholder="Condizioni generali, note legali">' + esc(IMP.condizioni || "") + "</textarea></div>" +
+    '<div class="field"><label>Chiusura</label><textarea data-imp-set="chiusura" rows="3" placeholder="La frase finale">' + esc(IMP.chiusura || "") + "</textarea></div>" +
+    "</div></div>";
+  return h;
+}
+function cardPagImport(tot) {
+  var pg = impPagImporti(tot);
+  var h = '<div class="card"><div class="cardhead"><h2>Come si paga</h2>' +
+    (IMP.pagamenti.length ? '<label class="chk"><input type="checkbox" data-imp-flag="creaPag"' + (IMP.creaPag ? " checked" : "") + "> crea le scadenze</label>" : "") + "</div>";
+  h += pg.length
+    ? "<table><thead><tr><th>Quando</th><th class=\"num\" style=\"width:110px\">Quota</th><th class=\"num\" style=\"width:130px\">Importo</th><th></th></tr></thead><tbody>" +
+      pg.map(function (p, i) {
+        return "<tr><td>" + esc(p.nome) + '</td><td class="num">' + (p.percentuale != null ? p.percentuale + " %" : "—") + "</td>" +
+          '<td class="num"><b>' + (p.importo == null ? "—" : eur(p.importo)) + "</b></td>" +
+          '<td class="num"><button class="lnk" data-imp-pag="' + i + '|togli">togli</button></td></tr>';
+      }).join("") + "</tbody></table>" +
+      '<p class="faint" style="margin-top:10px">Le date non ci sono sul documento: le scadenze nascono senza data e le metti tu dal quadro amministrativo.</p>'
+    : '<p class="faint">Il documento non dice come si paga.</p>';
+  return h + "</div>";
+}
+/* Quello che il documento dice del cliente e che in anagrafica manca. */
+function cardAnagImport() {
+  var cl = IMP.cliente_id ? by(D.cli, IMP.cliente_id) : null;
+  var campi = [["referente", "Referente"], ["piva", "Partita IVA"], ["indirizzo", "Indirizzo"], ["email", "Email"]];
+  var nuovi = campi.filter(function (c) { return IMP.anag[c[0]] && (!cl || !cl[c[0]]); });
+  if (!nuovi.length) return "";
+  return '<div class="card"><div class="cardhead"><h2>Dati del cliente trovati sul documento</h2>' +
+    '<label class="chk"><input type="checkbox" data-imp-flag="salvaAnag"' + (IMP.salvaAnag ? " checked" : "") + "> salvali in anagrafica</label></div>" +
+    '<table><tbody>' + nuovi.map(function (c) {
+      return "<tr><td>" + c[1] + "</td><td><b>" + esc(IMP.anag[c[0]]) + "</b></td></tr>";
+    }).join("") + "</tbody></table>" +
+    '<p class="faint" style="margin-top:10px">' + (cl ? "In anagrafica questi campi sono vuoti: vengono riempiti, niente viene sovrascritto." : "Il cliente è nuovo: nasce già con questi dati.") + "</p></div>";
 }
 async function creaDaImport() {
   if (!IMP) return;
   if (!IMP.righe.length && !confirm("Non c'è nessuna voce. Creo lo stesso il preventivo vuoto?")) return;
   var cid = IMP.cliente_id;
+  var anag = IMP.salvaAnag ? IMP.anag : {};
   if (!cid) {
     var nome = (IMP.cliente_nome || "").trim();
     if (!nome) { toast("Dimmi come si chiama il cliente, oppure scegline uno dall'elenco", true); return; }
-    var rc = await sb.from("clienti").insert({ nome: nome, owner_id: me.pro_id, stato: "Attivo" }).select().single();
+    var nuovo = { nome: nome, owner_id: me.pro_id, stato: "Attivo" };
+    ["referente", "piva", "indirizzo", "email"].forEach(function (c) { if (anag[c]) nuovo[c] = anag[c]; });
+    var rc = await sb.from("clienti").insert(nuovo).select().single();
     if (rc.error) { toast(rc.error.message, true); return; }
     cid = rc.data.id;
+  } else if (IMP.salvaAnag) {
+    /* riempio solo i buchi: quello che c'è già non si tocca */
+    var vecchio = by(D.cli, cid) || {}, tappi = {};
+    ["referente", "piva", "indirizzo", "email"].forEach(function (c) { if (anag[c] && !vecchio[c]) tappi[c] = anag[c]; });
+    if (Object.keys(tappi).length) {
+      var ru = await sb.from("clienti").update(tappi).eq("id", cid);
+      if (ru.error) toast("Anagrafica non aggiornata: " + ru.error.message, true);
+    }
   }
   var rk = await sb.from("commesse").insert({
     titolo: (IMP.titolo || "Preventivo importato").slice(0, 140),
     cliente_id: cid, owner_id: me.pro_id, pm_id: me.pro_id, stato: "Preventivo",
     numero: IMP.numero || null, iva: IMP.iva == null ? 22 : +IMP.iva, sconto: +IMP.sconto || 0,
+    premessa: IMP.premessa || null, condizioni: IMP.condizioni || null, chiusura: IMP.chiusura || null,
+    validita: IMP.validita == null ? 30 : +IMP.validita,
+    sezioni: IMP.tieniSez ? (IMP.sezioni || []) : [],
     note: "Importato da " + IMP.file.name
   }).select().single();
   if (rk.error) { toast(rk.error.message, true); return; }
@@ -3109,10 +3203,20 @@ async function creaDaImport() {
   if (IMP.righe.length) {
     var righe = IMP.righe.map(function (r, i) {
       return { commessa_id: kid, tipo: "Servizio", nome: (r.nome || "Voce").slice(0, 200),
+        descrizione: r.descrizione || null,
         qty: +r.qty || 1, prezzo_unit: +r.prezzo_unit || 0, assegnato_id: me.pro_id, ordine: i + 1 };
     });
     var rr = await sb.from("righe").insert(righe);
     if (rr.error) toast("Preventivo creato, ma le voci no: " + rr.error.message, true);
+  }
+  /* le scadenze: senza data, perché il documento dice «alla firma», non «il 12» */
+  if (IMP.creaPag && IMP.pagamenti.length) {
+    var lordoP = sum(IMP.righe, function (r) { return (+r.qty || 0) * (+r.prezzo_unit || 0); });
+    var totP = lordoP - Math.round(lordoP * (+IMP.sconto || 0) / 100);
+    var rp = await sb.from("pagamenti").insert(impPagImporti(totP).map(function (p) {
+      return { commessa_id: kid, nome: p.nome.slice(0, 140), importo: p.importo, stato: "Da incassare" };
+    }));
+    if (rp.error) toast("Preventivo creato, ma le scadenze no: " + rp.error.message, true);
   }
   /* il documento di partenza resta attaccato: serve per controllare cosa avevi promesso */
   try {
@@ -3122,7 +3226,7 @@ async function creaDaImport() {
       dim: IMP.file.size, tipo: "Contratto", visibile_cliente: false, caricato_da: me.pro_id, note: "Il preventivo originale da cui è stato importato" });
   } catch (e) { }
   await logEv(kid, "Importato da " + IMP.file.name);
-  await reload(["com", "righe", "cli", "mat", "ev"]);
+  await reload(["com", "righe", "cli", "mat", "ev", "pag"]);
   IMP = null;
   toast("Preventivo importato");
   go("commessa", kid, "servizi");
@@ -3171,6 +3275,48 @@ function edBlocco(tb, id, campo, val, vuotoTxt) {
   return '<div class="edb" contenteditable="true" spellcheck="false" data-ed="' + tb + "|" + campo + "|" + id +
     '" data-multi="1" data-vuoto="' + esc(vuotoTxt || "") + '">' + esc(val == null ? "" : val) + "</div>";
 }
+/* ---------------- sezioni discorsive del preventivo ----------------
+   Un preventivo serio non è solo una tabella: è anche quello che prometti,
+   quello che escludi e quando si paga. Sta tutto in un campo solo, in ordine,
+   e si riscrive direttamente sul foglio come il resto. */
+function sezioniDi(k) {
+  var s = k && k.sezioni;
+  if (typeof s === "string") { try { s = JSON.parse(s); } catch (e) { s = []; } }
+  return Array.isArray(s) ? s : [];
+}
+async function salvaSezioni(kid, ss) {
+  var pulite = ss.map(function (s) {
+    return { t: (s.t || "").trim(), d: s.d === "dopo" ? "dopo" : "prima", x: (s.x || "").trim(),
+      v: (s.v || []).map(function (v) { return (v || "").trim(); }).filter(Boolean) };
+  }).filter(function (s) { return s.t || s.x || s.v.length; });
+  var r = await sb.from("commesse").update({ sezioni: pulite }).eq("id", kid);
+  if (r.error) { toast(r.error.message, true); return false; }
+  await reload(["com"]); return true;
+}
+function edSez(kid, i, campo, val, vuotoTxt, multi) {
+  return '<span class="ed' + (multi ? " edb" : "") + '" contenteditable="true" spellcheck="false" data-sez="' + kid + "|" + i + "|" + campo +
+    '"' + (multi ? ' data-multi="1"' : "") + ' data-vuoto="' + esc(vuotoTxt || "—") + '">' + esc(val == null ? "" : val) + "</span>";
+}
+function bloccoSezioni(k, dove) {
+  var ss = sezioniDi(k), h = "";
+  ss.forEach(function (s, i) {
+    if ((s.d === "dopo" ? "dopo" : "prima") !== dove) return;
+    h += '<div class="dsez dsezt"><div class="dsh"><b>' + edSez(k.id, i, "t", s.t, "Titolo della sezione") + "</b>" +
+      '<span class="noprint dsezc"><select data-sezdove="' + k.id + "|" + i + '">' +
+      opzioni([["prima", "prima dei prezzi"], ["dopo", "dopo i prezzi"]], s.d === "dopo" ? "dopo" : "prima") + "</select>" +
+      '<button class="lnk mini2" data-sezvia="' + k.id + "|" + i + '">togli</button></span></div>';
+    h += '<div class="dtx">' + edSez(k.id, i, "x", s.x, "Il testo di questa sezione, se serve", true) + "</div>";
+    var voci = s.v || [];
+    h += '<ul class="dul">' + voci.map(function (v, j) {
+      return "<li>" + edSez(k.id, i, "v" + j, v, "voce") +
+        '<button class="lnk mini2 noprint" data-sezvoce="' + k.id + "|" + i + "|" + j + '|via">×</button></li>';
+    }).join("") + "</ul>";
+    h += '<div class="noprint"><button class="lnk mini2" data-sezvoce="' + k.id + "|" + i + '|new">+ aggiungi una voce</button></div></div>';
+  });
+  h += '<div class="noprint dsezadd"><button class="lnk mini2" data-seznuova="' + k.id + "|" + dove + '">+ aggiungi una sezione di testo ' +
+    (dove === "dopo" ? "dopo i prezzi" : "prima dei prezzi") + "</button></div>";
+  return h;
+}
 function vDocumento() {
   var k = by(D.com, current);
   if (!k) return '<div class="card">Preventivo non trovato. <button class="lnk" data-go="commesse">Torna all\'elenco</button></div>';
@@ -3209,6 +3355,7 @@ function vDocumento() {
 
   h += '<h1 class="dtit">' + ed("com", k.id, "titolo", k.titolo, "Titolo del preventivo") + "</h1>";
   h += '<div class="dpre">' + edBlocco("com", k.id, "premessa", k.premessa, "Due righe di premessa: cosa ci siamo detti, cosa proponiamo, perché.") + "</div>";
+  h += bloccoSezioni(k, "prima");
 
   var gruppi = pgt.map(function (p) { return { p: p, r: rr.filter(function (x) { return x.progetto_id === p.id && !x.opzionale; }) }; });
   var senza = rr.filter(function (x) { return !x.progetto_id && !x.opzionale; });
@@ -3256,6 +3403,8 @@ function vDocumento() {
       }).join("") + "</tbody></table>" +
       (em.iban ? '<p class="dnota">Bonifico su IBAN ' + esc(em.iban) + "</p>" : "") + "</div>";
   }
+
+  h += bloccoSezioni(k, "dopo");
 
   h += '<div class="dsez"><div class="dsh"><b>Condizioni</b></div>' +
     edBlocco("com", k.id, "condizioni", k.condizioni || em.condizioni || "", "Tempi, modalità, cosa serve da parte vostra, cosa non è compreso.") + "</div>";
@@ -3776,6 +3925,29 @@ document.addEventListener("click", async function (e) {
     if (pz9[1] === "togli") { IMP.righe.splice(+pz9[0], 1); render(); return; }
     return;
   }
+  if (d.seznuova) {
+    var pn = d.seznuova.split("|"), kn = by(D.com, pn[0]); if (!kn) return;
+    var sn = sezioniDi(kn).slice(); sn.push({ t: "Nuova sezione", d: pn[1] === "dopo" ? "dopo" : "prima", x: "", v: [] });
+    if (await salvaSezioni(pn[0], sn)) render();
+    return;
+  }
+  if (d.sezvia) {
+    var pv = d.sezvia.split("|"), kv = by(D.com, pv[0]); if (!kv) return;
+    if (!confirm("Tolgo questa sezione dal preventivo?")) return;
+    var sv = sezioniDi(kv).slice(); sv.splice(+pv[1], 1);
+    if (await salvaSezioni(pv[0], sv)) { toast("Sezione tolta"); render(); }
+    return;
+  }
+  if (d.sezvoce) {
+    var pc = d.sezvoce.split("|"), kc = by(D.com, pc[0]); if (!kc) return;
+    var sc = sezioniDi(kc).map(function (s) { return { t: s.t, d: s.d, x: s.x, v: (s.v || []).slice() }; });
+    var sez = sc[+pc[1]]; if (!sez) return;
+    if (pc[2] === "new") sez.v.push(""); else sez.v.splice(+pc[2], 1);
+    if (await salvaSezioni(pc[0], sc)) render();
+    return;
+  }
+  if (d.impSez && IMP) { IMP.sezioni.splice(+d.impSez.split("|")[0], 1); render(); return; }
+  if (d.impPag && IMP) { IMP.pagamenti.splice(+d.impPag.split("|")[0], 1); render(); return; }
   if (d.stampa) { window.print(); return; }
   if (d.calCopia) {
     var inp = el("#icslink"); if (!inp) return;
@@ -4272,6 +4444,20 @@ document.addEventListener("input", function (e) {
 var EDNUM = ["qty", "prezzo_unit", "costo_unit", "sconto", "importo", "ore_stimate", "cicli", "validita", "iva"];
 document.addEventListener("focusout", async function (e) {
   var t = e.target;
+  /* le sezioni stanno tutte in un campo solo: lo riscrivo intero */
+  if (t && t.dataset && t.dataset.sez) {
+    var ps = t.dataset.sez.split("|"), ks = by(D.com, ps[0]); if (!ks) return;
+    var testoS = (t.innerText || "").replace(/ /g, " ").replace(/\s+$/, "");
+    if (!t.dataset.multi) testoS = testoS.replace(/\s*\n\s*/g, " ").trim();
+    if (t.dataset.prima !== undefined && t.dataset.prima === testoS) return;
+    var lista = sezioniDi(ks).map(function (s) { return { t: s.t, d: s.d, x: s.x, v: (s.v || []).slice() }; });
+    var sz = lista[+ps[1]]; if (!sz) return;
+    if (ps[2] === "t") sz.t = testoS;
+    else if (ps[2] === "x") sz.x = testoS;
+    else if (ps[2].charAt(0) === "v") sz.v[+ps[2].slice(1)] = testoS;
+    if (await salvaSezioni(ps[0], lista)) { toast("Salvato"); render(); }
+    return;
+  }
   if (!t || !t.dataset || !t.dataset.ed) return;
   var pz = t.dataset.ed.split("|"), tbk = pz[0], campo = pz[1], rid = pz[2];
   if (!rid) return;
@@ -4292,18 +4478,18 @@ document.addEventListener("focusout", async function (e) {
 });
 document.addEventListener("focusin", function (e) {
   var t = e.target;
-  if (t && t.dataset && t.dataset.ed) t.dataset.prima = (t.innerText || "").replace(/ /g, " ").trim();
+  if (t && t.dataset && (t.dataset.ed || t.dataset.sez)) t.dataset.prima = (t.innerText || "").replace(/ /g, " ").trim();
 });
 document.addEventListener("keydown", function (e) {
   var t = e.target;
-  if (!t || !t.dataset || !t.dataset.ed) return;
+  if (!t || !t.dataset || !(t.dataset.ed || t.dataset.sez)) return;
   if (e.key === "Escape") { t.innerText = t.dataset.prima || ""; t.blur(); return; }
   if (e.key === "Enter" && !t.dataset.multi) { e.preventDefault(); t.blur(); }
 });
 /* incollando testo formattato tengo solo le parole */
 document.addEventListener("paste", function (e) {
   var t = e.target;
-  if (!t || !t.dataset || !t.dataset.ed) return;
+  if (!t || !t.dataset || !(t.dataset.ed || t.dataset.sez)) return;
   e.preventDefault();
   var txt = (e.clipboardData || window.clipboardData).getData("text/plain");
   document.execCommand("insertText", false, t.dataset.multi ? txt : txt.replace(/\s*\n\s*/g, " "));
@@ -4355,6 +4541,15 @@ document.addEventListener("change", async function (e) {
   if (e.target.id === "impinp" && e.target.files && e.target.files.length) {
     await importaPdf(e.target.files[0]);
     return;
+  }
+  if (e.target.dataset && e.target.dataset.sezdove) {
+    var pd = e.target.dataset.sezdove.split("|"), kd = by(D.com, pd[0]); if (!kd) return;
+    var ld = sezioniDi(kd).map(function (s) { return { t: s.t, d: s.d, x: s.x, v: (s.v || []).slice() }; });
+    if (ld[+pd[1]]) { ld[+pd[1]].d = e.target.value === "dopo" ? "dopo" : "prima"; if (await salvaSezioni(pd[0], ld)) render(); }
+    return;
+  }
+  if (e.target.dataset && e.target.dataset.impFlag && IMP) {
+    IMP[e.target.dataset.impFlag] = !!e.target.checked; render(); return;
   }
   if (e.target.dataset && e.target.dataset.impSet && IMP) {
     var campoImp = e.target.dataset.impSet;
