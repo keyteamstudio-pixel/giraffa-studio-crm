@@ -20,9 +20,10 @@ var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
 var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], mov: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [] };
 var CAL = 0;
+var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token" };
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", mov: "movimenti", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", set: "settings" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
@@ -398,13 +399,23 @@ async function reload(keys) {
 function mieiDatiPersonali() {
   var pr = me.pro_id ? by(D.pros, me.pro_id) : null;
   var pv = (D.priv || []).filter(function (x) { return x.pro_id === me.pro_id; })[0];
-  if (pr) { pr.tariffa_oraria = pv ? pv.tariffa_oraria : null; pr.note = pv ? pv.note : null; }
+  if (pr) {
+    pr.tariffa_oraria = pv ? pv.tariffa_oraria : null;
+    pr.note = pv ? pv.note : null;
+    pr.iban = pv ? pv.iban : null;
+    pr.condizioni = pv ? pv.condizioni : null;
+  }
 }
 
 /* ---------------- nav ---------------- */
 /* Il menu: quattro zone. I numeri contano solo cose che ti aspettano. */
 function navFor() {
   return [
+    { g: "Studio", n: "quello che è di tutti" },
+    { k: "studio", t: "Bacheca", d: "Cosa condividiamo" },
+    { k: "pool", t: "Professionisti", d: "Chi c'è e cosa sa fare" },
+    { k: "fornitori", t: "Fornitori", d: "La rubrica dello studio" },
+    { k: "spazi", t: "Coworking & spazi", d: "Sale e postazioni" },
     { g: "Lavoro", n: "quello che stai facendo" },
     { k: "dash", t: "La mia giornata", d: "Cosa guardare adesso" },
     { k: "calendario", t: "Calendario", d: "Scadenze e consegne sul mese" },
@@ -412,21 +423,28 @@ function navFor() {
     { k: "task", t: "Attività", d: "Attività aperte assegnate a te", c: function () { return ftask().filter(function (t) { return t.stato !== "Fatto" && t.assegnato_id === me.pro_id; }).length; } },
     { k: "ore", t: "Ore & timesheet", d: "La tua settimana, ora per ora" },
     { k: "carico", t: "Il mio carico", d: "Quanto lavoro hai davanti" },
-    { g: "Profilo", n: "come ti vedono i colleghi" },
-    { k: "profilo", t: "Il mio profilo", d: "La tua scheda e quanto è completa" },
-    { k: "servizi", t: "I miei servizi", d: "Il tuo listino: è così che ti trovano", c: function () { return D.serv.filter(function (x) { return x.pro_id === me.pro_id; }).length; } },
     { g: "Amministrazione", n: "i tuoi soldi e i tuoi clienti" },
     { k: "amm", t: "Quadro amministrativo", d: "Incassi, scadenze, pipeline" },
     { k: "clienti", t: "Clienti", d: "I tuoi clienti", c: function () { return fcli().length; } },
-    { k: "commesse", t: "Preventivi", d: "Preventivi ancora da chiudere", c: function () { return fcom().filter(function (k) { return ["Bozza", "Preventivo"].indexOf(k.stato) > -1; }).length; } },
+    { k: "commesse", t: "Preventivi", d: "I tuoi e quelli dello studio", c: function () { return fcom().filter(function (k) { return ["Bozza", "Preventivo"].indexOf(k.stato) > -1; }).length; } },
     { k: "report", t: "Report", d: "Numeri e andamenti" },
-    { g: "Studio", n: "quello che è di tutti" },
-    { k: "studio", t: "Bacheca", d: "Cosa condividiamo" },
-    { k: "pool", t: "Professionisti", d: "Chi c'è e cosa sa fare" },
-    { k: "fornitori", t: "Fornitori", d: "La rubrica dello studio" },
-    { k: "spazi", t: "Coworking & spazi", d: "Sale e postazioni" },
+    { g: "Profilo", n: "come ti vedono i colleghi" },
+    { k: "profilo", t: "Il mio profilo", d: "La tua scheda e quanto è completa" },
+    { k: "servizi", t: "I miei servizi", d: "Il tuo listino: è così che ti trovano", c: function () { return D.serv.filter(function (x) { return x.pro_id === me.pro_id; }).length; } },
     { k: "impostazioni", t: "Impostazioni", d: "Il tuo accesso e le regole" }
   ];
+}
+/* Le quattro zone si aprono e si chiudono. Quella dove stai lavorando resta sempre
+   aperta, così non ti ritrovi mai davanti a un menu che non dice dove sei. */
+var NAVAP = null;
+function navAperti() {
+  if (!NAVAP) { try { NAVAP = JSON.parse(localStorage.getItem("gs_nav") || "{}"); } catch (e) { NAVAP = {}; } }
+  return NAVAP;
+}
+function navToggle(g) {
+  var a = navAperti();
+  a[g] = a[g] === false;
+  try { localStorage.setItem("gs_nav", JSON.stringify(a)); } catch (e) { }
 }
 var RUOLO_ET = { admin: "Professionista", professionista: "Professionista", pr: "Professionista", cliente: "Cliente" };
 function permEt() {
@@ -440,14 +458,25 @@ function buildNav() {
   var vv = view;
   if (vv === "nuovo" || vv === "mod") { var fs = FSEZ[current]; vv = fs ? fs[0] : "dash"; }
   if (vv === "riga") vv = "commesse";
-  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse" }[vv] || vv;
+  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse", documento: "commesse" }[vv] || vv;
   h += '<button class="cerca" data-pal="1" title="Cerca ovunque (⌘K)"><span>Cerca…</span><kbd>⌘K</kbd></button>';
+  var ap = navAperti(), qui = gruppoDi(cur), gr = null, gsub = "", buf = "";
+  function chiudiZona() {
+    if (gr === null) return;
+    var aperta = ap[gr] !== false || gr === qui;
+    h += '<button class="navtit' + (aperta ? " ap" : "") + '" data-navg="' + esc(gr) + '"' +
+      ' aria-expanded="' + (aperta ? "true" : "false") + '"><span>' + esc(gr) + "</span>" +
+      (gsub ? "<i>" + esc(gsub) + "</i>" : "") + '<em class="chev"></em></button>' +
+      '<div class="navsec' + (aperta ? "" : " chiusa") + '">' + buf + "</div>";
+    buf = "";
+  }
   navFor().forEach(function (n) {
-    if (n.g) { h += '<div class="navgroup"><span>' + esc(n.g) + "</span>" + (n.n ? '<i title="' + esc(n.n) + '">' + esc(n.n) + "</i>" : "") + "</div>"; return; }
+    if (n.g) { chiudiZona(); gr = n.g; gsub = n.n || ""; return; }
     var c = n.c ? n.c() : null;
-    h += '<button data-go="' + n.k + '" class="' + (cur === n.k ? "on" : "") + '" title="' + esc(n.d || n.t) + '"><span class="nt">' + esc(n.t) + "</span>" +
+    buf += '<button data-go="' + n.k + '" class="' + (cur === n.k ? "on" : "") + '" title="' + esc(n.d || n.t) + '"><span class="nt">' + esc(n.t) + "</span>" +
       (c ? '<span class="cnt">' + c + "</span>" : "") + "</button>";
   });
+  chiudiZona();
   var tm = timerMio();
   if (tm) {
     h = '<button class="timerchip" data-tstop="1"><span class="pulse"></span><span class="tc"><b>' + esc(nameOf(D.com, tm.commessa_id, "titolo")) + '</b><span id="timerlbl">' + durata(tm.iniziato) + "</span></span><span class=\"stopi\">■</span></button>" + h;
@@ -501,7 +530,8 @@ function fchip(attr, on, label) { return '<button class="chipbtn' + (on ? " on" 
 function barraViste(tabs, attiva, rotta, filtri) {
   return '<div class="vbar">' +
     (tabs && tabs.length ? '<div class="vtabs">' + tabs.map(function (v) {
-      return '<button data-route="' + esc(rotta + "|-|" + v[0]) + '" class="' + (attiva === v[0] ? "on" : "") + '">' + esc(v[1]) + "</button>";
+      return '<button data-route="' + esc(rotta + "|-|" + v[0]) + '" class="' + (attiva === v[0] ? "on" : "") + '">' + esc(v[1]) +
+        (v[2] != null ? '<span class="cnt">' + v[2] + "</span>" : "") + "</button>";
     }).join("") + "</div>" : "") +
     (filtri ? '<div class="vfilt">' + filtri + "</div>" : "") + "</div>";
 }
@@ -688,7 +718,7 @@ function tblCom(list) {
         '<div><h3>Prossimi passi</h3>' + (px.length ? px.map(function (p) { return '<div class="pstep"><b>' + esc(p.t) + '</b><span class="faint">' + esc(p.d) + "</span></div>"; }).join("") : '<span class="faint">Nulla in programma.</span>') + "</div>" +
         '<div><h3>Numeri</h3><div class="pstep"><b>' + num(b.oreFatte, 1) + " / " + num(b.oreStim, 0) + ' h</b><span class="faint">ore fatte sul budget</span></div>' +
         (vediCosti() ? '<div class="pstep"><b>' + eur(b.margReale) + '</b><span class="faint">margine atteso</span></div>' : "") + "</div>" +
-        '<div><h3>Scorciatoie</h3><div class="qbtns"><button class="btn sm ghost" data-open-com="' + k.id + '">Apri</button><button class="btn sm ghost" data-preventivo="' + k.id + '">Preventivo</button><button class="btn sm ghost" data-new="ore" data-ctx="' + k.id + '">Ore</button><button class="btn sm ghost" data-new="task" data-ctx="' + k.id + '">Attività</button></div></div>' +
+        '<div><h3>Scorciatoie</h3><div class="qbtns"><button class="btn sm ghost" data-open-com="' + k.id + '">Apri</button><button class="btn sm ghost" data-route="documento|' + k.id + '|">Documento</button><button class="btn sm ghost" data-new="ore" data-ctx="' + k.id + '">Ore</button><button class="btn sm ghost" data-new="task" data-ctx="' + k.id + '">Attività</button></div></div>' +
         "</div></td></tr>";
     }
   });
@@ -696,20 +726,26 @@ function tblCom(list) {
 }
 /* ---------------- commesse ---------------- */
 function vCommesse() {
-  var vista = tab || "lista";
+  var quali = tab || "personali";
+  if (["personali", "studio", "tutti"].indexOf(quali) === -1) quali = "personali";
+  var vista = COMVISTA;
   var tutte = fcom();
   var f = FS.com;
   var list = tutte.filter(function (k) {
+    if (quali !== "tutti" && ambitoCom(k) !== (quali === "studio" ? "studio" : "personale")) return false;
     if (f.stato && k.stato !== f.stato) return false;
     if (f.salute && salute(k).c !== f.salute) return false;
     if (f.cli && k.cliente_id !== f.cli) return false;
     if (f.cerca && (k.titolo + " " + nameOf(D.cli, k.cliente_id)).toLowerCase().indexOf(f.cerca.toLowerCase()) === -1) return false;
     return true;
   });
+  var nPers = tutte.filter(function (k) { return ambitoCom(k) === "personale"; }).length;
+  var nStud = tutte.length - nPers;
   var val = sum(list, function (k) { return budget(k).ricavo; });
   var h = head("Preventivi", list.length + " preventivi · " + eur(val) + " di valore",
     '<button class="btn sm" data-new="com">+ Nuovo preventivo</button>');
-  h += barraViste([["lista", "Lista"], ["bacheca", "Bacheca"], ["timeline", "Timeline"]], vista, "commesse",
+  h += barraViste([["personali", "I miei", nPers], ["studio", "Dello studio", nStud], ["tutti", "Tutti", tutte.length]], quali, "commesse",
+    '<select data-comvista="1" title="Come li vuoi vedere">' + opzioni([["lista", "Lista"], ["bacheca", "Bacheca"], ["timeline", "Timeline"]], vista) + "</select>" +
     fcerca("com", "Cerca un preventivo o un cliente…") +
     fsel("com", "stato", [["", "Ogni stato"]].concat(STATI.map(function (s) { return [s, s]; }))) +
     fsel("com", "salute", [["", "Ogni salute"], ["b-green", "In linea"], ["b-amber", "Da tenere d'occhio"], ["b-red", "A rischio"]]) +
@@ -717,7 +753,15 @@ function vCommesse() {
     '<select data-persp="1">' + opzioni([["all", "Miei e condivisi"], ["me", "Solo miei"], ["shared", "Solo condivisi"]], persp) + "</select>" +
     (f.stato || f.salute || f.cli || f.cerca ? '<button class="lnk mini" data-f-reset="com">azzera</button>' : ""));
 
-  if (!list.length) return h + '<div class="card">' + vuoto("Nessun preventivo con questi filtri.", '<button class="lnk" data-f-reset="com">Azzera i filtri</button>') + "</div>";
+  if (!list.length) {
+    var vTxt = (f.stato || f.salute || f.cli || f.cerca) ? "Nessun preventivo con questi filtri."
+      : quali === "studio" ? "Nessun preventivo dello studio: appena in un preventivo entrano servizi di più professionisti, lo trovi qui."
+      : quali === "personali" ? "Nessun preventivo tuo. Creane uno: finché le righe sono solo tue esce a tuo nome."
+      : "Ancora nessun preventivo.";
+    return h + '<div class="card">' + vuoto(vTxt, (f.stato || f.salute || f.cli || f.cerca)
+      ? '<button class="lnk" data-f-reset="com">Azzera i filtri</button>'
+      : '<button class="lnk" data-new="com">Nuovo preventivo</button>') + "</div>";
+  }
   if (vista === "bacheca") return h + boardCom(list);
   if (vista === "timeline") {
     var conDate = list.filter(function (k) { return k.inizio || k.scadenza; });
@@ -757,7 +801,7 @@ function vCommessa() {
   var h = crumbs([["Amministrazione"], ["Preventivi", "commesse"], [k.titolo]]);
   h += '<div class="top"><h1>' + esc(k.titolo) + '<span class="sub">' + esc(nameOf(D.cli, k.cliente_id)) + " · " + esc(k.stato) + " · " + esc(k.tipo_prezzo || "Fisso") + (condivisa(k) ? " · condivisa con " + (proDi(k.id).length - 1) + " colleghi" : " · solo tua") + '</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-edit="com:' + k.id + '">Modifica</button>' +
-    '<button class="btn sm ghost" data-preventivo="' + k.id + '">Preventivo</button>' +
+    '<button class="btn sm ghost" data-route="documento|' + k.id + '|">Documento</button>' +
     (isPR() ? "" : (timerMio() && timerMio().commessa_id === k.id
       ? '<button class="btn sm stop" data-tstop="1">■ Ferma <span id="timerlbl">' + durata(timerMio().iniziato) + "</span></button>"
       : '<button class="btn sm ghost" data-tstart="' + k.id + '">▶ Avvia timer</button>')) +
@@ -2113,6 +2157,21 @@ function vSettings() {
     row2("Le ore", "nessuno vede le tue, tu non vedi quelle di nessuno — nemmeno in aggregato") +
     row2("Chi cura le aree comuni", "può modificare spazi, impostazioni o accessi, non può entrare nei dati di nessuno") +
     '</tbody></table><p class="faint" style="margin-top:10px">Sono regole del database, non della grafica: anche interrogando il sistema direttamente non si esce da quello che ti spetta.</p></div>';
+  if (puo("studio")) {
+    h += '<div class="card"><h2>Carta intestata dello studio</h2>' +
+      '<p class="faint" style="margin:8px 0 14px">Questi dati vanno in testa ai preventivi che escono a nome dello studio, quelli dove lavorano più professionisti.</p>' +
+      '<div class="grid g2">' +
+      qcampo("set", 1, "studio_nome", "Ragione sociale", qinput("set", 1, "studio_nome", "text", SET.studio_nome, ' placeholder="Giraffa Studio"')) +
+      qcampo("set", 1, "studio_piva", "P. IVA", qinput("set", 1, "studio_piva", "text", SET.studio_piva)) +
+      qcampo("set", 1, "studio_indirizzo", "Indirizzo", qinput("set", 1, "studio_indirizzo", "text", SET.studio_indirizzo, ' placeholder="Via, numero — Verona"')) +
+      qcampo("set", 1, "studio_email", "Email", qinput("set", 1, "studio_email", "text", SET.studio_email)) +
+      qcampo("set", 1, "studio_telefono", "Telefono", qinput("set", 1, "studio_telefono", "text", SET.studio_telefono)) +
+      qcampo("set", 1, "studio_sito", "Sito", qinput("set", 1, "studio_sito", "text", SET.studio_sito, ' placeholder="giraffastudio.it"')) +
+      "</div>" +
+      qcampo("set", 1, "studio_iban", "IBAN", qinput("set", 1, "studio_iban", "text", SET.studio_iban)) +
+      '<div class="qfield"><label>Condizioni standard</label><textarea data-qset="set|studio_condizioni|1" rows="4" placeholder="Tempi, modalità di pagamento, cosa serve dal cliente, cosa non è compreso.">' + esc(SET.studio_condizioni || "") + "</textarea></div>" +
+      '<p class="faint" style="margin-top:8px">Si salvano da soli. Le condizioni compaiono già scritte in ogni nuovo preventivo dello studio: dentro al documento le puoi cambiare caso per caso.</p></div>';
+  }
   h += '<div class="card"><h2>Cambia password</h2><form data-form="password" style="margin-top:14px"><div class="field"><label>Nuova password</label><input name="pw" type="password" placeholder="almeno 8 caratteri" autocomplete="new-password" /></div><button class="btn" type="submit">Aggiorna password</button></form><p class="faint" style="margin-top:8px">Utente connesso: ' + esc(me.email) + "</p></div>";
   if (puo("accessi")) {
     h += '<div class="card"><div class="cardhead"><h2>Persone e accessi</h2><button class="btn sm ghost" data-new="membri">+ Collega utente</button></div>' +
@@ -2536,6 +2595,146 @@ async function apprRispondi(id, esito) {
 }
 
 /* ---------------- preventivo / anteprima ---------------- */
+/* ---------------- preventivo impaginato ----------------
+   Personale o dello studio: lo decide chi ci lavora dentro. Se le righe sono solo
+   tue esce a tuo nome, se ci sono colleghi esce a nome Giraffa Studio. Puoi sempre
+   forzarlo a mano dal documento. */
+function ambitoCom(k) {
+  if (k.ambito === "personale" || k.ambito === "studio") return k.ambito;
+  var chi = {};
+  righeOf(k.id).forEach(function (r) { var p = rigaCalc(r).pro; if (p) chi[p] = 1; });
+  if (k.owner_id) chi[k.owner_id] = 1;
+  if (k.pm_id) chi[k.pm_id] = 1;
+  return Object.keys(chi).length > 1 ? "studio" : "personale";
+}
+function ambitoEt(a) { return a === "studio" ? "Preventivo dello studio" : "Preventivo personale"; }
+/* chi emette il documento: lo studio oppure il singolo professionista */
+function emittente(k) {
+  if (ambitoCom(k) === "studio") {
+    return { nome: SET.studio_nome || "Giraffa Studio", piva: SET.studio_piva, indirizzo: SET.studio_indirizzo,
+      email: SET.studio_email, tel: SET.studio_telefono, sito: SET.studio_sito, iban: SET.studio_iban,
+      condizioni: SET.studio_condizioni, studio: true };
+  }
+  var p = by(D.pros, k.owner_id || me.pro_id) || {};
+  var pv = (D.priv || []).filter(function (x) { return x.pro_id === p.id; })[0] || {};
+  return { nome: p.nome || me.nome, piva: p.piva, indirizzo: p.indirizzo || p.citta,
+    email: p.email, tel: p.telefono, sito: p.sito, iban: pv.iban, condizioni: pv.condizioni, studio: false };
+}
+function numeroDoc(k) {
+  if (k.numero) return k.numero;
+  var anno = (k.created_at || today()).slice(0, 4);
+  var miei = D.com.filter(function (x) { return (x.created_at || "").slice(0, 4) === anno; })
+    .sort(function (a, b) { return a.created_at < b.created_at ? -1 : 1; });
+  var i = miei.map(function (x) { return x.id; }).indexOf(k.id);
+  return anno + "/" + String((i < 0 ? miei.length : i) + 1).padStart(3, "0");
+}
+/* testo che si riscrive sul posto: tabella|campo|id */
+function ed(tb, id, campo, val, vuotoTxt, cls) {
+  return '<span class="ed' + (cls ? " " + cls : "") + '" contenteditable="true" spellcheck="false"' +
+    ' data-ed="' + tb + "|" + campo + "|" + id + '" data-vuoto="' + esc(vuotoTxt || "—") + '">' +
+    esc(val == null || val === "" ? "" : val) + "</span>";
+}
+function edBlocco(tb, id, campo, val, vuotoTxt) {
+  return '<div class="edb" contenteditable="true" spellcheck="false" data-ed="' + tb + "|" + campo + "|" + id +
+    '" data-multi="1" data-vuoto="' + esc(vuotoTxt || "") + '">' + esc(val == null ? "" : val) + "</div>";
+}
+function vDocumento() {
+  var k = by(D.com, current);
+  if (!k) return '<div class="card">Preventivo non trovato. <button class="lnk" data-go="commesse">Torna all\'elenco</button></div>';
+  var amb = ambitoCom(k), em = emittente(k), cl = by(D.cli, k.cliente_id) || {};
+  var c = calc(k), rr = righeOf(k.id), pgt = progOf(k.id), pg = pagOf(k.id);
+
+  var h = crumbs([["Amministrazione"], ["Preventivi", "commesse"], [k.titolo, "commessa", k.id, "servizi"], ["Documento"]]);
+  h += '<div class="docbar noprint">' +
+    '<div class="dbleft"><span class="badge ' + (amb === "studio" ? "b-blue" : "b-amber") + '">' + ambitoEt(amb) + "</span>" +
+    '<select data-qset="com|ambito|' + k.id + '" title="Chi emette questo preventivo">' +
+    opzioni([["auto", "Deciso dalle righe"], ["personale", "Sempre personale"], ["studio", "Sempre dello studio"]], k.ambito || "auto") + "</select>" +
+    '<span class="faint">clicca qualsiasi testo per riscriverlo</span></div>' +
+    '<div class="dbright"><button class="btn sm ghost" data-route="commessa|' + k.id + '|servizi">Torna al preventivo</button>' +
+    '<button class="btn sm" data-stampa="1">Stampa / PDF</button></div></div>';
+
+  h += '<div class="a4"><div class="dtop">' +
+    '<div class="dmitt"><i class="mark"></i><div><b>' + esc(em.nome || "—") + "</b>" +
+    (em.indirizzo ? "<span>" + esc(em.indirizzo) + "</span>" : "") +
+    (em.piva ? "<span>P. IVA " + esc(em.piva) + "</span>" : "") +
+    (em.email ? "<span>" + esc(em.email) + "</span>" : "") +
+    (em.tel ? "<span>" + esc(em.tel) + "</span>" : "") +
+    (em.sito ? "<span>" + esc(em.sito) + "</span>" : "") +
+    (em.studio ? "" : '<span class="faint">professionista di Giraffa Studio</span>') +
+    "</div></div>" +
+    '<div class="ddoc"><h2>Preventivo</h2><table><tbody>' +
+    "<tr><td>Numero</td><td>" + ed("com", k.id, "numero", k.numero || numeroDoc(k)) + "</td></tr>" +
+    "<tr><td>Data</td><td>" + dt(k.created_at || today()) + "</td></tr>" +
+    "<tr><td>Validità</td><td>" + (k.validita == null ? 30 : k.validita) + " giorni</td></tr>" +
+    "</tbody></table></div></div>";
+
+  h += '<div class="ddest"><span class="lb">Spettabile</span><b>' + ed("cli", cl.id || "", "nome", cl.nome, "Nome del cliente") + "</b>" +
+    (cl.id ? "<div>" + ed("cli", cl.id, "referente", cl.referente, "alla cortese attenzione di…") + "</div>" +
+      "<div>" + ed("cli", cl.id, "indirizzo", cl.indirizzo, "indirizzo") + "</div>" +
+      "<div>" + ed("cli", cl.id, "piva", cl.piva, "partita IVA") + " · " + ed("cli", cl.id, "email", cl.email, "email") + "</div>" : "") +
+    "</div>";
+
+  h += '<h1 class="dtit">' + ed("com", k.id, "titolo", k.titolo, "Titolo del preventivo") + "</h1>";
+  h += '<div class="dpre">' + edBlocco("com", k.id, "premessa", k.premessa, "Due righe di premessa: cosa ci siamo detti, cosa proponiamo, perché.") + "</div>";
+
+  var gruppi = pgt.map(function (p) { return { p: p, r: rr.filter(function (x) { return x.progetto_id === p.id && !x.opzionale; }) }; });
+  var senza = rr.filter(function (x) { return !x.progetto_id && !x.opzionale; });
+  if (senza.length || !pgt.length) gruppi.push({ p: { id: null, nome: "Voci" }, r: senza });
+  gruppi.forEach(function (g) {
+    if (!g.r.length && g.p.id) return;
+    h += '<div class="dsez"><div class="dsh"><b>' + esc(g.p.nome) + "</b>" +
+      (g.p.pro_id && amb === "studio" ? '<span class="faint">a cura di ' + esc(nameOf(D.pros, g.p.pro_id)) + "</span>" : "") + "</div>";
+    h += '<table class="dtab"><thead><tr><th>Voce</th><th class="num">Q.tà</th><th class="num">Prezzo</th><th class="num">Importo</th><th class="noprint"></th></tr></thead><tbody>' +
+      g.r.map(function (r) {
+        var rc = rigaCalc(r);
+        return "<tr><td><b>" + ed("righe", r.id, "nome", rc.nome, "Nome della voce") + "</b>" +
+          '<div class="dnota">' + ed("righe", r.id, "descrizione", r.descrizione, "che cosa comprende") + "</div>" +
+          (r.ricorrente ? '<div class="dnota">' + esc(r.periodo || "Mensile") + ", per " + (r.cicli || 1) + (r.periodo === "Annuale" ? " anni" : " mesi") + "</div>" : "") + "</td>" +
+          '<td class="num">' + ed("righe", r.id, "qty", rc.q, "1", "n") + " " + esc(rc.unita || "") + "</td>" +
+          '<td class="num">' + ed("righe", r.id, "prezzo_unit", rc.pu, "0", "n") + " €" + (r.sconto ? '<div class="dnota">−' + r.sconto + "%</div>" : "") + "</td>" +
+          '<td class="num"><b>' + eur(rc.prezzo) + "</b></td>" +
+          '<td class="num noprint"><button class="lnk mini2" data-del="righe:' + r.id + '">togli</button></td></tr>';
+      }).join("") + "</tbody></table>" +
+      '<div class="noprint" style="margin:6px 0 0"><button class="lnk mini2" data-riga="' + k.id + '">+ aggiungi una voce</button></div></div>';
+  });
+
+  h += '<table class="dtot"><tbody>' +
+    row2("Imponibile", eur(c.imp + c.sconto)) +
+    (c.sconto ? row2("Sconto " + (k.sconto || 0) + "%", "−" + eur(c.sconto)) : "") +
+    row2("<b>Totale imponibile</b>", "<b>" + eur(c.tot) + "</b>") +
+    row2("IVA " + (k.iva == null ? 22 : k.iva) + "%", eur(c.iva)) +
+    row2('<b class="big">Totale</b>', '<b class="big">' + eur(c.lordo) + "</b>") +
+    (c.mrr ? row2("di cui ricorrente", eur(c.mrr) + " al mese") : "") +
+    "</tbody></table>";
+
+  var opzR = rr.filter(function (x) { return x.opzionale; });
+  if (opzR.length) {
+    h += '<div class="dsez"><div class="dsh"><b>Se le vorrete attivare</b><span class="faint">non incluse nel totale</span></div>' +
+      '<table class="dtab"><tbody>' + opzR.map(function (r) {
+        var rc = rigaCalc(r);
+        return "<tr><td>" + ed("righe", r.id, "nome", rc.nome) + '<div class="dnota">' + ed("righe", r.id, "descrizione", r.descrizione, "") + '</div></td><td class="num">' + eur(rc.prezzo) + "</td></tr>";
+      }).join("") + "</tbody></table></div>";
+  }
+
+  if (pg.length) {
+    h += '<div class="dsez"><div class="dsh"><b>Come si paga</b></div><table class="dtab"><tbody>' +
+      pg.map(function (p) {
+        return "<tr><td>" + ed("pag", p.id, "nome", p.nome, "descrizione") + "</td><td>" + (p.scadenza ? dt(p.scadenza) : "") + '</td><td class="num">' + eur(p.importo) + "</td></tr>";
+      }).join("") + "</tbody></table>" +
+      (em.iban ? '<p class="dnota">Bonifico su IBAN ' + esc(em.iban) + "</p>" : "") + "</div>";
+  }
+
+  h += '<div class="dsez"><div class="dsh"><b>Condizioni</b></div>' +
+    edBlocco("com", k.id, "condizioni", k.condizioni || em.condizioni || "", "Tempi, modalità, cosa serve da parte vostra, cosa non è compreso.") + "</div>";
+  h += '<div class="dchiusa">' + edBlocco("com", k.id, "chiusura", k.chiusura, "Una riga di chiusura: restiamo a disposizione, buon lavoro, a presto.") + "</div>";
+
+  h += '<div class="dfirme"><div><span class="lb">Per ' + esc(em.nome || "noi") + "</span><i></i></div>" +
+    '<div><span class="lb">Per accettazione</span><i></i></div></div>';
+  h += '<p class="dpie">Preventivo valido ' + (k.validita == null ? 30 : k.validita) + " giorni dalla data di emissione." +
+    (amb === "studio" ? " Ogni professionista opera con la propria partita IVA sotto il coordinamento di " + esc(em.nome || "Giraffa Studio") + "." : "") + "</p>";
+  h += "</div>";
+  return h;
+}
 function docHead(k, titolo) {
   return '<div style="display:flex;justify-content:space-between;align-items:flex-start"><i class="mark" style="height:52px"></i><div style="text-align:right"><h2>' + titolo + '</h2><div class="faint">' + esc(nameOf(D.cli, k.cliente_id)) + " · " + dt(today()) + "</div></div></div>";
 }
@@ -2638,7 +2837,7 @@ var FORMS = {
       '<div class="row2">' + fld("piva", "P. IVA", "text", r.piva) + selField("owner_id", "Owner", opt(D.pros, r.owner_id || me.pro_id)) + "</div>" +
       fld("indirizzo", "Indirizzo", "text", r.indirizzo) + fld("note", "Note", "textarea", r.note);
   }},
-  pros: { t: "Professionista", tb: "pros", priv: ["tariffa_oraria", "note"], f: function (r) {
+  pros: { t: "Professionista", tb: "pros", priv: ["tariffa_oraria", "note", "iban", "condizioni"], f: function (r) {
     var mio = r.id === me.pro_id || !r.id;
     return '<div class="fgroup"><h3>Scheda visibile ai colleghi</h3>' +
       fld("nome", "Nome", "text", r.nome, true) +
@@ -2646,8 +2845,13 @@ var FORMS = {
       fld("competenze", "Competenze (separate da virgola)", "text", r.competenze) +
       '<div class="row2">' + fld("email", "Email", "email", r.email) + fld("telefono", "Telefono", "text", r.telefono) + "</div>" +
       '<div class="row2">' + fld("citta", "Città", "text", r.citta) + fld("piva", "P. IVA", "text", r.piva) + "</div></div>" +
+      (mio ? '<div class="fgroup"><h3>Come esci sui tuoi preventivi</h3>' +
+        '<p class="faint" style="margin-bottom:12px">Questi dati finiscono in testa ai preventivi personali, quelli che porti avanti da solo.</p>' +
+        '<div class="row2">' + fld("indirizzo", "Indirizzo (via, città)", "text", r.indirizzo) + fld("sito", "Sito", "text", r.sito) + "</div>" +
+        fld("iban", "IBAN", "text", r.iban) +
+        fld("condizioni", "Le tue condizioni standard", "textarea", r.condizioni) + "</div>" : "") +
       (mio ? '<div class="fgroup priv"><h3>Solo tuo <span class="badge">privato</span></h3>' +
-        '<p class="faint" style="margin-bottom:12px">Questi due campi stanno in una tabella che risponde solo a te: nessun collega può leggerli, nemmeno interrogando il sistema.</p>' +
+        '<p class="faint" style="margin-bottom:12px">Questi campi stanno in una tabella che risponde solo a te: nessun collega può leggerli, nemmeno interrogando il sistema.</p>' +
         fld("tariffa_oraria", "Tariffa oraria (€)", "number", r.tariffa_oraria) +
         fld("note", "Note personali", "textarea", r.note) + "</div>" : "");
   }},
@@ -2906,7 +3110,15 @@ async function delRow(entity, id) {
   var F = FORMS[entity], tbk = F ? F.tb : entity, key = (F && F.key) || "id";
   if (!confirm("Eliminare definitivamente?")) return;
   var r = await sb.from(TB[tbk]).delete().eq(key, id);
-  if (r.error) { toast(r.error.message, true); return; }
+  if (r.error) {
+    /* il database difende la storia: un cliente con preventivi non si butta via */
+    if (r.error.code === "23503" && tbk === "cli") {
+      toast("Questo cliente ha ancora dei preventivi. Spostali o eliminali prima, oppure mettilo come «Chiuso» per toglierlo di mezzo senza perdere niente.", true);
+      return;
+    }
+    if (r.error.code === "23503") { toast("Non si può eliminare: ci sono altre cose collegate. Toglile prima.", true); return; }
+    toast(r.error.message, true); return;
+  }
   await reload([tbk]); closeModal();
   FDIRTY = false;
   if (inForm() || view === "riga") { var s = FSEZ[entity] || FSEZ[tbk]; toast("Eliminato"); FBACK = null; go(s ? s[0] : "dash"); return; }
@@ -2998,7 +3210,7 @@ function render() {
     return;
   }
   buildNav();
-  var V = { attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga };
+  var V = { attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search") || el("#tcerca") || el("#fcerca");
@@ -3048,6 +3260,8 @@ document.addEventListener("click", async function (e) {
   if (d.openProg) { go("progetto", d.openProg, "lavorazioni"); return; }
   if (d.openLav) { go("lavorazione", d.openLav); return; }
   if (d.cal !== undefined) { CAL = d.cal === "0" ? 0 : CAL + (+d.cal); render(); return; }
+  if (d.navg) { navToggle(d.navg); buildNav(); return; }
+  if (d.stampa) { window.print(); return; }
   if (d.calCopia) {
     var inp = el("#icslink"); if (!inp) return;
     inp.focus(); inp.select(); inp.setSelectionRange(0, 999);
@@ -3531,6 +3745,48 @@ document.addEventListener("input", function (e) {
   }
 });
 
+/* Dentro il documento si scrive direttamente sul foglio: quando lasci un campo
+   il valore va nel database e i totali si rifanno. */
+var EDNUM = ["qty", "prezzo_unit", "costo_unit", "sconto", "importo", "ore_stimate", "cicli", "validita", "iva"];
+document.addEventListener("focusout", async function (e) {
+  var t = e.target;
+  if (!t || !t.dataset || !t.dataset.ed) return;
+  var pz = t.dataset.ed.split("|"), tbk = pz[0], campo = pz[1], rid = pz[2];
+  if (!rid) return;
+  var testo = (t.innerText || "").replace(/ /g, " ").replace(/\s+$/, "");
+  if (!t.dataset.multi) testo = testo.replace(/\s*\n\s*/g, " ").trim();
+  var prima = t.dataset.prima;
+  if (prima !== undefined && prima === testo) return;
+  var val;
+  if (EDNUM.indexOf(campo) > -1) {
+    var n = parseFloat(testo.replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}\b)/g, "").replace(",", "."));
+    val = isNaN(n) ? null : n;
+  } else val = testo === "" ? null : testo;
+  var patch = {}; patch[campo] = val;
+  var rq = await sb.from(TB[tbk]).update(patch).eq("id", rid);
+  if (rq.error) { toast(rq.error.message, true); return; }
+  await reload([tbk]);
+  toast("Salvato"); render();
+});
+document.addEventListener("focusin", function (e) {
+  var t = e.target;
+  if (t && t.dataset && t.dataset.ed) t.dataset.prima = (t.innerText || "").replace(/ /g, " ").trim();
+});
+document.addEventListener("keydown", function (e) {
+  var t = e.target;
+  if (!t || !t.dataset || !t.dataset.ed) return;
+  if (e.key === "Escape") { t.innerText = t.dataset.prima || ""; t.blur(); return; }
+  if (e.key === "Enter" && !t.dataset.multi) { e.preventDefault(); t.blur(); }
+});
+/* incollando testo formattato tengo solo le parole */
+document.addEventListener("paste", function (e) {
+  var t = e.target;
+  if (!t || !t.dataset || !t.dataset.ed) return;
+  e.preventDefault();
+  var txt = (e.clipboardData || window.clipboardData).getData("text/plain");
+  document.execCommand("insertText", false, t.dataset.multi ? txt : txt.replace(/\s*\n\s*/g, " "));
+});
+
 document.addEventListener("change", async function (e) {
   /* campo a modifica immediata su qualsiasi scheda: tabella|campo|id */
   if (e.target.dataset && e.target.dataset.qset) {
@@ -3548,7 +3804,9 @@ document.addEventListener("change", async function (e) {
     }
     var rq = await sb.from(TB[tbk]).update(patch).eq("id", rid);
     if (rq.error) { toast(rq.error.message, true); return; }
-    await reload([tbk]); toast("Salvato"); render(); return;
+    await reload([tbk]);
+    if (tbk === "set") SET = D.set[0] || SET;
+    toast("Salvato"); render(); return;
   }
   /* filtri di sezione: ambito|campo */
   if (e.target.dataset && e.target.dataset.f) {
@@ -3556,6 +3814,7 @@ document.addEventListener("change", async function (e) {
     if (FS[fz[0]]) { FS[fz[0]][fz[1]] = e.target.value; render(); }
     return;
   }
+  if (e.target.dataset && e.target.dataset.comvista) { COMVISTA = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tf) { TF[e.target.dataset.tf] = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tg) { TGROUP = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.ts) { TSORT = e.target.value; render(); return; }
