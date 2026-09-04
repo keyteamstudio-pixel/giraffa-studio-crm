@@ -202,12 +202,51 @@ function spark(vals) {
     '<polygon points="0,' + h + " " + pts.join(" ") + " " + w + "," + h + '" fill="url(#' + id + ')"/>' +
     '<polyline points="' + pts.join(" ") + '" fill="none" stroke="var(--terra)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 }
-function settimane(list, n) {
+/* Un grafico che si legge: scala a sinistra, settimane sotto, un punto per ogni
+   valore e il numero che compare passandoci sopra. */
+function graficoOre(vals, ette) {
+  var w = 300, h = 96, pad = 6;
+  var mx = Math.max.apply(null, vals.concat([1]));
+  var passo = Math.pow(10, Math.floor(Math.log(mx) / Math.LN10));
+  var tacca = Math.ceil(mx / passo / 2) * passo * 2 || 1;
+  var step = vals.length > 1 ? w / (vals.length - 1) : w;
+  var y = function (v) { return h - (v / tacca) * (h - pad * 2) - pad; };
+  var pts = vals.map(function (v, i) { return (i * step).toFixed(1) + "," + y(v).toFixed(1); });
+  var id = "go" + (++SPK);
+  var g = '<div class="chart"><div class="cy"><span>' + num(tacca, tacca % 1 ? 1 : 0) + " h</span><span>" + num(tacca / 2, (tacca / 2) % 1 ? 1 : 0) + " h</span><span>0 h</span></div>" +
+    '<div class="cplot"><svg viewBox="0 0 ' + w + " " + h + '" preserveAspectRatio="none" aria-hidden="true">' +
+    '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--terra)" stop-opacity=".14"/><stop offset="100%" stop-color="var(--terra)" stop-opacity="0"/></linearGradient></defs>' +
+    '<line class="gl" x1="0" y1="' + pad + '" x2="' + w + '" y2="' + pad + '"/>' +
+    '<line class="gl" x1="0" y1="' + (h / 2) + '" x2="' + w + '" y2="' + (h / 2) + '"/>' +
+    '<line class="gl" x1="0" y1="' + (h - pad) + '" x2="' + w + '" y2="' + (h - pad) + '"/>' +
+    '<polygon points="0,' + h + " " + pts.join(" ") + " " + w + "," + h + '" fill="url(#' + id + ')"/>' +
+    '<polyline points="' + pts.join(" ") + '" fill="none" stroke="var(--terra)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>' +
+    "</svg>" +
+    '<div class="cpts">' + vals.map(function (v, i) {
+      return '<span class="cpt' + (i === vals.length - 1 ? " ora" : "") + '" style="left:' + (i / Math.max(1, vals.length - 1) * 100) + "%;top:" + (y(v) / h * 100) + '%"><em>' +
+        num(v, 1) + " h · " + esc(ette[i]) + "</em></span>";
+    }).join("") + "</div></div>" +
+    '<div class="cx">' + ette.map(function (e, i) {
+      return i % 2 === 0 || i === ette.length - 1 ? "<span>" + esc(e) + "</span>" : "<span></span>";
+    }).join("") + "</div></div>";
+  return g;
+}
+function settimane(list, n, salta) {
+  var out = [], oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+  var off = (salta || 0) * 7 * 86400000;
+  for (var w = n - 1; w >= 0; w--) {
+    var b = new Date(oggi.getTime() - off - w * 7 * 86400000), a = new Date(b.getTime() - 6 * 86400000);
+    var ai = iso(a), bi = iso(b);
+    out.push(sum(list.filter(function (o) { return o.data >= ai && o.data <= bi; }), function (o) { return o.ore; }));
+  }
+  return out;
+}
+/* le etichette delle stesse settimane: il lunedì di ciascuna */
+function ettSettimane(n) {
   var out = [], oggi = new Date(); oggi.setHours(0, 0, 0, 0);
   for (var w = n - 1; w >= 0; w--) {
     var b = new Date(oggi.getTime() - w * 7 * 86400000), a = new Date(b.getTime() - 6 * 86400000);
-    var ai = iso(a), bi = iso(b);
-    out.push(sum(list.filter(function (o) { return o.data >= ai && o.data <= bi; }), function (o) { return o.ore; }));
+    out.push(a.toLocaleDateString("it-IT", { day: "2-digit", month: "short" }).replace(".", ""));
   }
   return out;
 }
@@ -607,10 +646,11 @@ function bannerProfilo() {
   if (!p.piva) mancano.push("partita IVA");
   if (!D.serv.some(function (x) { return x.pro_id === p.id; })) mancano.push("i tuoi servizi nel listino");
   if (!mancano.length) return "";
-  return '<div class="card" style="border-left:3px solid var(--terra);margin-bottom:16px"><div class="cardhead"><h2>Completa il tuo profilo</h2>' +
-    '<button class="btn sm ghost" data-edit="pros:' + p.id + '">Apri il profilo</button></div>' +
-    '<p class="faint">Manca ancora: ' + mancano.join(", ") + ". Serve per calcolare i compensi e per farti trovare dai colleghi." +
-    (mancano.indexOf("i tuoi servizi nel listino") > -1 ? ' <button class="lnk" data-go="servizi">Aggiungi un servizio</button>' : "") + "</p></div>";
+  /* un promemoria, non un cartellone: una riga sola */
+  return '<div class="avviso"><span class="avico"></span><span class="avtxt"><b>Completa il tuo profilo</b>' +
+    '<span>Manca ancora: ' + esc(mancano.join(", ")) + ". Serve per calcolare i compensi e per farti trovare dai colleghi." +
+    (mancano.indexOf("i tuoi servizi nel listino") > -1 ? ' <button class="lnk" data-go="servizi">Aggiungi un servizio</button>' : "") + "</span></span>" +
+    '<button class="btn sm ghost" data-edit="pros:' + p.id + '">Apri il profilo</button></div>';
 }
 function vDash() {
   var com = fcom(), cli = fcli(), ore = fore(), tk = ftask();
@@ -639,7 +679,14 @@ function vDash() {
   }).join("") : '<div class="empty">Nessuna urgenza: puoi lavorare sereno.</div>';
   h += "</div><div>";
   h += '<div class="card ringcard">' + ring(avgAv, 104) + '<div><h2>Avanzamento medio</h2><p class="faint" style="margin-top:4px">' + attive.length + " lavori attivi<br>" + (eur(pipeline) + " di pipeline") + "</p></div></div>";
-  h += '<div class="card"><div class="cardhead"><h2>Ore, ultime 8 settimane</h2><span class="faint">' + num(wk[wk.length - 1], 1) + " h questa settimana</span></div>" + spark(wk) + "</div>";
+  var wkPrima = settimane(ore, 8, 8);
+  var tot8 = sum(wk, function (x) { return x; }), tot8p = sum(wkPrima, function (x) { return x; });
+  var delta = tot8p ? Math.round((tot8 - tot8p) / tot8p * 100) : null;
+  h += '<div class="card"><div class="cardhead"><h2>Ore, ultime 8 settimane</h2><span class="faint">' + num(wk[wk.length - 1], 1) + " h questa settimana</span></div>" +
+    graficoOre(wk, ettSettimane(8)) +
+    '<p class="cfoot">' + (delta == null
+      ? '<span class="faint">nessun confronto: non ci sono ore prima di queste 8 settimane</span>'
+      : '<span class="dlt ' + (delta >= 0 ? "su" : "giu") + '">' + (delta >= 0 ? "▲" : "▼") + " " + Math.abs(delta) + ' %</span><span class="faint">rispetto alle 8 settimane precedenti (' + num(tot8, 0) + " h contro " + num(tot8p, 0) + " h)</span>") + "</p></div>";
   h += "</div></div>";
 
   h += '<div class="grid g32" style="margin-top:18px">';
@@ -653,7 +700,7 @@ function vDash() {
   STATI.forEach(function (s) {
     if (!per[s].length) return;
     var v = sum(per[s], function (k) { return calc(k).tot; });
-    h += '<div class="frow2"><span class="badge ' + (STATO_COL[s] || "") + '">' + s + '</span><span class="ftrack"><i style="width:' + Math.max(4, Math.round(v / mxp * 100)) + '%"></i></span><span class="fnum">' + eur(v) + "</span></div>";
+    h += '<div class="frow2"><span class="badge ' + (STATO_COL[s] || "") + '">' + s + '</span><span class="ftrack"><i class="' + (STATO_COL[s] || "") + '" style="width:' + Math.max(4, Math.round(v / mxp * 100)) + '%"></i></span><span class="fnum">' + eur(v) + "</span></div>";
   });
   h += "</div></div>";
 
@@ -664,7 +711,7 @@ function vDash() {
     var tot = Math.max(1, inc + da);
     h += '<div class="card"><div class="cardhead"><h2>Incassi</h2><button class="btn sm ghost" data-go="amm">Quadro</button></div>' +
       '<div class="stack"><i class="s1" style="width:' + Math.round(inc / tot * 100) + '%"></i><i class="s2" style="width:' + Math.round((da - sc) / tot * 100) + '%"></i><i class="s3" style="width:' + Math.round(sc / tot * 100) + '%"></i></div>' +
-      '<div class="legend"><span><i class="s1"></i>Incassato ' + eur(inc) + "</span><span><i class=\"s2\"></i>Da incassare " + eur(da - sc) + "</span>" + (sc ? '<span><i class="s3"></i>Scaduto ' + eur(sc) + "</span>" : "") + "</div></div>";
+      '<div class="legend"><span><i class="s1"></i>Incassato <b>' + eur(inc) + "</b></span><span><i class=\"s2\"></i>Da incassare <b>" + eur(da - sc) + "</b></span>" + (sc ? '<span><i class="s3"></i>Scaduto <b>' + eur(sc) + "</b></span>" : "") + "</div></div>";
   }
   h += "</div></div>";
   return h;
