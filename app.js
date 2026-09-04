@@ -1140,7 +1140,7 @@ function barraTask(vista) {
     '<button class="chipbtn' + (TF.scadute ? " on" : "") + '" data-tf-scadute="1">Solo in ritardo</button>' +
     (vista === "lista" || vista === "bacheca" ? '<span class="vsep"></span><span class="faint">Raggruppa</span><select data-tg="1">' +
       opts([["progetto", "Progetto"], ["stato", "Stato"], ["persona", "Persona"], ["priorita", "Priorità"], ["scadenza", "Scadenza"], ["sezione", "Sezione"], ["nessuno", "Niente"]], TGROUP) + "</select>" : "") +
-    (vista === "lista" ? '<span class="faint">Ordina</span><select data-ts="1">' +
+    (vista === "lista" ? '<span class="faint">Ordina</span><select data-tsordina="1">' +
       opts([["scadenza", "Scadenza"], ["priorita", "Priorità"], ["titolo", "Titolo"], ["ordine", "Manuale"]], TSORT) + "</select>" : "") +
     (D.viste.length ? '<span class="vsep"></span><select data-vista-apri="1"><option value="">Viste salvate…</option>' +
       D.viste.filter(function (v) { return v.ambito === "task"; }).map(function (v) { return '<option value="' + v.id + '">' + esc(v.nome) + "</option>"; }).join("") + "</select>" : "") +
@@ -3824,7 +3824,7 @@ document.addEventListener("change", async function (e) {
   if (e.target.dataset && e.target.dataset.comvista) { COMVISTA = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tf) { TF[e.target.dataset.tf] = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tg) { TGROUP = e.target.value; render(); return; }
-  if (e.target.dataset && e.target.dataset.ts) { TSORT = e.target.value; render(); return; }
+  if (e.target.dataset && e.target.dataset.tsordina) { TSORT = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.vistaApri) {
     var vv9 = by(D.viste, e.target.value); if (!vv9) return;
     var cfg = vv9.config || {};
