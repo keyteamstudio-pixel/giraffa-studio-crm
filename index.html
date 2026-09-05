@@ -492,6 +492,11 @@ textarea{min-height:86px;resize:vertical;line-height:1.55;padding:10px 12px}
 .chk{font-size:.9rem;display:inline-flex;align-items:center;gap:6px;font-weight:400}
 .chk input{width:auto}
 .busy{opacity:.55;pointer-events:none}
+.week{display:grid;grid-template-columns:repeat(7,1fr);gap:8px}
+.wday{border:1px solid var(--line-soft);border-radius:var(--r-m);padding:8px;min-height:140px;cursor:pointer}
+.wday.today{border-color:var(--terra);background:var(--cream)}
+.wday .calev{white-space:normal;margin-top:4px}
+@media(max-width:900px){.week{grid-template-columns:repeat(2,1fr)}}
 .riugrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .riugrid .card{margin-bottom:16px}
 .riugrid textarea.doc{min-height:150px}
@@ -1309,6 +1314,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=58"></script>
+<script src="app.js?v=59"></script>
 </body>
 </html>
