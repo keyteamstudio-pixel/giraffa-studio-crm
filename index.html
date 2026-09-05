@@ -191,6 +191,7 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 .nav button[data-go="profilo"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='4.5' width='18' height='15' rx='3'/%3E%3Ccircle cx='9' cy='11' r='2.4'/%3E%3Cpath d='M5.6 16.4a3.7 3.7 0 0 1 6.8 0'/%3E%3Cpath d='M15 10h4M15 14h4'/%3E%3C/svg%3E")}
 .nav button[data-go="amm"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='5' width='18' height='15' rx='3'/%3E%3Cpath d='M3 9.5h18'/%3E%3Cpath d='M14.5 13.2a2.6 2.6 0 1 0 0 3.6M10.8 14.2h3.4M10.8 15.8h3.4'/%3E%3C/svg%3E")}
 .nav button[data-go="studio"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='14' rx='2.5'/%3E%3Cpath d='M7 9.5h6M7 13h4'/%3E%3Ccircle cx='16.5' cy='12' r='2'/%3E%3C/svg%3E")}
+.nav button[data-go="riunioni"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='6.5' width='13' height='11' rx='2.5'/%3E%3Cpath d='M16 10.5l5-2.5v8l-5-2.5z'/%3E%3C/svg%3E")}
 .nav button[data-go="eventi"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3.5' y='5' width='17' height='15' rx='2.5'/%3E%3Cpath d='M3.5 9.5h17M8 3v4M16 3v4'/%3E%3Ccircle cx='12' cy='14.5' r='1.6' fill='%23000' stroke='none'/%3E%3C/svg%3E")}
 .nav button[data-go="chat"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 5.5h10a2 2 0 0 1 2 2v4.5a2 2 0 0 1-2 2H9l-3.5 3v-3H4a2 2 0 0 1-2-2V7.5a2 2 0 0 1 2-2z'/%3E%3Cpath d='M18.5 9.5h1.5a2 2 0 0 1 2 2V16a2 2 0 0 1-2 2h-1v2.5L15.5 18H13'/%3E%3C/svg%3E")}
 .nav button[data-go="professioni"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='7.5' width='18' height='12' rx='2.5'/%3E%3Cpath d='M9 7.5V5.5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5.5v2M3 12.5h18'/%3E%3C/svg%3E")}
@@ -477,6 +478,24 @@ textarea{min-height:86px;resize:vertical;line-height:1.55;padding:10px 12px}
 .qfield{margin-bottom:12px}
 .qfield label{display:block;font-size:.76rem;color:var(--soft);margin-bottom:5px}
 .qfield select,.qfield input{width:100%}
+.props{padding:14px 18px}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px 18px}
+.pgrid .qfield{margin-bottom:0}
+.qfield.ro b{display:block;font-size:1.02rem;padding:6px 0 2px}
+.qfield.ro .prog{margin-top:4px}
+.qfield.ro .faint{display:block;font-size:.76rem}
+.fmore{margin-top:6px}
+.fmore summary{cursor:pointer;color:var(--soft);font-size:.86rem;padding:8px 0 12px;list-style:none}
+.fmore summary::before{content:"▸ ";font-size:.8em}
+.fmore[open] summary::before{content:"▾ "}
+.chks{display:flex;flex-wrap:wrap;gap:6px 14px;padding:4px 0}
+.chk{font-size:.9rem;display:inline-flex;align-items:center;gap:6px;font-weight:400}
+.chk input{width:auto}
+.busy{opacity:.55;pointer-events:none}
+.riugrid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.riugrid .card{margin-bottom:16px}
+.riugrid textarea.doc{min-height:150px}
+@media(max-width:760px){.riugrid{grid-template-columns:1fr}}
 h1.done{text-decoration:line-through;color:var(--faint)}
 .fpage .actionbar .danger{order:-1}
 @media(max-width:640px){.fpage .actionbar{bottom:0;border-radius:14px}.fpage .card{padding:20px}}
@@ -1290,6 +1309,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=56"></script>
+<script src="app.js?v=57"></script>
 </body>
 </html>
