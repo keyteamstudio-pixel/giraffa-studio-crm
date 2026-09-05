@@ -54,7 +54,7 @@ function nameOf(arr, id, f) { var o = by(arr, id); return o ? o[f || "nome"] : "
 function sum(arr, f) { var t = 0; arr.forEach(function (x) { t += (+f(x) || 0); }); return t; }
 function toast(msg, isErr) { var t = document.createElement("div"); t.className = "toast" + (isErr ? " err" : ""); t.textContent = msg; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 3800); }
 function show(id) { ["setup", "login", "app", "splash"].forEach(function (x) { var n = el("#" + x); if (n) n.classList.toggle("hide", x !== id); }); }
-function closeModal() { el("#modal").innerHTML = ""; }
+function closeModal() { el("#modal").innerHTML = ""; CHATOP = false; }
 
 /* ---------------- percorsi (ogni pagina ha il suo indirizzo) ---------------- */
 var ROUTING = false, FCTX = null, FDIRTY = false, FBACK = null;
@@ -4193,7 +4193,13 @@ function boxAssistente() {
   return h + "</div>";
 }
 function apriAssistente() { CHATOP = true; modal(boxAssistente()); }
-function aggiornaAssistente() { if (CHATOP) { var m = el("#modal"); if (m && m.firstChild) m.innerHTML = boxAssistente(); } }
+/* Si ridisegna la scatola, non la finestra: se si sostituisse tutto il contenuto
+   di #modal sparirebbe il velo fisso e la chat finirebbe in fondo alla pagina. */
+function aggiornaAssistente() {
+  if (!CHATOP) return;
+  var b = document.querySelector("#modal .assbox");
+  if (b) b.outerHTML = boxAssistente(); else modal(boxAssistente());
+}
 async function mandaDomanda(q) {
   if (!q || CHATBUSY) return;
   CHAT.push({ io: q }); CHATBUSY = true; aggiornaAssistente();
