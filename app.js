@@ -5541,13 +5541,17 @@ async function apriIlLavoro(kid) {
     var fatto = tuttoFinito || r.stato === "Consegnato" || (ricorrente && fine < oggi);
     var inCorso = !fatto && (r.stato === "In corso" || (ricorrente && inizio <= oggi) || (!ricorrente && inizio < oggi && k.stato === "Accettato"));
     var statoP = fatto ? "Completato" : inCorso ? "In corso" : "Da iniziare";
+    /* su un canone l'avanzamento sono i mesi già passati */
+    var mesiPassati = 0;
+    if (ricorrente) for (var mp = 0; mp < cicli; mp++) if (fineMese(aggMesi(inizio, mp)) < oggi) mesiPassati++;
+    var avanz = fatto ? 100 : ricorrente ? Math.round(mesiPassati / cicli * 100) : 0;
     var pg = r.progetto_id ? by(D.prog, r.progetto_id) : null;
     if (!pg) pg = esistenti.filter(function (x) { return x.nome === nome; })[0];
     var pid = pg && pg.id;
     if (!pid) {
       var np = await sb.from("progetti").insert({
         commessa_id: kid, nome: nome, descrizione: r.descrizione || null,
-        pro_id: chi, stato: statoP, avanzamento: fatto ? 100 : 0, ordine: i + 1,
+        pro_id: chi, stato: statoP, avanzamento: avanz, ordine: i + 1,
         inizio: inizio, fine: fine
       }).select();
       if (np.error) { toast(np.error.message, true); return fatti; }
