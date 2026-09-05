@@ -129,6 +129,11 @@ function oreTot(k) { return sum(oreOf(k), function (o) { return o.ore; }); }
 function comOfCliente(c) { return D.com.filter(function (k) { return k.cliente_id === c; }); }
 function variOf(k) { return D.vari.filter(function (v) { return v.commessa_id === k; }); }
 function evOf(k) { return D.ev.filter(function (e) { return e.commessa_id === k; }).sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; }); }
+/* Ogni nome che sta per una scheda si clicca e porta lì. Sempre. */
+function lnkCli(id, cls) { return id ? '<button class="' + (cls || "lnk") + '" data-open-cli="' + id + '">' + esc(nameOf(D.cli, id)) + "</button>" : ""; }
+function lnkCom(id, cls) { return id ? '<button class="' + (cls || "lnk") + '" data-open-com="' + id + '">' + esc(nameOf(D.com, id, "titolo")) + "</button>" : ""; }
+function lnkProg(id, cls) { return id ? '<button class="' + (cls || "lnk") + '" data-open-prog="' + id + '">' + esc(nameOf(D.prog, id)) + "</button>" : ""; }
+function lnkPro(id, cls) { return id ? '<button class="' + (cls || "lnk") + '" data-open-pro="' + id + '">' + esc(nameOf(D.pros, id)) + "</button>" : ""; }
 /* Quello che il lavoro costa a chi lo fa: strumenti, abbonamenti, fornitori,
    budget pubblicitario. Un canone vale per tutti i suoi mesi. */
 function costiOf(k) { return D.costi.filter(function (c) { return c.commessa_id === k; }); }
@@ -508,6 +513,8 @@ function mieiDatiPersonali() {
     pr.note = pv ? pv.note : null;
     pr.iban = pv ? pv.iban : null;
     pr.condizioni = pv ? pv.condizioni : null;
+    pr.logo = pv ? pv.logo : null;
+    pr.firma = pv ? pv.firma : null;
   }
 }
 
@@ -1002,7 +1009,7 @@ function tblCom(list) {
     var c = calc(k), av = avanzamento(k.id), sal = salute(k), b = budget(k), ap = EXP[k.id];
     h += '<tr class="' + (ap ? "expon" : "") + '"><td><button class="caret' + (ap ? " on" : "") + '" data-exp="' + k.id + '">›</button></td>' +
       '<td><button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button>" + (condivisa(k) ? ' <span class="chip">condivisa</span>' : "") + "</td>" +
-      "<td>" + esc(nameOf(D.cli, k.cliente_id)) + "</td>" +
+      "<td>" + lnkCli(k.cliente_id) + "</td>" +
       "<td>" + avatars(proDi(k.id), 24) + "</td>" +
       '<td><span class="badge ' + (STATO_COL[k.stato] || "") + '">' + esc(k.stato) + "</span></td>" +
       '<td><span class="badge ' + sal.c + '">' + sal.t + "</span></td>" +
@@ -1143,7 +1150,7 @@ function vCommessa() {
   var b = budget(k), sal = salute(k), vr = variOf(k.id);
 
   var h = crumbs([["Amministrazione"], ["Preventivi", "commesse"], [k.titolo]]);
-  h += '<div class="top"><h1>' + esc(k.titolo) + '<span class="sub">' + esc(nameOf(D.cli, k.cliente_id)) + " · " + esc(k.stato) + " · " + esc(k.tipo_prezzo || "Fisso") + (condivisa(k) ? " · condivisa con " + (proDi(k.id).length - 1) + " colleghi" : " · solo tua") + '</span></h1><div class="tools">' +
+  h += '<div class="top"><h1>' + esc(k.titolo) + '<span class="sub">' + lnkCli(k.cliente_id) + " · " + esc(k.stato) + " · " + esc(k.tipo_prezzo || "Fisso") + (condivisa(k) ? " · condivisa con " + (proDi(k.id).length - 1) + " colleghi" : " · solo tua") + '</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-edit="com:' + k.id + '">Modifica</button>' +
     '<button class="btn sm ghost" data-route="documento|' + k.id + '|">Documento</button>' +
     (isPR() ? "" : (timerMio() && timerMio().commessa_id === k.id
@@ -1463,10 +1470,10 @@ function stradaTask(t) {
   var k = t.commessa_id ? by(D.com, t.commessa_id) : null;
   var cli = t.cliente_id || (k && k.cliente_id);
   var pezzi = [];
-  if (cli) pezzi.push(nameOf(D.cli, cli));
-  if (k && TGROUP !== "progetto") pezzi.push(k.titolo);
-  if (t.progetto_id && TGROUP !== "progetto") pezzi.push(nameOf(D.prog, t.progetto_id));
-  if (t.sezione && TGROUP === "progetto" && t.sezione !== nameOf(D.prog, t.progetto_id)) pezzi.push(t.sezione);
+  if (cli) pezzi.push(lnkCli(cli, "lnk mini2"));
+  if (k && TGROUP !== "progetto") pezzi.push(lnkCom(k.id, "lnk mini2"));
+  if (t.progetto_id && TGROUP !== "progetto") pezzi.push(lnkProg(t.progetto_id, "lnk mini2"));
+  if (t.sezione && TGROUP === "progetto" && t.sezione !== nameOf(D.prog, t.progetto_id)) pezzi.push(esc(t.sezione));
   return pezzi.filter(Boolean).join(" · ");
 }
 function rigaTaskLista(t) {
@@ -1481,7 +1488,7 @@ function rigaTaskLista(t) {
     '<button class="ttit" data-open-task="' + t.id + '"><span class="tt1">' + esc(t.titolo) +
       (sub.length ? '<span class="faint"> · ' + subFatte + "/" + sub.length + " sotto-attività</span>" : "") +
       (bloccata ? ' <span class="badge b-amber">bloccata</span>' : "") + "</span>" +
-      (strada ? '<span class="tt2">' + esc(strada) + "</span>" : "") + "</button>" +
+      "</button>" + (strada ? '<span class="tt2">' + strada + "</span>" : "") +
     '<span class="tmeta">' +
       (t.stato === "In corso" ? '<span class="badge b-terra">in corso</span>' : t.stato === "In review" ? '<span class="badge b-blue">in review</span>' : "") +
       (t.priorita && t.priorita !== "Media" ? '<span class="badge ' + (PRIO_COL[t.priorita] || "") + '">' + esc(t.priorita) + "</span>" : "") +
@@ -1504,9 +1511,9 @@ function vistaLista(list) {
     if (TGROUP === "progetto") {
       var t0 = g[k][0], k0 = t0.commessa_id ? by(D.com, t0.commessa_id) : null;
       var cli0 = t0.cliente_id || (k0 && k0.cliente_id);
-      sotto = [cli0 ? nameOf(D.cli, cli0) : "", k0 && k0.titolo !== k ? k0.titolo : ""].filter(Boolean).join(" · ");
+      sotto = [cli0 ? lnkCli(cli0, "lnk mini2") : "", k0 && k0.titolo !== k ? lnkCom(k0.id, "lnk mini2") : ""].filter(Boolean).join(" · ");
     }
-    return '<div class="card tgroup"><div class="cardhead"><h2>' + esc(k) + (sotto ? '<span class="sub">' + esc(sotto) + "</span>" : "") + '</h2><span class="faint">' + aperte + " aperte su " + g[k].length + "</span></div>" +
+    return '<div class="card tgroup"><div class="cardhead"><h2>' + esc(k) + (sotto ? '<span class="sub">' + sotto + "</span>" : "") + '</h2><span class="faint">' + aperte + " aperte su " + g[k].length + "</span></div>" +
       '<div class="tlist">' + g[k].map(rigaTaskLista).join("") + "</div></div>";
   }).join("");
 }
@@ -1730,7 +1737,7 @@ function vAttivita() {
 
   var h = crumbs(via);
   h += '<div class="top"><h1 class="' + (fatto ? "done" : "") + '">' + esc(t.titolo) + '<span class="sub">' +
-    (prog ? esc(prog.nome) + " · " : "") + (com ? esc(nameOf(D.cli, com.cliente_id)) : "attività personale") + "</span></h1><div class=\"tools\">" +
+    (prog ? lnkProg(prog.id) + " · " : "") + (com ? lnkCli(com.cliente_id) + " · " + lnkCom(com.id) : "attività personale") + "</span></h1><div class=\"tools\">" +
     '<button class="btn sm ' + (fatto ? "ghost" : "") + '" data-tck="' + t.id + '">' + (fatto ? "Riapri" : "✓ Segna fatta") + "</button>" +
     (attivo ? '<button class="btn sm stop" data-tstop="1">■ Ferma <span id="timerlbl">' + durata(tm.iniziato) + "</span></button>"
       : '<button class="btn sm ghost" data-tstart-task="' + t.id + '">▶ Timer</button>') +
@@ -1866,7 +1873,7 @@ function vOre() {
     var tot = 0;
     var fatteL = sum(oreOfLav(l.id), function (o) { return o.ore; });
     var res = l.ore_stimate ? Math.max(0, (+l.ore_stimate || 0) - fatteL) : null;
-    h += "<tr><td>" + esc(l.nome) + '<div class="faint">' + esc(nameOf(D.prog, l.progetto_id)) + " · " + esc(nameOf(D.com, l.commessa_id, "titolo")) + "</div></td>";
+    h += "<tr><td>" + esc(l.nome) + '<div class="faint">' + lnkProg(l.progetto_id, "lnk mini2") + " · " + lnkCom(l.commessa_id, "lnk mini2") + "</div></td>";
     gg.forEach(function (g, ci) {
       var v = cella(l.id, g); tot += v;
       h += '<td class="num"><input class="tsc' + (g === today() ? " oggi" : "") + '" inputmode="decimal" data-ts="' + l.id + "|" + g + '" data-rc="' + ri + "|" + ci + '" value="' + (v ? num(v, 1) : "") + '" placeholder="·"></td>';
@@ -2735,6 +2742,16 @@ function vPro() {
   if (mio) TP.push(["ore", "Ore", num(sum(ore, function (o) { return o.ore; }), 1)]);
   h += schede(TP, t, view === "profilo" ? "profilo" : "pro", view === "profilo" ? "" : p.id);
 
+  if (t === "scheda" && mio) {
+    h += '<div class="card"><div class="cardhead"><h2>Come esci sul foglio</h2><span class="faint">logo e firma finiscono sui tuoi preventivi, e la firma anche su quelli dello studio che mandi tu</span></div>' +
+      '<div class="grid g2">' +
+      '<div class="imgbox"><div class="glab">Il tuo logo</div>' + (p.logo ? '<img src="' + esc(p.logo) + '" alt="">' : '<div class="imgvuoto">nessun logo</div>') +
+        '<div class="imgaz"><label class="btn sm ghost">Carica<input type="file" accept="image/*" data-imgup="logo" style="display:none"></label>' + (p.logo ? '<button class="lnk mini" data-imgvia="logo">togli</button>' : "") + "</div></div>" +
+      '<div class="imgbox"><div class="glab">La tua firma</div>' + (p.firma ? '<img src="' + esc(p.firma) + '" alt="">' : '<div class="imgvuoto">nessuna firma</div>') +
+        '<div class="imgaz"><label class="btn sm ghost">Carica<input type="file" accept="image/*" data-imgup="firma" style="display:none"></label>' + (p.firma ? '<button class="lnk mini" data-imgvia="firma">togli</button>' : "") + "</div>" +
+        '<p class="faint" style="margin-top:8px">Una foto della firma su carta bianca va benissimo: la ritaglio e la metto sul foglio.</p></div>' +
+      "</div></div>";
+  }
   if (t === "scheda") {
     h += '<div class="grid g2"><div class="card"><h3 style="margin-bottom:12px">Anagrafica</h3><table><tbody>' +
       row2("Vetting", '<span class="badge ' + (p.vetting === "Attivo" ? "b-green" : "b-amber") + '">' + esc(p.vetting || "—") + "</span>") +
@@ -2928,6 +2945,8 @@ function vSettings() {
   if (puo("studio")) {
     h += '<div class="card"><h2>Carta intestata dello studio</h2>' +
       '<p class="faint" style="margin:8px 0 14px">Questi dati vanno in testa ai preventivi che escono a nome dello studio, quelli dove lavorano più professionisti.</p>' +
+      '<div class="imgbox" style="margin-bottom:14px"><div class="glab">Il logo dello studio</div>' + (SET.studio_logo ? '<img src="' + esc(SET.studio_logo) + '" alt="">' : '<div class="imgvuoto">si usa il marchio Giraffa</div>') +
+        '<div class="imgaz"><label class="btn sm ghost">Carica<input type="file" accept="image/*" data-imgup="studio_logo" style="display:none"></label>' + (SET.studio_logo ? '<button class="lnk mini" data-imgvia="studio_logo">togli</button>' : "") + "</div></div>" +
       '<div class="grid g2">' +
       qcampo("set", 1, "studio_nome", "Ragione sociale", qinput("set", 1, "studio_nome", "text", SET.studio_nome, ' placeholder="Giraffa Studio"')) +
       qcampo("set", 1, "studio_piva", "P. IVA", qinput("set", 1, "studio_piva", "text", SET.studio_piva)) +
@@ -3074,7 +3093,7 @@ function vProgetto() {
   var tm = timerMio();
 
   var h = crumbs([["Lavoro"], ["Progetti", "progetti"], [p.nome]]);
-  h += '<div class="top"><h1>' + esc(p.nome) + '<span class="sub">' + esc(k ? nameOf(D.cli, k.cliente_id) : "—") + (k ? ' · <button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button>" : "") + '</span></h1><div class="tools">' +
+  h += '<div class="top"><h1>' + esc(p.nome) + '<span class="sub">' + (k ? lnkCli(k.cliente_id) : "—") + (k ? " · " + lnkCom(k.id) : "") + '</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-visprog="' + p.id + '">' + (p.visibile_cliente ? "Nascondi al cliente" : "Mostra al cliente") + "</button>" +
     '<button class="btn sm ghost" data-edit="prog:' + p.id + '">Modifica</button>' +
     '<button class="btn sm" data-new="lav" data-ctx-prog="' + p.id + '">+ Lavorazione</button></div></div>';
@@ -3979,14 +3998,18 @@ function ambitoEt(a) { return a === "studio" ? "Preventivo dello studio" : "Prev
 /* chi emette il documento: lo studio oppure il singolo professionista */
 function emittente(k) {
   if (ambitoCom(k) === "studio") {
+    var mio = (D.priv || []).filter(function (x) { return x.pro_id === me.pro_id; })[0] || {};
     return { nome: SET.studio_nome || "Giraffa Studio", piva: SET.studio_piva, indirizzo: SET.studio_indirizzo,
       email: SET.studio_email, tel: SET.studio_telefono, sito: SET.studio_sito, iban: SET.studio_iban,
-      condizioni: SET.studio_condizioni, studio: true };
+      condizioni: SET.studio_condizioni, studio: true, logo: SET.studio_logo || null,
+      /* sul preventivo dello studio firma chi lo manda: la firma è la sua */
+      firma: mio.firma || null, firmatario: me.nome };
   }
   var p = by(D.pros, k.owner_id || me.pro_id) || {};
   var pv = (D.priv || []).filter(function (x) { return x.pro_id === p.id; })[0] || {};
   return { nome: p.nome || me.nome, piva: p.piva, indirizzo: p.indirizzo || p.citta,
-    email: p.email, tel: p.telefono, sito: p.sito, iban: pv.iban, condizioni: pv.condizioni, studio: false };
+    email: p.email, tel: p.telefono, sito: p.sito, iban: pv.iban, condizioni: pv.condizioni, studio: false,
+    logo: pv.logo || null, firma: pv.firma || null, firmatario: p.nome };
 }
 /* La data che sta sul documento. Se importi un preventivo di marzo, quello
    resta un preventivo di marzo: la data in cui l'hai messo dentro il CRM non
@@ -4096,7 +4119,7 @@ function vDocumento() {
     '<button class="btn sm" data-stampa="1">Stampa / PDF</button></div></div>';
 
   h += '<div class="a4"><div class="dtop">' +
-    '<div class="dmitt"><i class="mark"></i><div><b>' + esc(em.nome || "—") + "</b>" +
+    '<div class="dmitt">' + (em.logo ? '<img class="dlogo" src="' + esc(em.logo) + '" alt="">' : '<i class="mark"></i>') + "<div><b>" + esc(em.nome || "—") + "</b>" +
     (em.indirizzo ? "<span>" + esc(em.indirizzo) + "</span>" : "") +
     (em.piva ? "<span>P. IVA " + esc(em.piva) + "</span>" : "") +
     (em.email ? "<span>" + esc(em.email) + "</span>" : "") +
@@ -4173,8 +4196,12 @@ function vDocumento() {
     edBlocco("com", k.id, "condizioni", k.condizioni || em.condizioni || "", "Tempi, modalità, cosa serve da parte vostra, cosa non è compreso.") + "</div>";
   h += '<div class="dchiusa">' + edBlocco("com", k.id, "chiusura", k.chiusura, "Una riga di chiusura: restiamo a disposizione, buon lavoro, a presto.") + "</div>";
 
-  h += '<div class="dfirme"><div><span class="lb">Per ' + esc(em.nome || "noi") + "</span><i></i></div>" +
+  h += '<div class="dfirme"><div><span class="lb">Per ' + esc(em.nome || "noi") + "</span>" +
+    (em.firma ? '<img class="dfirmaimg" src="' + esc(em.firma) + '" alt="">' : "") + "<i></i>" +
+    (em.firmatario && em.studio ? '<span class="dnota">' + esc(em.firmatario) + "</span>" : "") + "</div>" +
     '<div><span class="lb">Per accettazione</span><i></i></div></div>';
+  if (!em.logo || !em.firma) h += '<p class="dnota noprint">' + (!em.logo ? (em.studio ? "Lo studio non ha ancora un logo caricato: si mette dalle Impostazioni. " : "Non hai ancora caricato il tuo logo. ") : "") +
+    (!em.firma ? "Senza la tua firma il foglio esce con la riga vuota: la carichi dal tuo profilo." : "") + "</p>";
   var gg = k.validita == null ? 30 : +k.validita;
   var scade = new Date(dataDoc(k)); scade.setDate(scade.getDate() + gg);
   h += '<p class="dpie">Preventivo valido ' + gg + " giorni dalla data di emissione, quindi fino al " + dt(iso(scade)) + "." +
@@ -5172,6 +5199,46 @@ async function segnaLetto() {
   buildNav();
 }
 
+/* Logo e firma: l'immagine viene ridotta qui nel browser e salvata come testo,
+   così sta nella riga privata del professionista (o nelle impostazioni dello
+   studio) e stampa sempre, anche fra un anno. */
+function immagineRidotta(file, maxLato) {
+  return new Promise(function (ok, no) {
+    var img = new Image(), url = URL.createObjectURL(file);
+    img.onload = function () {
+      var sc = Math.min(1, maxLato / Math.max(img.width, img.height));
+      var c = document.createElement("canvas");
+      c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      ok(c.toDataURL("image/png"));
+    };
+    img.onerror = function () { URL.revokeObjectURL(url); no(new Error("Immagine non leggibile")); };
+    img.src = url;
+  });
+}
+async function caricaImmagine(cosa, file) {
+  var dati;
+  try { dati = await immagineRidotta(file, cosa === "firma" ? 600 : 800); } catch (e) { toast(e.message, true); return; }
+  if (dati.length > 400000) { toast("Immagine troppo pesante anche dopo la riduzione: prova un file più semplice", true); return; }
+  await salvaImmagine(cosa, dati);
+}
+async function salvaImmagine(cosa, dati) {
+  if (cosa === "studio_logo") {
+    var rs = await sb.from("settings").update({ studio_logo: dati }).eq("id", SET.id || 1);
+    if (rs.error) { toast(rs.error.message, true); return; }
+    await reload(["set"]); SET = D.set[0] || SET;
+  } else {
+    if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
+    var patch = { pro_id: me.pro_id, aggiornato: new Date().toISOString() }; patch[cosa] = dati;
+    var rp = await sb.from("pro_privato").upsert(patch, { onConflict: "pro_id" });
+    if (rp.error) { toast(rp.error.message, true); return; }
+    await reload(["priv"]);
+  }
+  toast(dati ? "Salvato" : "Tolto");
+  render();
+}
+
 /* numeri che salgono */
 function countUp() {
   if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -5376,6 +5443,7 @@ document.addEventListener("click", async function (e) {
     await reload(["iscr"]); toast(d.evsi ? "Segnato: ci sei" : "Va bene, sarà per la prossima"); render(); return;
   }
   if (d.listino) { await prendiListino(); return; }
+  if (d.imgvia) { await salvaImmagine(d.imgvia, null); return; }
   if (d.ciclo) {
     var cz = d.ciclo.split("|"), cq = document.querySelector('[data-ciclodata="' + cz[0] + '"]');
     await cambiaStato(cz[0], cz[1], cq && cq.value ? cq.value : null); return;
@@ -6154,6 +6222,9 @@ document.addEventListener("change", async function (e) {
       render();
     }
     return;
+  }
+  if (e.target.dataset && e.target.dataset.imgup && e.target.files && e.target.files.length) {
+    await caricaImmagine(e.target.dataset.imgup, e.target.files[0]); return;
   }
   if (e.target.id === "fileinp" && e.target.files && e.target.files.length) {
     var dz = el("#drop");
