@@ -5470,8 +5470,8 @@ function figuraNome(nome) {
 var VOCE_FIGURA = [
   [/\b(sito|siti|web|landing|e-?commerce|wordpress|pagin[ae] web|hosting)\b/, "Sviluppatore web"],
   [/\b(app|applicazione mobile|ios|android)\b/, "Sviluppatore app"],
+  [/\b(ads|advertising|adv|campagn[ae]|sponsorizzat)/, "Media buyer"],
   [/\b(social|instagram|facebook|tiktok|linkedin|piano editoriale|community)\b/, "Social media manager"],
-  [/\b(ads|advertising|adv|campagn[ae]|meta ads|google ads|sponsorizzat)/, "Media buyer"],
   [/\b(seo|posizionamento sui motori|keyword)\b/, "SEO specialist"],
   [/\b(foto|fotograf|shooting|scatti)/, "Fotografo"],
   [/\b(video|riprese|montaggio|spot|reel)/, "Videomaker"],
@@ -5514,15 +5514,15 @@ function attivitaTipo(r) {
   if (f && f.attivita && f.attivita.length) return { att: f.attivita, da: f.nome };
   return { att: [{ n: "Esecuzione", o: r.ore_stimate || null }, { n: "Consegna al cliente", o: null }], da: "" };
 }
+/* Conti sui mesi fatti in UTC: con le date locali il fuso sposta di un giorno
+   e "agosto" finisce a settembre. */
 function aggMesi(isoData, n) {
-  var d = new Date(isoData + "T00:00:00");
-  d.setMonth(d.getMonth() + n);
-  return iso(d);
+  var p = String(isoData).split("-");
+  return iso(new Date(Date.UTC(+p[0], +p[1] - 1 + n, Math.min(+p[2], 28))));
 }
 function fineMese(isoData) {
-  var d = new Date(isoData + "T00:00:00");
-  d.setMonth(d.getMonth() + 1); d.setDate(0);
-  return iso(d);
+  var p = String(isoData).split("-");
+  return iso(new Date(Date.UTC(+p[0], +p[1], 0)));
 }
 async function apriIlLavoro(kid) {
   var fatti = { p: 0, a: 0, gia: 0 };
