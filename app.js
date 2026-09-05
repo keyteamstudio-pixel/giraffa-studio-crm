@@ -537,7 +537,6 @@ function navFor() {
     { k: "eventi", t: "Eventi", d: "Workshop, riunioni, formazione", c: function () { return agendaFutura().length; } },
     { k: "chat", t: "Chat", d: "I canali dello studio", c: function () { return nonLettiTot(); } },
     { k: "pool", t: "Professionisti", d: "Chi c'è e cosa sa fare" },
-    { k: "professioni", t: "Mestieri", d: "Il catalogo delle figure professionali", c: function () { return D.prof.length; } },
     { k: "fornitori", t: "Fornitori", d: "La rubrica dello studio" },
     { k: "spazi", t: "Spazi", d: "Sale, postazioni e prenotazioni" }
   ]);
@@ -574,7 +573,7 @@ function buildNav() {
   var vv = view;
   if (vv === "nuovo" || vv === "mod") { var fs = FSEZ[current]; vv = fs ? fs[0] : "dash"; }
   if (vv === "riga") vv = "commesse";
-  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse", documento: "commesse", importa: "commesse" }[vv] || vv;
+  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse", documento: "commesse", importa: "commesse", professioni: "profilo" }[vv] || vv;
   h += '<button class="cerca" data-pal="1" title="Cerca ovunque (⌘K)"><span>Cerca o esegui un\'azione…</span><kbd>⌘K</kbd></button>';
   h += '<button class="cerca chiedi" data-chiedi="1" title="Fai una domanda sui tuoi dati"><span>Chiedi…</span></button>';
   var ap = navAperti(), qui = gruppoDi(cur), gr = null, gsub = "", buf = "";
@@ -650,6 +649,7 @@ function gruppoDi(v) {
   for (var i = 0; i < n.length; i++) { if (n[i].g) g = n[i].g; if (n[i].k === v) return g; }
   var m = navMio();
   for (var j = 0; j < m.length; j++) if (m[j].k === v) return "Profilo";
+  if (v === "professioni") return "Profilo";
   return "";
 }
 function etichettaDi(v) {
@@ -1990,8 +1990,9 @@ function vProfessioni() {
     return testo.toLowerCase().indexOf(q) > -1;
   });
   var mia = miaFigura();
-  var h = head("Figure professionali", D.prof.length + " mestieri nel catalogo · " + D.pros.filter(function (x) { return x.professione_id; }).length + " colleghi collegati a una figura",
-    (mia ? '<span class="badge b-terra">la tua: ' + esc(mia.nome) + "</span>" : '<button class="btn sm" data-go="profilo">Scegli la tua</button>'));
+  var h = crumbs([["Profilo"], ["Il mio profilo", "profilo"], ["Figure professionali"]]) +
+    '<div class="top"><h1>Figure professionali<span class="sub">' + D.prof.length + " mestieri nel catalogo · " + D.pros.filter(function (x) { return x.professione_id; }).length + ' colleghi collegati a una figura</span></h1><div class="tools">' +
+    (mia ? '<span class="badge b-terra">la tua: ' + esc(mia.nome) + "</span>" : '<button class="btn sm" data-edit="pros:' + (me.pro_id || "") + '">Scegli la tua</button>') + "</div></div>";
   h += '<p class="faint" style="margin:-4px 0 14px">Il catalogo è aperto: qui dentro c\'è il mestiere di chiunque, dall\'architetto al tappezziere. Ogni figura porta con sé la sua unità di misura, le voci tipiche del suo listino e le attività che aprono un suo lavoro. È da qui che il gestionale capisce come lavori.</p>';
   h += barraViste(null, "", "professioni",
     fcerca("prof", "Cerca un mestiere, un servizio, un'attività…") +
@@ -4281,7 +4282,7 @@ function vSistema() {
   var senzaRls = (d.rls || []).filter(function (x) { return !x.attiva || !+x.regole; });
 
   h += '<div class="grid g4">' +
-    kpi(peso(d.database && d.database.peso), "Database", "PostgreSQL " + esc((d.database && d.database.versione) || "")) +
+    kpi(peso(d.database && d.database.peso), "Database", "di cui dati tuoi " + peso((d.tabelle || []).reduce(function (n, t) { return n + (+t.peso || 0); }, 0)) + " · il resto è il motore PostgreSQL") +
     kpi(peso(d.archivio && d.archivio.peso), "Archivio file", ((d.archivio && d.archivio.file) || 0) + " file") +
     kpi(String(d.errori_totali || 0), "Errori registrati", (d.errori || []).length ? "ultimo " + dshort((d.errori[0] || {}).created_at) : "nessuno") +
     kpi(String((d.ai && d.ai.chiamate) || 0), "Chiamate AI", ((d.ai && d.ai.ultimi7) || 0) + " negli ultimi 7 giorni") +
