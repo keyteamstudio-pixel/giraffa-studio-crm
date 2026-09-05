@@ -48,7 +48,10 @@ function eur(n) { return "€ " + Math.round(+n || 0).toLocaleString("it-IT"); }
 function num(n, d) { var v = +n || 0; return v.toLocaleString("it-IT", { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); }
 function dt(s) { if (!s) return "—"; var d = new Date(s); return isNaN(d) ? "—" : d.toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" }); }
 function dshort(s) { if (!s) return "—"; var d = new Date(s); return isNaN(d) ? "—" : d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" }); }
-function iso(d) { return d.toISOString().slice(0, 10); }
+/* La data è quella dell'orologio di chi guarda, non quella di Greenwich: alle 23
+   a Verona è ancora oggi. */
+function iso(d) { var m = d.getMonth() + 1, g = d.getDate(); return d.getFullYear() + "-" + (m < 10 ? "0" : "") + m + "-" + (g < 10 ? "0" : "") + g; }
+function isoUTC(d) { return d.toISOString().slice(0, 10); }
 function today() { return iso(new Date()); }
 function days(a, b) { return Math.round((new Date(a) - new Date(b)) / 86400000); }
 function by(arr, id) { for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i]; return null; }
@@ -5986,11 +5989,11 @@ function attivitaTipo(r) {
    e "agosto" finisce a settembre. */
 function aggMesi(isoData, n) {
   var p = String(isoData).split("-");
-  return iso(new Date(Date.UTC(+p[0], +p[1] - 1 + n, Math.min(+p[2], 28))));
+  return isoUTC(new Date(Date.UTC(+p[0], +p[1] - 1 + n, Math.min(+p[2], 28))));
 }
 function fineMese(isoData) {
   var p = String(isoData).split("-");
-  return iso(new Date(Date.UTC(+p[0], +p[1], 0)));
+  return isoUTC(new Date(Date.UTC(+p[0], +p[1], 0)));
 }
 async function apriIlLavoro(kid) {
   var fatti = { p: 0, a: 0, gia: 0 };
