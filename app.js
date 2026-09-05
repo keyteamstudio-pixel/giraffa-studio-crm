@@ -1089,6 +1089,10 @@ function cicloBar(k) {
   h += "</div><div class=\"cazioni\"><span class=\"faint\">" +
     esc(perso ? STATO_SPIEGA.Perso : (STATO_SPIEGA[k.stato] || "")) + "</span><span class=\"cbtn\">";
   var pross = perso ? null : CICLO[i + 1];
+  /* se il preventivo è di qualche settimana fa, il giorno del passaggio non è
+     oggi: si propone la data del documento e la si corregge lì */
+  var vecchio = dataDoc(k) < iso(new Date(Date.now() - 14 * 86400000));
+  if (pross) h += '<label class="cquando"><span>il</span><input type="date" data-ciclodata="' + k.id + '" value="' + (vecchio ? dataDoc(k) : today()) + '"></label>';
   if (pross) h += '<button class="btn sm" data-ciclo="' + k.id + "|" + pross + '">' +
     (pross === "Inviato" ? "L\'ho mandato al cliente" : pross === "Accettato" ? "Il cliente ha accettato" : "Il lavoro è finito") + "</button>";
   if (!perso && k.stato !== "Completato") h += '<button class="btn sm ghost" data-ciclo="' + k.id + '|Perso">Perso</button>';
@@ -3574,7 +3578,14 @@ async function importaPdf(file) {
     titolo: letto.titolo || file.name.replace(/\.[a-z0-9]+$/i, ""),
     numero: letto.numero || "", data: letto.data || today(),
     iva: letto.iva == null ? 22 : letto.iva,
-    righe: (letto.righe || []).slice(), sconto: 0, mostraTesto: false,
+    righe: (letto.righe || []).map(function (r) {
+      return { nome: r.nome, descrizione: r.descrizione || "", qty: r.qty, prezzo_unit: r.prezzo_unit,
+        ricorrente: !!r.ricorrente, periodo: r.periodo || (r.ricorrente ? "Mensile" : null), cicli: r.cicli || null,
+        inizio: null, stato: "Da iniziare", nota_prezzo: r.nota_prezzo || null };
+    }), sconto: 0, mostraTesto: false,
+    /* dove sta davvero: un preventivo importato spesso è già stato accettato,
+       a volte è già finito. Da qui partono date, conti e attività. */
+    stato: "Inviato", accettato_il: letto.data || today(), completato_il: "",
     /* le parti discorsive: quello che il preventivo prometteva, non solo quanto costava */
     premessa: letto.premessa || "", chiusura: letto.chiusura || "", condizioni: letto.condizioni || "",
     validita: letto.validita == null ? 30 : letto.validita,
@@ -3604,7 +3615,7 @@ function vImporta() {
     return h;
   }
 
-  var lordo = sum(IMP.righe, function (r) { return (+r.qty || 0) * (+r.prezzo_unit || 0); });
+  var lordo = sum(IMP.righe, function (r) { return (+r.qty || 0) * (+r.prezzo_unit || 0) * (r.ricorrente ? Math.max(1, +r.cicli || 12) : 1); });
   var sconto = Math.round(lordo * (+IMP.sconto || 0) / 100);
   var tot = lordo - sconto;
   var iva = Math.round(tot * (+IMP.iva || 0) / 100);
@@ -3633,12 +3644,23 @@ function vImporta() {
   h += IMP.righe.length
     ? '<table><thead><tr><th>Voce</th><th class="num" style="width:90px">Q.tà</th><th class="num" style="width:130px">Prezzo</th><th class="num" style="width:120px">Importo</th><th></th></tr></thead><tbody>' +
       IMP.righe.map(function (r, i) {
-        return '<tr><td><input type="text" data-imp-riga="' + i + '|nome" value="' + esc(r.nome) + '"></td>' +
+        var cic = r.ricorrente ? Math.max(1, +r.cicli || 12) : 1;
+        var mod = attivitaTipo({ nome: r.nome, descrizione: r.descrizione, assegnato_id: me.pro_id });
+        return '<tr><td><input type="text" data-imp-riga="' + i + '|nome" value="' + esc(r.nome) + '">' +
+          (r.nota_prezzo ? '<div class="faint">' + esc(r.nota_prezzo) + "</div>" : "") + "</td>" +
           '<td class="num"><input type="number" step="0.5" data-imp-riga="' + i + '|qty" value="' + (r.qty == null ? "" : r.qty) + '"></td>' +
           '<td class="num"><input type="number" step="0.01" data-imp-riga="' + i + '|prezzo_unit" value="' + (r.prezzo_unit == null ? "" : r.prezzo_unit) + '"></td>' +
-          '<td class="num"><b>' + eur((+r.qty || 0) * (+r.prezzo_unit || 0)) + "</b></td>" +
-          '<td class="num"><button class="lnk" data-imp-riga="' + i + '|togli">togli</button></td></tr>';
-      }).join("") + "</tbody></table>"
+          '<td class="num"><b>' + eur((+r.qty || 0) * (+r.prezzo_unit || 0) * cic) + "</b>" + (r.ricorrente ? '<div class="faint">' + cic + " × " + eur((+r.qty || 0) * (+r.prezzo_unit || 0)) + "</div>" : "") + "</td>" +
+          '<td class="num"><button class="lnk" data-imp-riga="' + i + '|togli">togli</button></td></tr>' +
+          '<tr class="impdett"><td colspan="5"><div class="impopz">' +
+          '<label>Si ripete <select data-imp-riga="' + i + '|periodo">' + selKV([["", "no, una tantum"], ["Mensile", "ogni mese"], ["Annuale", "ogni anno"]], r.ricorrente ? (r.periodo || "Mensile") : "") + "</select></label>" +
+          (r.ricorrente ? '<label>per <input type="number" min="1" data-imp-riga="' + i + '|cicli" value="' + (r.cicli || 12) + '" style="width:64px"> ' + (r.periodo === "Annuale" ? "anni" : "mesi") + "</label>" +
+            '<label>dal <input type="date" data-imp-riga="' + i + '|inizio" value="' + esc(r.inizio || "") + '" title="Vuoto = dalla data di accettazione"></label>' : "") +
+          '<label>Stato <select data-imp-riga="' + i + '|stato">' + sel(["Da iniziare", "In corso", "Consegnato"], r.stato || "Da iniziare") + "</select></label>" +
+          '<span class="faint">attività: ' + esc(mod.da ? "da " + mod.da : "generiche") + "</span>" +
+          "</div></td></tr>";
+      }).join("") + "</tbody></table>" +
+      '<p class="faint" style="margin-top:8px">Un canone si ripete: metti quanti mesi e da quando. Se il prezzo è cambiato lungo il contratto, fai due voci con due date. «Consegnato» vuol dire già fatto: nasce chiuso, senza attività finte.</p>'
     : vuoto("Non è stata riconosciuta nessuna voce. Aggiungile a mano, oppure apri il testo qui sotto e copia da lì.");
   h += '<table class="dtot" style="margin-top:14px"><tbody>' +
     (sconto ? row2("Somma delle voci", eur(lordo)) + row2("Sconto " + IMP.sconto + "%", "−" + eur(sconto)) : "") +
@@ -3653,6 +3675,7 @@ function vImporta() {
   }
   h += "</div>";
 
+  h += cardStatoImport();
   h += cardTestoImport();
   h += cardPagImport(tot);
   h += cardAnagImport();
@@ -3677,18 +3700,61 @@ function vImporta() {
     '<button class="btn" data-imp-crea="1">Crea il preventivo</button></div></div>';
   return h;
 }
-/* quanto vale ogni scadenza: la percentuale sul totale, o l'importo se c'era già */
+/* Dove sta il preventivo. Se lo importi vecchio, dimmi com'è andata: così i
+   conti, le scadenze e le attività partono da lì e non da oggi. */
+function cardStatoImport() {
+  var st = IMP.stato || "Inviato";
+  var h = '<div class="card"><div class="cardhead"><h2>Dove sta questo preventivo</h2><span class="faint">' + esc(STATO_SPIEGA[st] || "") + "</span></div>";
+  h += '<div class="grid g3">' +
+    '<div class="field"><label>Stato</label><select data-imp-set="stato">' + sel(STATI, st) + "</select></div>" +
+    (STATI_VINTI.indexOf(st) > -1 ? '<div class="field"><label>Accettato il</label><input type="date" data-imp-set="accettato_il" value="' + esc(IMP.accettato_il || "") + '"></div>' : "") +
+    (st === "Completato" ? '<div class="field"><label>Finito il</label><input type="date" data-imp-set="completato_il" value="' + esc(IMP.completato_il || "") + '"></div>' : "") +
+    "</div>";
+  h += '<p class="faint">' + (STATI_VINTI.indexOf(st) > -1
+    ? "Dalla data di accettazione partono i canoni e le attività: i mesi già passati nascono già fatti, il mese in corso nasce aperto, il resto in programma."
+    : "Se il cliente ha già detto sì, mettilo qui: altrimenti resta un preventivo in attesa e lo accetti dopo dalla sua scheda.") + "</p></div>";
+  return h;
+}
+/* quanto vale ogni scadenza: sulla voce a cui si riferisce se ce l'ha
+   («Sito web: 50% alla conferma»), altrimenti sul totale */
+function impRigaSimile(nomeVoce) {
+  var n = String(nomeVoce || "").toLowerCase();
+  if (!n) return null;
+  return IMP.righe.filter(function (r) {
+    var rn = String(r.nome || "").toLowerCase();
+    return rn && (rn.indexOf(n) > -1 || n.indexOf(rn) > -1 || rn.split(" ")[0] === n.split(" ")[0]);
+  })[0] || null;
+}
 function impPagImporti(tot) {
   return (IMP.pagamenti || []).map(function (p) {
-    var v = p.importo != null ? +p.importo : (p.percentuale != null ? Math.round(tot * p.percentuale) / 100 : null);
-    return { nome: p.nome, percentuale: p.percentuale, importo: v };
+    var riga = p.voce ? impRigaSimile(p.voce) : null;
+    var base = riga ? (+riga.qty || 0) * (+riga.prezzo_unit || 0) * (1 - (+IMP.sconto || 0) / 100) : tot;
+    var v = p.importo != null ? +p.importo : (p.percentuale != null ? Math.round(base * p.percentuale) / 100 : null);
+    return { nome: p.nome + (riga ? " — " + riga.nome : ""), percentuale: p.percentuale, importo: v, voce: riga ? riga.nome : null };
   });
+}
+/* i canoni: una scadenza al mese, con la data, dalla partenza per tutti i cicli */
+function impCanoni() {
+  var out = [], partenza = IMP.accettato_il || IMP.data || today();
+  IMP.righe.forEach(function (r) {
+    if (!r.ricorrente || !(+r.prezzo_unit)) return;
+    var n = Math.max(1, +r.cicli || 12), da = r.inizio || partenza, mensile = r.periodo !== "Annuale";
+    for (var m = 0; m < n; m++) {
+      var d = mensile ? aggMesi(da, m) : iso(new Date(new Date(da + "T00:00:00").setFullYear(new Date(da + "T00:00:00").getFullYear() + m)));
+      out.push({ nome: (r.nome + " — " + (mensile ? meseEt(d.slice(0, 7)) : d.slice(0, 4))).slice(0, 140),
+        importo: Math.round((+r.qty || 1) * (+r.prezzo_unit) * (1 - (+IMP.sconto || 0) / 100)), scadenza: d });
+    }
+  });
+  return out;
 }
 function riepilogoImport() {
   var pezzi = [IMP.cliente_id ? "il preventivo" : "il cliente e il preventivo"];
   if (IMP.righe.length) pezzi.push(IMP.righe.length + (IMP.righe.length === 1 ? " voce" : " voci"));
   if (IMP.tieniSez && IMP.sezioni.length) pezzi.push(IMP.sezioni.length + (IMP.sezioni.length === 1 ? " sezione di testo" : " sezioni di testo"));
   if (IMP.creaPag && IMP.pagamenti.length) pezzi.push(IMP.pagamenti.length + " scadenze di pagamento");
+  var nc = IMP.creaCanoni !== false ? impCanoni().length : 0;
+  if (nc) pezzi.push(nc + " canoni");
+  if (STATI_VINTI.indexOf(IMP.stato) > -1) pezzi.push("i progetti e le attività (è già accettato)");
   return "Verranno creati: " + pezzi.join(", ") + ". Il documento resta allegato.";
 }
 /* Il testo del preventivo: la parte che spiega, che è quella che il cliente
@@ -3726,8 +3792,14 @@ function cardPagImport(tot) {
           '<td class="num"><b>' + (p.importo == null ? "—" : eur(p.importo)) + "</b></td>" +
           '<td class="num"><button class="lnk" data-imp-pag="' + i + '|togli">togli</button></td></tr>';
       }).join("") + "</tbody></table>" +
-      '<p class="faint" style="margin-top:10px">Le date non ci sono sul documento: le scadenze nascono senza data e le metti tu dal quadro amministrativo.</p>'
+      '<p class="faint" style="margin-top:10px">Le date non ci sono sul documento: queste scadenze nascono senza data e le metti tu dal quadro amministrativo.</p>'
     : '<p class="faint">Il documento non dice come si paga.</p>';
+  var can = impCanoni();
+  if (can.length) {
+    h += '<div class="cardhead" style="margin-top:16px"><h2>I canoni</h2><label class="chk"><input type="checkbox" data-imp-flag="creaCanoni"' + (IMP.creaCanoni !== false ? " checked" : "") + "> crea una scadenza al mese</label></div>";
+    h += '<p class="faint">' + can.length + " scadenze, dal " + dt(can[0].scadenza) + " al " + dt(can[can.length - 1].scadenza) + ", per " + eur(can.reduce(function (n, c) { return n + c.importo; }, 0)) + " in tutto. " +
+      (IMP.accettato_il ? "Partono dalla data di accettazione" : "Partono dalla data del documento") + ", o dalla data che hai messo sulla voce.</p>";
+  }
   return h + "</div>";
 }
 /* Quello che il documento dice del cliente e che in anagrafica manca. */
@@ -3767,7 +3839,9 @@ async function creaDaImport() {
   }
   var rk = await sb.from("commesse").insert({
     titolo: (IMP.titolo || "Preventivo importato").slice(0, 140),
-    cliente_id: cid, owner_id: me.pro_id, pm_id: me.pro_id, stato: "Inviato", inviato_il: IMP.data || today(),
+    cliente_id: cid, owner_id: me.pro_id, pm_id: me.pro_id, stato: IMP.stato || "Inviato", inviato_il: IMP.data || today(),
+    accettato_il: STATI_VINTI.indexOf(IMP.stato) > -1 ? (IMP.accettato_il || IMP.data || today()) : null,
+    completato_il: IMP.stato === "Completato" ? (IMP.completato_il || today()) : null,
     ambito: IMP.ambito || "personale",
     numero: IMP.numero || null, data: IMP.data || today(), iva: IMP.iva == null ? 22 : +IMP.iva, sconto: +IMP.sconto || 0,
     premessa: IMP.premessa || null, condizioni: IMP.condizioni || null, chiusura: IMP.chiusura || null,
@@ -3781,19 +3855,28 @@ async function creaDaImport() {
     var righe = IMP.righe.map(function (r, i) {
       return { commessa_id: kid, tipo: "Servizio", nome: (r.nome || "Voce").slice(0, 200),
         descrizione: r.descrizione || null,
-        qty: +r.qty || 1, prezzo_unit: +r.prezzo_unit || 0, assegnato_id: me.pro_id, ordine: i + 1 };
+        qty: +r.qty || 1, prezzo_unit: +r.prezzo_unit || 0, assegnato_id: me.pro_id, ordine: i + 1,
+        ricorrente: !!r.ricorrente, periodo: r.ricorrente ? (r.periodo || "Mensile") : null, cicli: r.ricorrente ? Math.max(1, +r.cicli || 12) : 1,
+        inizio: r.inizio || null, stato: r.stato || "Da iniziare", nota_prezzo: r.nota_prezzo || null };
     });
     var rr = await sb.from("righe").insert(righe);
     if (rr.error) toast("Preventivo creato, ma le voci no: " + rr.error.message, true);
   }
   /* le scadenze: senza data, perché il documento dice «alla firma», non «il 12» */
   if (IMP.creaPag && IMP.pagamenti.length) {
-    var lordoP = sum(IMP.righe, function (r) { return (+r.qty || 0) * (+r.prezzo_unit || 0); });
+    var lordoP = sum(IMP.righe, function (r) { return (+r.qty || 0) * (+r.prezzo_unit || 0) * (r.ricorrente ? Math.max(1, +r.cicli || 12) : 1); });
     var totP = lordoP - Math.round(lordoP * (+IMP.sconto || 0) / 100);
     var rp = await sb.from("pagamenti").insert(impPagImporti(totP).map(function (p) {
       return { commessa_id: kid, nome: p.nome.slice(0, 140), importo: p.importo, stato: "Da incassare" };
     }));
     if (rp.error) toast("Preventivo creato, ma le scadenze no: " + rp.error.message, true);
+  }
+  var canoni = IMP.creaCanoni !== false ? impCanoni() : [];
+  if (canoni.length) {
+    var rcan = await sb.from("pagamenti").insert(canoni.map(function (c) {
+      return { commessa_id: kid, nome: c.nome, importo: c.importo, scadenza: c.scadenza, stato: "Da incassare" };
+    }));
+    if (rcan.error) toast("Preventivo creato, ma i canoni no: " + rcan.error.message, true);
   }
   /* il documento di partenza resta attaccato: serve per controllare cosa avevi promesso */
   try {
@@ -3804,8 +3887,12 @@ async function creaDaImport() {
   } catch (e) { }
   await logEv(kid, "Importato da " + IMP.file.name);
   await reload(["com", "righe", "cli", "mat", "ev", "pag"]);
+  var giaVinto = STATI_VINTI.indexOf(IMP.stato) > -1;
   IMP = null;
-  toast("Preventivo importato");
+  if (giaVinto) {
+    var fL = await apriIlLavoro(kid);
+    toast("Preventivo importato. " + esitoLavoro(fL));
+  } else toast("Preventivo importato");
   go("commessa", kid, "servizi");
 }
 
@@ -5205,7 +5292,10 @@ document.addEventListener("click", async function (e) {
     await reload(["iscr"]); toast(d.evsi ? "Segnato: ci sei" : "Va bene, sarà per la prossima"); render(); return;
   }
   if (d.listino) { await prendiListino(); return; }
-  if (d.ciclo) { var cz = d.ciclo.split("|"); await cambiaStato(cz[0], cz[1]); return; }
+  if (d.ciclo) {
+    var cz = d.ciclo.split("|"), cq = document.querySelector('[data-ciclodata="' + cz[0] + '"]');
+    await cambiaStato(cz[0], cz[1], cq && cq.value ? cq.value : null); return;
+  }
   if (d.portnew) {
     var tok = "";
     var alfa = "abcdefghijkmnopqrstuvwxyz23456789";
@@ -5360,56 +5450,144 @@ document.addEventListener("click", async function (e) {
 
 /* ---------------- dal preventivo al lavoro ----------------
    Quando il cliente dice sì il preventivo smette di essere un foglio. Da ogni
-   voce scelta nasce un progetto, e dentro il progetto le attività tipo di quel
-   servizio. Se il servizio non ne ha, si prendono quelle della figura
-   professionale di chi lo esegue: un fotografo apre sopralluogo, shooting,
-   selezione e post produzione; un avvocato apre colloquio, studio, atto, udienze.
-   Niente di tutto questo è definitivo: sono attività vere, si spostano e si
-   cancellano come le altre. */
+   voce nasce un progetto, e dentro il progetto le attività giuste per QUELLA
+   voce: un sito apre analisi-sviluppo-test-messa online, una gestione social
+   apre un mese dopo l'altro. Il modello si sceglie guardando cosa c'è scritto
+   nella voce, non chi la fa: un consulente marketing che vende un sito apre le
+   attività di un sito. E se il preventivo è vecchio, i mesi già passati nascono
+   già fatti: il gestionale racconta quello che è successo, non finge che tutto
+   cominci oggi. */
 function figuraDi(proId) {
   var pr = by(D.pros, proId);
   return pr && pr.professione_id ? by(D.prof, pr.professione_id) : null;
 }
+function figuraNome(nome) {
+  var n = nome.toLowerCase();
+  return D.prof.filter(function (f) { return String(f.nome).toLowerCase() === n; })[0] || null;
+}
+/* Cosa c'è scritto nella voce → che mestiere è. Poche parole, quelle che
+   compaiono davvero nei preventivi italiani. Si estende aggiungendo una riga. */
+var VOCE_FIGURA = [
+  [/\b(sito|siti|web|landing|e-?commerce|wordpress|pagin[ae] web|hosting)\b/, "Sviluppatore web"],
+  [/\b(app|applicazione mobile|ios|android)\b/, "Sviluppatore app"],
+  [/\b(social|instagram|facebook|tiktok|linkedin|piano editoriale|community)\b/, "Social media manager"],
+  [/\b(ads|advertising|adv|campagn[ae]|meta ads|google ads|sponsorizzat)/, "Media buyer"],
+  [/\b(seo|posizionamento sui motori|keyword)\b/, "SEO specialist"],
+  [/\b(foto|fotograf|shooting|scatti)/, "Fotografo"],
+  [/\b(video|riprese|montaggio|spot|reel)/, "Videomaker"],
+  [/\b(logo|brand|marchio|identit[àa] visiva|naming)\b/, "Brand designer"],
+  [/\b(grafic|impaginazion|volantin|brochure|catalogo|biglietti da visita|menu)/, "Graphic designer"],
+  [/\b(illustrazion|disegn)/, "Illustratore"],
+  [/\b(testi|copy|copywriting|articol|blog|newsletter|comunicato)/, "Copywriter"],
+  [/\b(traduzion|traduttore)/, "Traduttore"],
+  [/\b(ux|ui|interfacc|wireframe|prototip)/, "UX designer"],
+  [/\b(formazion|corso|workshop|lezion)/, "Formatore"],
+  [/\b(consulenz|strategi|marketing|posizionamento|analisi di mercato)/, "Consulente marketing"],
+  [/\b(evento|eventi|inaugurazion|allestiment)/, "Event planner"],
+  [/\b(progett(o|azione) (di )?interni|arred|render)/, "Interior designer"],
+  [/\b(progetto architettonic|pratica edilizia|ristrutturazion|cantiere)/, "Architetto"],
+  [/\b(contabilit|bilancio|dichiarazion)/, "Commercialista"],
+  [/\b(contratt|parere legale|assistenza legale)/, "Avvocato"]
+];
+function figuraPerTesto(testo) {
+  var t = String(testo || "").toLowerCase();
+  for (var i = 0; i < VOCE_FIGURA.length; i++) if (VOCE_FIGURA[i][0].test(t)) return figuraNome(VOCE_FIGURA[i][1]);
+  return null;
+}
+/* Il listino di chi fa la voce: se una voce del listino le somiglia e ha le sue
+   attività, valgono quelle. */
+function servizioSimile(r, proId) {
+  var n = String(r.nome || "").toLowerCase();
+  if (!n) return null;
+  var miei = D.serv.filter(function (s) { return (!proId || s.pro_id === proId) && s.attivita && s.attivita.length; });
+  return miei.filter(function (s) {
+    var sn = String(s.nome || "").toLowerCase();
+    return sn && (n.indexOf(sn) > -1 || sn.indexOf(n) > -1);
+  })[0] || null;
+}
 function attivitaTipo(r) {
   var sv = by(D.serv, r.serv_id);
-  if (sv && sv.attivita && sv.attivita.length) return sv.attivita;
-  var f = (sv && sv.professione_id && by(D.prof, sv.professione_id)) || figuraDi(r.assegnato_id || (sv && sv.pro_id));
-  if (f && f.attivita && f.attivita.length) return f.attivita;
-  return [{ n: "Esecuzione", o: r.ore_stimate || null }, { n: "Consegna al cliente", o: null }];
+  if (sv && sv.attivita && sv.attivita.length) return { att: sv.attivita, da: sv.nome };
+  var sim = servizioSimile(r, r.assegnato_id || (sv && sv.pro_id));
+  if (sim) return { att: sim.attivita, da: sim.nome };
+  var f = figuraPerTesto((r.nome || "") + " " + (r.descrizione || "")) || (sv && sv.professione_id && by(D.prof, sv.professione_id)) || figuraDi(r.assegnato_id || (sv && sv.pro_id));
+  if (f && f.attivita && f.attivita.length) return { att: f.attivita, da: f.nome };
+  return { att: [{ n: "Esecuzione", o: r.ore_stimate || null }, { n: "Consegna al cliente", o: null }], da: "" };
+}
+function aggMesi(isoData, n) {
+  var d = new Date(isoData + "T00:00:00");
+  d.setMonth(d.getMonth() + n);
+  return iso(d);
+}
+function fineMese(isoData) {
+  var d = new Date(isoData + "T00:00:00");
+  d.setMonth(d.getMonth() + 1); d.setDate(0);
+  return iso(d);
 }
 async function apriIlLavoro(kid) {
   var fatti = { p: 0, a: 0, gia: 0 };
   var k = by(D.com, kid); if (!k) return fatti;
   var righe = righeOf(kid).filter(function (r) { return !r.opzionale && r.tipo !== "Sconto"; });
   var esistenti = progOf(kid).slice();
+  var oggi = today(), partenza = k.accettato_il || dataDoc(k);
+  var tuttoFinito = k.stato === "Completato";
   for (var i = 0; i < righe.length; i++) {
     var r = righe[i], cc = rigaCalc(r), chi = cc.pro || k.owner_id || me.pro_id;
     var nome = (cc.nome || "Lavoro").slice(0, 140);
+    var mod = attivitaTipo(r);
+    var inizio = r.inizio || partenza;
+    var ricorrente = !!r.ricorrente, cicli = ricorrente ? Math.max(1, +r.cicli || 12) : 1;
+    var fine = ricorrente ? fineMese(aggMesi(inizio, cicli - 1)) : (k.scadenza || null);
+    var fatto = tuttoFinito || r.stato === "Consegnato" || (ricorrente && fine < oggi);
+    var inCorso = !fatto && (r.stato === "In corso" || (ricorrente && inizio <= oggi) || (!ricorrente && inizio < oggi && k.stato === "Accettato"));
+    var statoP = fatto ? "Completato" : inCorso ? "In corso" : "Da iniziare";
     var pg = r.progetto_id ? by(D.prog, r.progetto_id) : null;
     if (!pg) pg = esistenti.filter(function (x) { return x.nome === nome; })[0];
     var pid = pg && pg.id;
     if (!pid) {
       var np = await sb.from("progetti").insert({
         commessa_id: kid, nome: nome, descrizione: r.descrizione || null,
-        pro_id: chi, stato: "Da iniziare", ordine: i + 1,
-        inizio: k.inizio || null, fine: k.scadenza || null
+        pro_id: chi, stato: statoP, avanzamento: fatto ? 100 : 0, ordine: i + 1,
+        inizio: inizio, fine: fine
       }).select();
       if (np.error) { toast(np.error.message, true); return fatti; }
       pid = np.data[0].id; esistenti.push(np.data[0]); fatti.p++;
       if (!r.progetto_id) await sb.from("righe").update({ progetto_id: pid }).eq("id", r.id);
     } else fatti.gia++;
-    var mod = attivitaTipo(r), nuove = [];
+    /* un lavoro già consegnato non ha bisogno di attività finte già fatte */
+    if (fatto && !ricorrente) continue;
     var gia = D.task.filter(function (t) { return t.progetto_id === pid; }).map(function (t) { return t.titolo; });
-    mod.forEach(function (a, j) {
-      var tit = String(a.n || a.nome || "Attività").slice(0, 200);
-      if (gia.indexOf(tit) > -1) return;
-      gia.push(tit);
-      nuove.push({
-        titolo: tit, commessa_id: kid, cliente_id: k.cliente_id || null, progetto_id: pid,
-        assegnato_id: chi || null, stato: "Da fare", priorita: "Media", ordine: j + 1,
-        stimate: (a.o == null || a.o === "") ? null : +a.o, sezione: nome.slice(0, 80)
+    var nuove = [];
+    if (ricorrente) {
+      /* un canone è un mese dopo l'altro: ogni mese la sua attività, con dentro
+         cosa comprende. Quelli passati nascono fatti. */
+      var cosa = mod.att.map(function (a) { return a.n || a.nome; }).filter(Boolean).join(" · ");
+      var oreMese = mod.att.reduce(function (n, a) { return n + (+a.o || 0); }, 0) || null;
+      for (var m = 0; m < cicli; m++) {
+        var dal = aggMesi(inizio, m), al = fineMese(dal);
+        var tit = (nome + " — " + meseEt(dal.slice(0, 7))).slice(0, 200);
+        if (gia.indexOf(tit) > -1) continue;
+        var passato = al < oggi, corrente = !passato && dal <= oggi;
+        nuove.push({
+          titolo: tit, commessa_id: kid, cliente_id: k.cliente_id || null, progetto_id: pid,
+          assegnato_id: chi || null, stato: passato ? "Fatto" : corrente ? "In corso" : "Da fare",
+          priorita: "Media", ordine: m + 1, inizio: dal, scadenza: al,
+          completata_il: passato ? al + "T18:00:00Z" : null,
+          stimate: oreMese, sezione: nome.slice(0, 80), descrizione: cosa || null
+        });
+      }
+    } else {
+      mod.att.forEach(function (a, j) {
+        var tit2 = String(a.n || a.nome || "Attività").slice(0, 200);
+        if (gia.indexOf(tit2) > -1) return;
+        gia.push(tit2);
+        nuove.push({
+          titolo: tit2, commessa_id: kid, cliente_id: k.cliente_id || null, progetto_id: pid,
+          assegnato_id: chi || null, stato: "Da fare", priorita: "Media", ordine: j + 1,
+          stimate: (a.o == null || a.o === "") ? null : +a.o, sezione: nome.slice(0, 80)
+        });
       });
-    });
+    }
     if (nuove.length) {
       var nt = await sb.from("task").insert(nuove);
       if (nt.error) { toast(nt.error.message, true); return fatti; }
@@ -5437,11 +5615,11 @@ async function avviaLavoro(kid) {
    congela il numero quando il preventivo parte, e all'accettazione nascono
    progetti e attività. Una cosa sola, perché nella testa di chi lavora è una
    cosa sola. */
-async function cambiaStato(kid, val) {
+async function cambiaStato(kid, val, quando) {
   var k = by(D.com, kid) || {};
   if (!k.id || k.stato === val) return;
   var patch = { stato: val };
-  if (STATO_DATA[val] && !k[STATO_DATA[val]]) patch[STATO_DATA[val]] = today();
+  if (STATO_DATA[val] && (quando || !k[STATO_DATA[val]])) patch[STATO_DATA[val]] = quando || today();
   if (val !== "Bozza" && !k.numero) patch.numero = numeroDoc(k);
   var eraAvviato = k.avviato;
   if (!await salvaSubito("com", kid, patch)) return;
@@ -5874,13 +6052,19 @@ document.addEventListener("change", async function (e) {
   if (e.target.dataset && e.target.dataset.impSet && IMP) {
     var campoImp = e.target.dataset.impSet;
     IMP[campoImp] = (campoImp === "iva" || campoImp === "sconto") ? (+e.target.value || 0) : e.target.value;
-    if (campoImp === "iva" || campoImp === "sconto") { render(); return; }
+    if (campoImp === "iva" || campoImp === "sconto" || campoImp === "stato" || campoImp === "accettato_il") { render(); return; }
     if (campoImp === "cliente_id") render();
     return;
   }
   if (e.target.dataset && e.target.dataset.impRiga && IMP) {
     var pi = e.target.dataset.impRiga.split("|"), ri = IMP.righe[+pi[0]];
-    if (ri) { ri[pi[1]] = pi[1] === "nome" ? e.target.value : (e.target.value === "" ? null : +e.target.value); render(); }
+    if (ri) {
+      var cImp = pi[1], vImp = e.target.value;
+      if (cImp === "periodo") { ri.ricorrente = !!vImp; ri.periodo = vImp || null; if (ri.ricorrente && !ri.cicli) ri.cicli = 12; }
+      else if (["nome", "stato", "inizio", "nota_prezzo"].indexOf(cImp) > -1) ri[cImp] = vImp || null;
+      else ri[cImp] = vImp === "" ? null : +vImp;
+      render();
+    }
     return;
   }
   if (e.target.id === "fileinp" && e.target.files && e.target.files.length) {
