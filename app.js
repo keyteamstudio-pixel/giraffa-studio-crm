@@ -33,6 +33,8 @@ var SET = { fee_default: 12 };
 var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
   prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni" };
 
+/* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
+var COLONNE = { port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd" };
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
 var EXP = {}, VISTA = "tabella", FSTATO = "", FSAL = "", DRAG = null;
@@ -166,7 +168,9 @@ function budget(k) {
   var oreFatte = sum(ore, function (o) { return o.ore; });
   /* i costi vivi del lavoro: quelli non ribaltati al cliente mangiano il margine */
   var costiVivi = costiTot(costiOf(k.id).filter(function (x) { return !x.ribaltato; }));
-  var costoReale = c.cost + costiVivi;
+  /* le ore registrate valgono più del piano: se ho lavorato più del previsto, il costo reale lo dice */
+  var costoOre = sum(ore, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); });
+  var costoReale = Math.max(c.cost, costoOre) + costiVivi;
   var margPian = ricavo - c.cost;
   var margReale = ricavo - costoReale;
   var burnOre = oreStim ? Math.round(oreFatte / oreStim * 100) : null;
@@ -444,6 +448,7 @@ function erroreUmano(e) {
   if (c === "23502" || /not-null|null value/i.test(m)) return "Manca un campo obbligatorio.";
   if (/invalid input syntax/i.test(m)) return "Un valore non è nel formato giusto: controlla numeri e date.";
   if (/Failed to fetch|NetworkError|Load failed|network/i.test(m)) return "Non riesco a raggiungere il server: controlla la connessione e riprova.";
+  if (/già prenotat/i.test(m)) return "Quello spazio è già prenotato in quel momento.";
   if (/does not exist|PGRST|schema cache/i.test(m)) return "Il CRM e il database non sono allineati: ricarica la pagina.";
   return m || "Qualcosa è andato storto.";
 }
@@ -452,7 +457,9 @@ function dettoFatto(t, mod) {
   if (t === "Ore") return "Ore " + (mod ? "aggiornate" : "registrate");
   return t + (mod ? (femm(t) ? " aggiornata" : " aggiornato") : (femm(t) ? " creata" : " creato"));
 }
-function valoreCliente(c) { return sum(comOfCliente(c).filter(function (k) { return k.stato !== "Perso"; }), function (k) { return calc(k).tot; }); }
+/* Il valore di un preventivo è uno solo, ovunque: quanto vale il lavoro con le varianti approvate. */
+function valore(k) { return budget(k).ricavo; }
+function valoreCliente(c) { return sum(comOfCliente(c).filter(function (k) { return k.stato !== "Perso"; }), valore); }
 
 function isMineCom(k) { return me.pro_id && (k.owner_id === me.pro_id || k.pm_id === me.pro_id || k.pr_id === me.pro_id || righeOf(k.id).some(function (r) { var s = by(D.serv, r.serv_id); return r.assegnato_id === me.pro_id || (s && s.pro_id === me.pro_id); })); }
 function mio(row, kind) {
@@ -486,7 +493,7 @@ async function loadAll() {
   } else { me.ruolo = ""; me.perm = { spazi: false, studio: false, accessi: false }; }
   if (isCliente()) { var p = await sb.rpc("portale"); PORT = p.data || []; me.nome = "Area cliente"; return; }
   var keys = Object.keys(TB);
-  var res = await Promise.all(keys.map(function (k) { return sb.from(TB[k]).select("*"); }));
+  var res = await Promise.all(keys.map(function (k) { return sb.from(TB[k]).select(COLONNE[k] || "*"); }));
   /* se una tabella non risponde lo devi sapere: dati vuoti e dati negati non sono
      la stessa cosa, e confonderli fa prendere decisioni sbagliate */
   var rotte = [];
@@ -533,7 +540,7 @@ async function salvaSubito(tbk, id, patch) {
 }
 async function reload(keys) {
   await Promise.all(keys.map(async function (k) {
-    var r = await sb.from(TB[k]).select("*"); if (!r.error) D[k] = r.data || [];
+    var r = await sb.from(TB[k]).select(COLONNE[k] || "*"); if (!r.error) D[k] = r.data || [];
   }));
   if (keys.indexOf("pros") > -1 || keys.indexOf("priv") > -1) mieiDatiPersonali();
 }
@@ -591,7 +598,7 @@ function navFor() {
     { g: "Clienti" },
     { k: "clienti", t: "Clienti", d: "I tuoi clienti", c: function () { return fcli().length; } },
     { k: "commesse", t: "Preventivi", d: "I tuoi e quelli dello studio", c: function () { return fcom().filter(function (k) { return STATI_APERTI.indexOf(k.stato) > -1; }).length; } },
-    { k: "amm", t: "Amministrazione", d: "Incassi, scadenze, pipeline" },
+    { k: "amm", t: "Amministrazione", d: "Incassi, scadenze, preventivi in gioco" },
     { k: "report", t: "Report", d: "Numeri e andamenti" },
     { g: "Studio" },
     { k: "studio", t: "Bacheca", d: "Cosa succede nello studio", c: function () { return D.post.filter(function (p) { return p.fissato; }).length; } },
@@ -798,6 +805,9 @@ function focusItems(com, tk) {
   com.filter(function (k) { return salute(k).c === "b-red"; }).forEach(function (k) {
     f.push({ p: 2, c: "b-red", t: "Lavoro a rischio: " + k.titolo, s: salute(k).d, k: k.id, tab: "fasi" });
   });
+  fcli().filter(function (c) { return c.richiamo && c.richiamo <= today() && c.stato !== "Chiuso"; }).forEach(function (c) {
+    f.push({ p: 2, c: "b-amber", t: "Risentire " + c.nome, s: (c.richiamo_nota ? c.richiamo_nota + " · " : "") + (c.richiamo < today() ? "era per il " + dt(c.richiamo) : "oggi"), cli: c.id });
+  });
   var d = new Date(), dow = d.getDay();
   if (dow > 0 && dow < 6 && !fore().some(function (o) { return o.data === today(); })) {
     f.push({ p: 4, c: "", t: "Non hai ancora registrato le ore di oggi", s: "bastano trenta secondi", act: "ore" });
@@ -877,7 +887,7 @@ function proposte(dove) {
       var quanti = ultima ? days(today(), ultima) : days(today(), (k.created_at || today()).slice(0, 10));
       if (quanti >= 21) {
         agg({ id: "ore-" + k.id + "-" + (ultima || "mai"), ico: "◷", t: "Su «" + nome + "» " + (ultima ? "non registri ore da " + quanti + " giorni." : "non hai mai registrato ore."),
-          s: "O il lavoro è fermo, o quelle ore le stai regalando.", si: "Apri il timesheet", az: "vai|ore||" });
+          s: "O il lavoro è fermo, o quelle ore le stai regalando.", si: "Apri le ore", az: "vai|ore||" });
       }
     }
   });
@@ -947,7 +957,7 @@ async function faiProposta(az, id) {
 function vDash() {
   var com = fcom(), cli = fcli(), ore = fore(), tk = ftask();
   var aperte = com.filter(function (k) { return ["Inviato", "Accettato"].indexOf(k.stato) > -1; });
-  var pipeline = sum(aperte, function (k) { return calc(k).tot; });
+  var pipeline = sum(aperte, valore);
   var d = new Date(), m0 = iso(new Date(d.getFullYear(), d.getMonth(), 1));
   var oreMese = ore.filter(function (o) { return o.data >= m0; });
   var urgenti = tk.filter(function (t) { return t.stato !== "Fatto" && t.scadenza && days(t.scadenza, today()) <= 7; }).sort(function (a, b) { return (a.scadenza || "") < (b.scadenza || "") ? -1 : 1; });
@@ -968,7 +978,7 @@ function vDash() {
   h += '<div class="grid g32">';
   h += '<div class="card"><div class="cardhead"><h2>Da guardare adesso</h2>' + (foc.length ? '<span class="badge ' + (foc[0].c || "") + '">' + foc.length + (foc.length === 1 ? " cosa" : " cose") + "</span>" : '<span class="badge b-green">tutto in ordine</span>') + "</div>";
   h += foc.length ? foc.map(function (f) {
-    return '<button class="frow" ' + (f.task ? 'data-open-task="' + f.task + '"' : f.act ? 'data-new="' + f.act + '"' : 'data-open-com="' + f.k + '"') + '><span class="fdot ' + (f.c || "b-blue") + '"></span><span class="ftxt"><b>' + esc(f.t) + '</b><span class="faint">' + esc(f.s) + "</span></span><span class=\"fgo\">›</span></button>";
+    return '<button class="frow" ' + (f.task ? 'data-open-task="' + f.task + '"' : f.cli ? 'data-open-cli="' + f.cli + '"' : f.act ? 'data-new="' + f.act + '"' : 'data-open-com="' + f.k + '"') + '><span class="fdot ' + (f.c || "b-blue") + '"></span><span class="ftxt"><b>' + esc(f.t) + '</b><span class="faint">' + esc(f.s) + "</span></span><span class=\"fgo\">›</span></button>";
   }).join("") : '<div class="empty">Nessuna urgenza: puoi lavorare sereno.</div>';
   h += "</div><div>";
   h += '<div class="card ringcard">' + ring(avgAv, 104) + '<div><h2>Avanzamento medio</h2><p class="faint" style="margin-top:4px">' + attive.length + " lavori attivi<br>" + (eur(pipeline) + " di pipeline") + "</p></div></div>";
@@ -988,11 +998,11 @@ function vDash() {
   h += "</div><div>";
 
   var per = {}; STATI.forEach(function (s) { per[s] = com.filter(function (k) { return k.stato === s; }); });
-  var mxp = Math.max.apply(null, STATI.map(function (s) { return sum(per[s], function (k) { return calc(k).tot; }); }).concat([1]));
-  h += '<div class="card"><div class="cardhead"><h2>Pipeline</h2><span class="faint">' + eur(pipeline) + " aperti</span></div><div class=\"funnel\">";
+  var mxp = Math.max.apply(null, STATI.map(function (s) { return sum(per[s], valore); }).concat([1]));
+  h += '<div class="card"><div class="cardhead"><h2>Preventivi per momento</h2><span class="faint">' + eur(pipeline) + " in attesa</span></div><div class=\"funnel\">";
   STATI.forEach(function (s) {
     if (!per[s].length) return;
-    var v = sum(per[s], function (k) { return calc(k).tot; });
+    var v = sum(per[s], valore);
     h += '<div class="frow2"><span class="badge ' + (STATO_COL[s] || "") + '">' + s + '</span><span class="ftrack"><i class="' + (STATO_COL[s] || "") + '" style="width:' + Math.max(4, Math.round(v / mxp * 100)) + '%"></i></span><span class="fnum">' + eur(v) + "</span></div>";
   });
   h += "</div></div>";
@@ -1258,7 +1268,7 @@ function vCommessa() {
     (me.pro_id ? row2("Il mio compenso", eur(c.mio)) : "") +
     row2("Ore stimate / fatte", num(b.oreStim, 0) + " h / " + num(b.oreFatte, 1) + " h") +
     (b.oreFatte ? row2("€/h reale sul valore", eur(b.ricavo / b.oreFatte)) : "") +
-    (k.tipo_prezzo === "Retainer" && k.retainer_mensile ? row2("Retainer mensile", eur(k.retainer_mensile)) : "") +
+    (k.tipo_prezzo === "Retainer" && k.retainer_mensile ? row2("Canone mensile", eur(k.retainer_mensile)) : "") +
     "</tbody></table></div>";
 
   h += '<div class="card"><h3 style="margin-bottom:12px">Chi ci lavora</h3>';
@@ -1950,7 +1960,7 @@ function vOre() {
   var sett = list.filter(function (o) { return days(today(), o.data) < 7 && days(today(), o.data) >= 0; });
   var fatt = mese.filter(function (o) { return o.fatturabile; });
   var totMese = sum(mese, function (o) { return o.ore; });
-  var h = head("Ore & timesheet", "Il tuo registro ore: lo vedi solo tu, serve a te per tararti e per i clienti gestiti a ore", '<button class="btn sm" data-new="ore">+ Registra ore</button>');
+  var h = head("Le tue ore", "Il tuo registro ore: lo vedi solo tu, serve a te per tararti e per i clienti gestiti a ore", '<button class="btn sm" data-new="ore">+ Registra ore</button>');
   h += '<div class="grid g4">' +
     kpi(num(totMese, 1) + " h", "Questo mese", num(sum(sett, function (o) { return o.ore; }), 1) + " h negli ultimi 7 giorni") +
     kpi(num(sum(fatt, function (o) { return o.ore; }), 1) + " h", "Fatturabili", totMese ? Math.round(sum(fatt, function (o) { return o.ore; }) / totMese * 100) + "% del totale" : "—") +
@@ -2053,7 +2063,7 @@ function vAmm() {
   h += '<div class="grid g4">' +
     kpi(eur(incassato), "Incassato " + anno, pagMiei.filter(function (p) { return p.stato === "Incassato"; }).length + " scadenze saldate") +
     kpi(eur(daIncassare), "Da incassare", scadute.length ? scadute.length + " già scadute" : "nessuna scaduta") +
-    kpi(eur(sum(aperte, function (k) { return calc(k).tot; })), "Pipeline aperta", aperte.length + " preventivi in gioco") +
+    kpi(eur(sum(aperte, valore)), "Preventivi in gioco", aperte.length + " in attesa di risposta") +
     kpi(tassoVinc == null ? "—" : tassoVinc + " %", "Preventivi vinti", vinti.length + " vinti · " + persi.length + " persi") + "</div>";
 
   h += '<div class="grid g32" style="margin-top:18px"><div>';
@@ -2071,7 +2081,7 @@ function vAmm() {
   h += '<div class="card"><div class="cardhead"><h2>Preventivi da seguire</h2><button class="btn sm ghost" data-go="commesse">Tutti</button></div>';
   h += inviati.length ? '<div class="checklist">' + inviati.map(function (k) {
     var g = days(today(), k.created_at ? String(k.created_at).slice(0, 10) : today());
-    return '<div class="cri"><button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button><span class=\"faint\"> · " + esc(nameOf(D.cli, k.cliente_id)) + " · " + eur(calc(k).tot) + (g > 7 ? ' · <b class="neg">inviato ' + g + " giorni fa</b>" : "") + "</span></div>";
+    return '<div class="cri"><button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button><span class=\"faint\"> · " + esc(nameOf(D.cli, k.cliente_id)) + " · " + eur(valore(k)) + (g > 7 ? ' · <b class="neg">inviato ' + g + " giorni fa</b>" : "") + "</span></div>";
   }).join("") + "</div>" : vuoto("Nessun preventivo in attesa di risposta.");
   h += "</div></div><div>";
   h += '<div class="card"><div class="cardhead"><h2>Scadenze di pagamento</h2></div>';
@@ -2547,7 +2557,7 @@ function vClienti() {
         '<div class="cardhead"><h2>' + esc(c.nome) + '</h2><span class="badge ' + (c.stato === "Attivo" ? "b-green" : c.stato === "Lead" ? "b-amber" : "") + '">' + esc(c.stato || "Lead") + "</span></div>" +
         '<p class="faint">' + esc(c.settore || "—") + (c.referente ? " · " + esc(c.referente) : "") + "</p>" +
         "<table><tbody>" + row2("Preventivi", com.length + (att.length ? " · " + att.length + " attivi" : "")) +
-        row2("Valore", eur(valoreCliente(c.id))) + row2("Owner", esc(nameOf(D.pros, c.owner_id))) + "</tbody></table></div>";
+        row2("Valore", eur(valoreCliente(c.id))) + row2("Chi lo segue", esc(nameOf(D.pros, c.owner_id))) + "</tbody></table></div>";
     }).join("") + "</div>";
   }
   return h + '<div class="card tlist">' + ordinati.map(function (c) {
@@ -2579,7 +2589,7 @@ function vCliente() {
     kpi(eur(valoreCliente(c.id)), "Valore totale", com.length + " preventivi") +
     kpi(eur(sum(pg.filter(function (p) { return p.stato === "Incassato"; }), function (p) { return p.importo; })), "Incassato", eur(sum(pg.filter(function (p) { return p.stato !== "Incassato"; }), function (p) { return p.importo; })) + " da incassare") +
     kpi(String(inter.length), "Interazioni", inter[0] ? "ultima " + dt(inter[0].data) : "—") +
-    kpi(pl ? (pl.attivo ? "Attivo" : "Sospeso") : accesso ? "Con account" : "No", "Accesso al portale", pl ? (pl.pwd_hash ? "link con password" : "manca la password") : accesso ? esc(accesso.email || "") : "nessun accesso") + "</div>";
+    kpi(pl ? (pl.attivo ? "Attivo" : "Sospeso") : accesso ? "Con account" : "No", "Accesso al portale", pl ? (pl.ha_pwd ? "link con password" : "manca la password") : accesso ? esc(accesso.email || "") : "nessun accesso") + "</div>";
 
   var prg = D.prog.filter(function (p) { return com.some(function (k) { return k.id === p.commessa_id; }); });
   var t = tab || "anagrafica";
@@ -2596,15 +2606,17 @@ function vCliente() {
     h += '<div class="grid g2"><div class="card"><h3 style="margin-bottom:12px">Dati del cliente</h3><table><tbody>' +
       row2("Referente", esc(c.referente || "—")) +
       row2("Email", c.email ? '<a href="mailto:' + esc(c.email) + '">' + esc(c.email) + "</a>" : "—") +
-      row2("Telefono", esc(c.telefono || "—")) +
+      row2("Telefono", c.telefono ? '<a href="tel:' + esc(String(c.telefono).replace(/\s+/g, "")) + '">' + esc(c.telefono) + "</a>" : "—") +
       row2("Sito", c.sito ? '<a href="' + esc(c.sito) + '" target="_blank" rel="noopener">' + esc(c.sito) + "</a>" : "—") +
       row2("P. IVA", esc(c.piva || "—")) + row2("Indirizzo", esc(c.indirizzo || "—")) +
       row2("Settore", esc(c.settore || "—")) + row2("Stato", '<span class="badge">' + esc(c.stato || "Lead") + "</span>") +
-      row2("Owner", esc(nameOf(D.pros, c.owner_id))) + row2("Note", esc(c.note || "—")) +
+      row2("Chi lo segue", esc(nameOf(D.pros, c.owner_id))) + row2("Note", esc(c.note || "—")) +
       '</tbody></table><div style="margin-top:14px"><button class="btn sm ghost" data-edit="cli:' + c.id + '">Modifica l\'anagrafica</button></div></div>' +
       '<div class="card"><h3 style="margin-bottom:14px">Cambia al volo</h3>' +
       qcampo("cli", c.id, "stato", "Stato", qsel("cli", c.id, "stato", sel(["Lead", "Attivo", "Dormiente", "Chiuso"], c.stato || "Lead"))) +
-      qcampo("cli", c.id, "owner_id", "Owner", qsel("cli", c.id, "owner_id", opt(D.pros, c.owner_id))) +
+      qcampo("cli", c.id, "owner_id", "Chi lo segue", qsel("cli", c.id, "owner_id", opt(D.pros, c.owner_id))) +
+      '<div class="row2">' + qcampo("cli", c.id, "richiamo", "Da risentire il", qinput("cli", c.id, "richiamo", "date", c.richiamo)) +
+      qcampo("cli", c.id, "richiamo_nota", "Per cosa", qinput("cli", c.id, "richiamo_nota", "text", c.richiamo_nota)) + "</div>" +
       qcampo("cli", c.id, "referente", "Referente", qinput("cli", c.id, "referente", "text", c.referente)) +
       '<div class="row2">' + qcampo("cli", c.id, "email", "Email", qinput("cli", c.id, "email", "email", c.email)) +
       qcampo("cli", c.id, "telefono", "Telefono", qinput("cli", c.id, "telefono", "text", c.telefono)) + "</div></div>" +
@@ -2648,10 +2660,10 @@ function vCliente() {
     } else {
       var url = location.origin + location.pathname + "#/p/" + pl.token;
       h += '<div class="field"><label>Link per il cliente</label><input readonly value="' + esc(url) + '" onclick="this.select()"></div>' +
-        '<p class="faint" style="margin:-6px 0 12px">' + (pl.pwd_hash ? "Password impostata" : '<b class="neg">Password non impostata: il link non funziona</b>') +
+        '<p class="faint" style="margin:-6px 0 12px">' + (pl.ha_pwd ? "Password impostata" : '<b class="neg">Password non impostata: il link non funziona</b>') +
         (pl.ultimo_accesso ? " · ultimo accesso " + dshort(pl.ultimo_accesso) : " · mai usato") + "</p>" +
         '<div class="tools"><button class="btn sm ghost" data-portcopy="' + esc(url) + '">Copia link</button>' +
-        '<button class="btn sm ghost" data-portpwd="' + pl.id + '">' + (pl.pwd_hash ? "Cambia password" : "Imposta password") + "</button>" +
+        '<button class="btn sm ghost" data-portpwd="' + pl.id + '">' + (pl.ha_pwd ? "Cambia password" : "Imposta password") + "</button>" +
         '<button class="btn sm ghost" data-portoff="' + pl.id + '|' + (pl.attivo ? "0" : "1") + '">' + (pl.attivo ? "Sospendi" : "Riattiva") + "</button></div>";
     }
     h += "</div>";
@@ -2665,7 +2677,8 @@ function vPool() {
   var elenco = D.pros.filter(function (p) {
     if (f.cat && !D.serv.some(function (s) { return s.pro_id === p.id && (s.cat || "Altro") === f.cat; })) return false;
     if (!q) return true;
-    var testo = (p.nome + " " + (p.ruolo || "") + " " + (p.competenze || "") + " " + (p.citta || "") + " " +
+    var fig = p.professione_id ? by(D.prof, p.professione_id) : null;
+    var testo = (p.nome + " " + (p.ruolo || "") + " " + (p.competenze || "") + " " + (p.citta || "") + " " + (fig ? fig.nome + " " + (fig.categoria || "") : "") + " " +
       D.serv.filter(function (s) { return s.pro_id === p.id; }).map(function (s) { return s.nome + " " + (s.cat || ""); }).join(" ")).toLowerCase();
     return testo.indexOf(q) > -1;
   });
@@ -2691,7 +2704,8 @@ function vPool() {
     return '<div class="card espl">' +
       '<div class="esptop">' + avatar(p.id, 44) +
       '<div class="espchi"><h2>' + esc(p.nome) + (mio ? ' <span class="badge">tu</span>' : "") + "</h2>" +
-      '<div class="faint">' + esc(p.ruolo || "—") + (p.citta ? " · " + esc(p.citta) : "") + "</div>" +
+      '<div class="faint">' + esc(p.ruolo || (p.professione_id ? nameOf(D.prof, p.professione_id) : "—")) + (p.citta ? " · " + esc(p.citta) : "") +
+      (p.email ? ' · <a href="mailto:' + esc(p.email) + '">' + esc(p.email) + "</a>" : "") + (p.telefono ? ' · <a href="tel:' + esc(String(p.telefono).replace(/\s+/g, "")) + '">' + esc(p.telefono) + "</a>" : "") + "</div>" +
       '<div style="margin-top:7px">' + comp.map(function (c) { return '<span class="chip">' + esc(c.trim()) + "</span>"; }).join("") + "</div></div>" +
       '<div class="espazioni"><span class="badge ' + (p.vetting === "Attivo" ? "b-green" : "b-amber") + '">' + esc(p.vetting || "—") + "</span>" +
       '<button class="btn sm ghost" data-route="pro|' + p.id + '|scheda">Scheda</button></div></div>' +
@@ -2865,8 +2879,8 @@ function vPro() {
   }
   if (t === "scheda") {
     h += '<div class="grid g2"><div class="card"><h3 style="margin-bottom:12px">Anagrafica</h3><table><tbody>' +
-      row2("Vetting", '<span class="badge ' + (p.vetting === "Attivo" ? "b-green" : "b-amber") + '">' + esc(p.vetting || "—") + "</span>") +
-      row2("Email", esc(p.email || "—")) + row2("Telefono", esc(p.telefono || "—")) + row2("Città", esc(p.citta || "—")) +
+      row2("Nello studio", '<span class="badge ' + (p.vetting === "Attivo" ? "b-green" : "b-amber") + '">' + esc(p.vetting || "—") + "</span>") +
+      row2("Email", p.email ? '<a href="mailto:' + esc(p.email) + '">' + esc(p.email) + "</a>" : "—") + row2("Telefono", p.telefono ? '<a href="tel:' + esc(String(p.telefono).replace(/\s+/g, "")) + '">' + esc(p.telefono) + "</a>" : "—") + row2("Città", esc(p.citta || "—")) +
       row2("P. IVA", esc(p.piva || "—")) + (mio ? row2("Tariffa oraria", p.tariffa_oraria ? eur(p.tariffa_oraria) + "/h" : "—") : "") +
       row2("Competenze", (p.competenze || "").split(",").filter(Boolean).map(function (x) { return '<span class="chip">' + esc(x.trim()) + "</span>"; }).join("") || "—") +
       row2("Note", esc(p.note || "—")) +
@@ -2904,7 +2918,7 @@ function vPro() {
     h += '<div class="card"><div class="cardhead"><h2>Lavori</h2></div>' + (com.length ? tblCom(com) : vuoto("Nessun lavoro condiviso con te.")) + "</div>";
   }
   if (t === "ore" && mio) {
-    h += '<div class="card"><div class="cardhead"><h2>Le tue ore</h2><button class="btn sm ghost" data-go="ore">Apri il timesheet</button></div>' + tblOre(ore.slice(0, 40)) + "</div>";
+    h += '<div class="card"><div class="cardhead"><h2>Le tue ore</h2><button class="btn sm ghost" data-go="ore">Apri le ore</button></div>' + tblOre(ore.slice(0, 40)) + "</div>";
   }
   return h;
 }
@@ -2968,16 +2982,17 @@ function vReport() {
   h += '<div class="grid g4">' +
     kpi(conv + " %", "Preventivi vinti", vinte.length + " vinti · " + perse.length + " persi") +
     kpi(totOre ? Math.round(fattOre / totOre * 100) + " %" : "—", "Ore fatturabili", num(fattOre, 1) + " h su " + num(totOre, 1) + " registrate") +
-    kpi(eur(com.length ? sum(com, function (k) { return calc(k).tot; }) / com.length : 0), "Valore medio", com.length + " preventivi") +
-    kpi(eur(sum(com.filter(function (k) { return k.stato !== "Perso"; }), function (k) { return calc(k).margine; })), "Margine complessivo", "sui lavori non persi") + "</div>";
+    kpi(eur(com.length ? sum(com, valore) / com.length : 0), "Valore medio", com.length + " preventivi") +
+    kpi(eur(sum(com.filter(function (k) { return k.stato !== "Perso"; }), function (k) { return budget(k).margReale; })), "Margine complessivo", "sui lavori non persi, con ore e costi") + "</div>";
   h += '<div class="grid g2" style="margin-top:16px"><div class="card"><div class="cardhead"><h2>Incassi per mese</h2></div>';
   h += mk.length ? '<div class="bars">' + mk.map(function (kk) { return bar(kk, mesi[kk], Math.max.apply(null, mk.map(function (x) { return mesi[x]; })), eur(mesi[kk])); }).join("") + "</div>" : vuoto("—");
   h += '</div><div class="card"><div class="cardhead"><h2>Top clienti</h2></div>';
   h += topCli.length ? '<div class="bars">' + topCli.map(function (c) { return bar(c.nome, valoreCliente(c.id), valoreCliente(topCli[0].id) || 1, eur(valoreCliente(c.id))); }).join("") + "</div>" : vuoto("—");
   h += "</div></div>";
   h += '<div class="card"><div class="cardhead"><h2>Marginalità per lavoro</h2></div><table><thead><tr><th>Preventivo</th><th>Cliente</th><th class="num">Totale</th><th class="num">Compensi</th><th class="num">Margine</th><th class="num">%</th><th class="num">Ore</th><th class="num">€/h reale</th></tr></thead><tbody>';
-  com.slice().sort(function (a, b) { return calc(b).margine - calc(a).margine; }).forEach(function (k) {
-    var c = calc(k), o = oreTot(k.id);
+  com.slice().sort(function (a, b) { return budget(b).margReale - budget(a).margReale; }).forEach(function (k) {
+    var c = calc(k), b9 = budget(k), o = oreTot(k.id);
+    c = { tot: b9.ricavo, cost: b9.costoReale, margine: b9.margReale };
     h += '<tr><td><button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button></td><td>" + esc(nameOf(D.cli, k.cliente_id)) + '</td><td class="num">' + eur(c.tot) + '</td><td class="num">' + eur(c.cost) + '</td><td class="num">' + eur(c.margine) + '</td><td class="num">' + (c.tot ? Math.round(c.margine / c.tot * 100) : 0) + '%</td><td class="num">' + num(o, 1) + '</td><td class="num">' + (o ? eur(c.tot / o) : "—") + "</td></tr>";
   });
   return h + "</tbody></table></div>";
@@ -3359,16 +3374,31 @@ function eventiDi(g) {
   D.pag.forEach(function (p) { if (p.scadenza === g && p.stato !== "Incassato") out.push({ c: "b-red", t: eur(p.importo) + " · " + p.nome, s: "pagamento", act: 'data-open-com="' + p.commessa_id + '"' }); });
   D.pren.forEach(function (r) { if (r.data === g) out.push({ c: "b-green", t: nameOf(D.spazi, r.spazio_id), s: r.slot || "prenotazione", act: 'data-go="spazi"' }); });
   D.riu.forEach(function (r) { if (r.data === g && r.stato !== "Annullata") out.push({ c: "b-blue", t: (r.ora ? r.ora.slice(0, 5) + " " : "") + r.titolo, s: "riunione", act: 'data-route="riunione|' + r.id + '|"' }); });
+  D.ag.forEach(function (e) { if (e.data === g) out.push({ c: "b-green", t: (e.ora ? e.ora.slice(0, 5) + " " : "") + e.titolo, s: (e.tipo || "evento").toLowerCase() + " dello studio", act: 'data-route="eventi|-|prossimi"' }); });
   return out;
 }
 function vCalendario() {
   var oggi = new Date(); oggi.setHours(0, 0, 0, 0);
+  var settimana = tab === "settimana";
   var base = new Date(oggi.getFullYear(), oggi.getMonth() + CAL, 1);
   var mese = base.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
   var start = new Date(base); start.setDate(1 - ((base.getDay() + 6) % 7));
-  var h = head("Calendario", mese.charAt(0).toUpperCase() + mese.slice(1),
+  var lun = new Date(oggi); lun.setDate(oggi.getDate() - ((oggi.getDay() + 6) % 7) + CAL * 7);
+  var titolo = settimana ? "Settimana dal " + dt(iso(lun)) : mese.charAt(0).toUpperCase() + mese.slice(1);
+  var h = head("Calendario", titolo,
     '<div class="wknav"><button class="btn sm ghost" data-cal="-1">‹</button>' + (CAL ? '<button class="btn sm ghost" data-cal="0">Oggi</button>' : "") + '<button class="btn sm ghost" data-cal="1">›</button></div>');
+  h += barraViste([["mese", "Mese"], ["settimana", "Settimana"]], settimana ? "settimana" : "mese", "calendario");
 
+  if (settimana) {
+    h += '<div class="card"><div class="week">';
+    for (var w = 0; w < 7; w++) {
+      var dw = new Date(lun.getTime() + w * 86400000), gw = iso(dw), evw = eventiDi(gw);
+      var oreW = sum(fore().filter(function (o) { return o.data === gw; }), function (o) { return o.ore; });
+      h += '<div class="wday' + (gw === today() ? " today" : "") + '" data-day="' + gw + '"><div class="caltop"><span>' + ["lun", "mar", "mer", "gio", "ven", "sab", "dom"][w] + " " + dw.getDate() + "</span>" + (oreW ? '<span class="calore">' + num(oreW, 1) + " h</span>" : "") + "</div>" +
+        (evw.length ? evw.map(function (e) { return '<div class="calev ' + e.c + '" ' + e.act + ' title="' + esc(e.s) + '">' + esc(e.t) + "</div>"; }).join("") : '<div class="faint" style="font-size:.78rem">—</div>') + "</div>";
+    }
+    h += "</div></div>";
+  } else {
   h += '<div class="card"><div class="cal">';
   ["lun", "mar", "mer", "gio", "ven", "sab", "dom"].forEach(function (d) { h += '<div class="caldow">' + d + "</div>"; });
   for (var i = 0; i < 42; i++) {
@@ -3383,6 +3413,7 @@ function vCalendario() {
       "</div>";
   }
   h += "</div></div>";
+  }
 
   var prossimi = [];
   for (var j = 0; j < 14; j++) {
@@ -3398,7 +3429,8 @@ function vCalendario() {
     '<span><i style="background:var(--terra)"></i>Consegna di una lavorazione</span>' +
     '<span><i style="background:var(--blue)"></i>Fine di una fase</span>' +
     '<span><i style="background:var(--red)"></i>Pagamento in scadenza</span>' +
-    '<span><i style="background:var(--green)"></i>Prenotazione di uno spazio</span>' +
+    '<span><i style="background:var(--green)"></i>Prenotazione di uno spazio, evento dello studio</span>' +
+    '<span><i style="background:var(--blue)"></i>Riunione</span>' +
     '</div><p class="faint" style="margin-top:12px">Clicca un giorno vuoto per creare un’attività con quella scadenza.</p></div></div>';
   h += cardIscrizione();
   return h;
@@ -4127,6 +4159,36 @@ function emittente(k) {
 /* La data che sta sul documento. Se importi un preventivo di marzo, quello
    resta un preventivo di marzo: la data in cui l'hai messo dentro il CRM non
    c'entra niente con la data che il cliente ha visto. */
+/* Il PDF si chiama come il preventivo, non «Giraffa Studio — CRM» */
+function nomeFile(k) {
+  var cl = by(D.cli, k.cliente_id);
+  return ((k.numero || numeroDoc(k)) + " " + (cl ? cl.nome : "") + " " + (k.titolo || "")).replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+}
+/* L'email al cliente, già scritta: chi manda deve solo allegare il PDF */
+function mailtoPreventivo(k, cl) {
+  var em = emittente(k), c = calc(k);
+  var corpo = "Gentile " + (cl.referente || cl.nome || "") + ",\n\n" +
+    "come concordato le invio il preventivo «" + (k.titolo || "") + "» (n. " + (k.numero || numeroDoc(k)) + "), per un totale di " + eur(c.tot) + " + IVA." +
+    (k.validita ? " Il preventivo è valido " + k.validita + " giorni." : "") + "\n\nResto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\n" + (em.nome || "");
+  return "mailto:" + encodeURIComponent(cl.email || "") + "?subject=" + encodeURIComponent("Preventivo " + (k.numero || numeroDoc(k)) + " — " + (k.titolo || "")) + "&body=" + encodeURIComponent(corpo);
+}
+/* Sezioni tipiche per mestiere: si aggiungono in un colpo e poi si riscrivono sul foglio */
+var SEZ_PRESET = [
+  [/foto|video|ripres|shooting/i, [["Cosa comprende il servizio", "prima", ["Sopralluogo e brief", "Riprese o shooting", "Selezione e post-produzione", "Consegna dei file in alta risoluzione"]], ["Diritti d'uso", "dopo", ["Uso su sito e canali social del cliente", "Uso stampa e pubblicitario da concordare"]], ["Tempi di consegna", "dopo", ["Anteprime entro 5 giorni lavorativi", "Consegna finale entro 15 giorni"]]]],
+  [/sito|web|e-?commerce|sviluppo|software|app\b/i, [["Come lavoreremo", "prima", ["Analisi e struttura delle pagine", "Design e approvazione delle bozze", "Sviluppo e caricamento dei contenuti", "Test, formazione e messa online"]], ["Cosa serve da parte tua", "prima", ["Testi e immagini definitivi", "Accessi a dominio e hosting", "Un referente per le approvazioni"]], ["Dopo la consegna", "dopo", ["30 giorni di assistenza inclusa", "Manutenzione e aggiornamenti a canone, se richiesti"]]]],
+  [/social|contenut|comunicazion|adv|ads|campagn|marketing/i, [["Cosa comprende", "prima", ["Piano editoriale mensile", "Creazione e pubblicazione dei contenuti", "Gestione della community", "Report mensile dei risultati"]], ["Budget pubblicitario", "dopo", ["Il budget delle campagne è a parte e si paga direttamente alla piattaforma"]], ["Durata e disdetta", "dopo", ["Contratto mensile rinnovabile", "Disdetta con 30 giorni di preavviso"]]]],
+  [/avvocat|legal|consulen|commercial|fiscal|notai/i, [["Oggetto dell'incarico", "prima", ["Analisi della situazione e dei documenti", "Parere scritto", "Assistenza nei rapporti con le controparti"]], ["Cosa non è compreso", "dopo", ["Spese vive, bolli e diritti", "Attività giudiziale, da preventivare a parte"]]]],
+  [/architett|interni|arred|design|progett/i, [["Fasi del progetto", "prima", ["Rilievo e concept", "Progetto preliminare", "Progetto definitivo ed esecutivo", "Assistenza al cantiere"]], ["Esclusioni", "dopo", ["Pratiche edilizie e oneri comunali", "Direzione lavori, da preventivare a parte"]]]],
+  [/psicolog|terap|coach|formazion|corso|docen/i, [["Come si svolge", "prima", ["Primo incontro conoscitivo", "Incontri della durata di 50 minuti", "Materiale di supporto fra un incontro e l'altro"]], ["Regole", "dopo", ["Gli incontri disdetti con meno di 24 ore di preavviso si pagano", "I pagamenti sono mensili"]]]],
+  [/artigian|falegn|sart|restaur|produzion|stamp/i, [["Il lavoro", "prima", ["Misure e scelta dei materiali", "Realizzazione in laboratorio", "Consegna e montaggio"]], ["Materiali e tempi", "dopo", ["I materiali sono compresi salvo diversa indicazione", "Tempi di realizzazione: da concordare all'accettazione"]]]],
+  [/tradu|test|copy|scritt|editor/i, [["Cosa comprende", "prima", ["Traduzione o scrittura del testo", "Una revisione inclusa", "Consegna in formato editabile"]], ["Conteggio", "dopo", ["Il prezzo si intende a cartella di 1500 caratteri spazi inclusi"]]]]
+];
+function presetSezioni(k) {
+  var fig = miaFigura ? miaFigura() : null;
+  var testo = ((fig ? fig.nome + " " + (fig.categoria || "") : "") + " " + (by(D.pros, me.pro_id) || {}).ruolo + " " + righeOf(k.id).map(function (r) { return rigaCalc(r).nome; }).join(" ")).toLowerCase();
+  for (var i = 0; i < SEZ_PRESET.length; i++) if (SEZ_PRESET[i][0].test(testo)) return SEZ_PRESET[i][1];
+  return [["Cosa comprende", "prima", ["", ""]], ["Condizioni", "dopo", ["Pagamento: 50% all'accettazione, 50% alla consegna", "Il preventivo è valido 30 giorni"]]];
+}
 function dataDoc(k) {
   return (k && k.data) || String((k && k.created_at) || today()).slice(0, 10);
 }
@@ -4203,6 +4265,7 @@ function bloccoSezioni(k, dove) {
     h += '<div class="dsez dsezt"><div class="dsh"><b>' + edSez(k.id, i, "t", s.t, "Titolo della sezione") + "</b>" +
       '<span class="noprint dsezc"><select data-sezdove="' + k.id + "|" + i + '">' +
       opzioni([["prima", "prima dei prezzi"], ["dopo", "dopo i prezzi"]], s.d === "dopo" ? "dopo" : "prima") + "</select>" +
+      '<button class="lnk mini2" data-sezmuovi="' + k.id + "|" + i + '|-1" title="Sposta su">↑</button><button class="lnk mini2" data-sezmuovi="' + k.id + "|" + i + '|1" title="Sposta giù">↓</button>' +
       '<button class="lnk mini2" data-sezvia="' + k.id + "|" + i + '">togli</button></span></div>';
     h += '<div class="dtx">' + edSez(k.id, i, "x", s.x, "Il testo di questa sezione, se serve", true) + "</div>";
     var voci = s.v || [];
@@ -4229,7 +4292,9 @@ function vDocumento() {
     opzioni([["auto", "Deciso dalle righe"], ["personale", "Sempre personale"], ["studio", "Sempre dello studio"]], k.ambito || "auto") + "</select>" +
     '<span class="faint">clicca qualsiasi testo per riscriverlo</span></div>' +
     '<div class="dbright"><button class="btn sm ghost" data-route="commessa|' + k.id + '|servizi">Torna al preventivo</button>' +
-    '<button class="btn sm" data-stampa="1">Stampa / PDF</button></div></div>';
+    '<button class="btn sm ghost" data-sezpreset="' + k.id + '">Sezioni del mio mestiere</button>' +
+    (cl.email ? '<a class="btn sm ghost" href="' + esc(mailtoPreventivo(k, cl)) + '">Invia per email</a>' : "") +
+    '<button class="btn sm" data-stampa="' + esc(nomeFile(k)) + '">Stampa / PDF</button></div></div>';
 
   h += '<div class="a4"><div class="dtop">' +
     '<div class="dmitt">' + (em.logo ? '<img class="dlogo" src="' + esc(em.logo) + '" alt="">' : '<i class="mark"></i>') + "<div><b>" + esc(em.nome || "—") + "</b>" +
@@ -4241,12 +4306,12 @@ function vDocumento() {
     (em.studio ? "" : '<span class="faint">professionista di Giraffa Studio</span>') +
     "</div></div>" +
     '<div class="ddoc"><h2>Preventivo</h2><table><tbody>' +
-    "<tr><td>Numero</td><td>" + ed("com", k.id, "numero", k.numero || numeroDoc(k)) + "</td></tr>" +
+    "<tr><td>Numero</td><td>" + (k.numero ? ed("com", k.id, "numero", k.numero) : k.stato === "Bozza" ? '<span class="faint" title="Il numero definitivo arriva quando lo segni come inviato">' + esc(numeroDoc(k)) + " (bozza)</span>" : ed("com", k.id, "numero", numeroDoc(k))) + "</td></tr>" +
     "<tr><td>Data</td><td>" + ed("com", k.id, "data", dt(dataDoc(k)), "la data del documento") + "</td></tr>" +
     "<tr><td>Validità</td><td>" + ed("com", k.id, "validita", k.validita == null ? 30 : k.validita, "30", "n") + " giorni</td></tr>" +
     "</tbody></table></div></div>";
 
-  h += '<div class="ddest"><span class="lb">Spettabile</span><b>' + ed("cli", cl.id || "", "nome", cl.nome, "Nome del cliente") + "</b>" +
+  h += '<div class="ddest"><span class="lb">Spettabile</span><b>' + ed("com", k.id, "intestatario", k.intestatario || cl.nome, "Intestazione (es. Spett.le La Staffa Srl)") + "</b>" +
     (cl.id ? "<div>" + ed("cli", cl.id, "referente", cl.referente, "alla cortese attenzione di…") + "</div>" +
       "<div>" + ed("cli", cl.id, "indirizzo", cl.indirizzo, "indirizzo") + "</div>" +
       "<div>" + ed("cli", cl.id, "piva", cl.piva, "partita IVA") + " · " + ed("cli", cl.id, "email", cl.email, "email") + "</div>" : "") +
@@ -4352,9 +4417,21 @@ function datiPerAssistente() {
       fore().forEach(function (o) { var k = o.commessa_id ? nameOf(D.com, o.commessa_id, "titolo") : "senza preventivo"; m[k] = Math.round(((m[k] || 0) + (+o.ore || 0)) * 10) / 10; });
       return m;
     })(),
-    pagamenti: D.pag.map(function (p) {
-      return { nome: p.nome, preventivo: nameOf(D.com, p.commessa_id, "titolo"), importo: p.importo, scadenza: p.scadenza, stato: p.stato };
-    })
+    ore_per_mese: (function () {
+      var m = {};
+      fore().forEach(function (o) { var k = String(o.data || "").slice(0, 7); if (k) m[k] = Math.round(((m[k] || 0) + (+o.ore || 0)) * 10) / 10; });
+      return m;
+    })(),
+    pagamenti: D.pag.filter(function (p) { return can(p.commessa_id); }).map(function (p) {
+      return { nome: p.nome, preventivo: nameOf(D.com, p.commessa_id, "titolo"), cliente: nameOf(D.cli, (by(D.com, p.commessa_id) || {}).cliente_id), importo: p.importo, scadenza: p.scadenza, stato: p.stato, incassato_il: p.pagato_il };
+    }),
+    incassi_per_mese: (function () {
+      var m = {};
+      D.pag.filter(function (p) { return p.stato === "Incassato" && can(p.commessa_id); }).forEach(function (p) { var k = String(p.pagato_il || p.scadenza || "").slice(0, 7); if (k) m[k] = (m[k] || 0) + (+p.importo || 0); });
+      return m;
+    })(),
+    riunioni: D.riu.filter(function (r) { return r.data >= today(); }).map(function (r) { return { titolo: r.titolo, data: r.data, ora: r.ora, cliente: nameOf(D.cli, r.cliente_id), link: r.link }; }),
+    clienti_da_risentire: fcli().filter(function (c) { return c.richiamo; }).map(function (c) { return { nome: c.nome, quando: c.richiamo, perche: c.richiamo_nota }; })
   };
   return d;
 }
@@ -4839,7 +4916,7 @@ var FORMS = {
       '<div class="row2">' + fld("inizio", "Inizio", "date", r.inizio) + fld("scadenza", "Consegna prevista", "date", r.scadenza) + "</div>" +
       '<details class="fmore"' + (nuovo ? "" : " open") + "><summary>Altro: chi coordina, IVA, sconto, validità, condizioni, note</summary>" +
       '<div class="row2">' + selField("pm_id", "Chi coordina (se non sei tu)", opt(D.pros, r.pm_id)) + selField("pr_id", "Chi ha portato il cliente", opt(D.pros, r.pr_id)) + "</div>" +
-      '<div class="row2">' + selField("tipo_prezzo", "Come si paga il lavoro", sel(["Fisso", "Tempo e materiali", "Retainer"], r.tipo_prezzo || "Fisso")) + fld("budget_importo", "Budget concordato (€)", "number", r.budget_importo) + "</div>" +
+      '<div class="row2">' + selField("tipo_prezzo", "Come si paga il lavoro", selKV([["Fisso", "Prezzo fisso"], ["Tempo e materiali", "A ore e spese"], ["Retainer", "Canone mensile"]], r.tipo_prezzo || "Fisso")) + fld("budget_importo", "Budget concordato (€)", "number", r.budget_importo) + "</div>" +
       '<div class="row2">' + fld("retainer_mensile", "Canone mensile (€, se ricorrente)", "number", r.retainer_mensile) + fld("budget_ore", "Ore previste in tutto", "number", r.budget_ore) + "</div>" +
       '<div class="row2">' + fld("sconto", "Sconto commerciale (%)", "number", r.sconto || 0) + fld("iva", "IVA (%)", "number", r.iva == null ? 22 : r.iva) + "</div>" +
       '<div class="row2">' + fld("validita", "Validità del preventivo (giorni)", "number", r.validita == null ? 30 : r.validita) + fld("probabilita", "Quante probabilità che si chiuda (%)", "number", r.probabilita == null ? 50 : r.probabilita) + "</div>" +
@@ -4897,7 +4974,7 @@ var FORMS = {
       '<div class="row2">' + fld("settore", "Settore", "text", r.settore) + selField("stato", "Stato", sel(["Lead", "Attivo", "Dormiente", "Chiuso"], r.stato || "Lead")) + "</div>" +
       '<div class="row2">' + fld("referente", "Referente", "text", r.referente) + fld("email", "Email", "email", r.email) + "</div>" +
       '<div class="row2">' + fld("telefono", "Telefono", "text", r.telefono) + fld("sito", "Sito web", "text", r.sito) + "</div>" +
-      '<div class="row2">' + fld("piva", "P. IVA", "text", r.piva) + selField("owner_id", "Owner", opt(D.pros, r.owner_id || me.pro_id)) + "</div>" +
+      '<div class="row2">' + fld("piva", "P. IVA", "text", r.piva) + selField("owner_id", "Chi lo segue", opt(D.pros, r.owner_id || me.pro_id)) + "</div>" +
       fld("indirizzo", "Indirizzo", "text", r.indirizzo) + fld("note", "Note", "textarea", r.note);
   }},
   pros: { t: "Professionista", tb: "pros", priv: ["tariffa_oraria", "note", "iban", "condizioni"], f: function (r) {
@@ -5067,7 +5144,7 @@ var FSEZ = {
   ag: ["eventi", "Eventi e workshop"], can: ["chat", "Chat dello studio"], prof: ["professioni", "Figure professionali"],
   membri: ["impostazioni", "Impostazioni"], fasi: ["commesse", "Preventivi"], pag: ["commesse", "Preventivi"], costi: ["commesse", "Preventivi"],
   vari: ["commesse", "Preventivi"], appr: ["commesse", "Preventivi"], righe: ["commesse", "Preventivi"],
-  task: ["task", "Attività"], ore: ["ore", "Ore & timesheet"], inter: ["clienti", "Clienti"], modelli: ["task", "Attività"],
+  task: ["task", "Attività"], ore: ["ore", "Le tue ore"], inter: ["clienti", "Clienti"], modelli: ["task", "Attività"],
   mat: ["commesse", "Preventivi"], ev: ["commesse", "Preventivi"], pren: ["spazi", "Coworking & spazi"], riu: ["riunioni", "Riunioni"]
 };
 var FDETT = { com: ["commessa", "note"], cli: ["cliente", ""], prog: ["progetto", "lavorazioni"], lav: ["lavorazione", ""], pros: ["pro", ""], task: ["attivita", ""], riu: ["riunione", ""] };
@@ -5165,6 +5242,10 @@ async function saveForm(f) {
     }
   }
   if (entity === "com" && !obj.cliente_id) { toast("Scegli un cliente, o scrivi il nome di uno nuovo.", true); return; }
+  if (entity === "pren" && obj.spazio_id && obj.data) {
+    var occupata = D.pren.filter(function (p) { return p.id !== id && p.spazio_id === obj.spazio_id && p.data === obj.data && p.stato !== "Annullata" && (p.slot === "Giornata" || obj.slot === "Giornata" || p.slot === obj.slot); })[0];
+    if (occupata) { toast("«" + nameOf(D.spazi, obj.spazio_id) + "» è già prenotata quel giorno (" + esc(occupata.slot || "giornata") + ", " + nameOf(D.pros, occupata.pro_id) + "). Scegli un altro momento.", true); return; }
+  }
   if (obj.task_id && !obj.progetto_id) { var tk0 = by(D.task, obj.task_id); if (tk0) { obj.progetto_id = tk0.progetto_id; if (!obj.commessa_id) obj.commessa_id = tk0.commessa_id; } }
   if (entity === "ev" && !obj.pro_id) obj.pro_id = me.pro_id;
   if (entity === "ag" && !obj.pro_id) obj.pro_id = me.pro_id;
@@ -5203,11 +5284,18 @@ async function saveForm(f) {
   if (inPagina) { FDIRTY = false; dopoSalva(entity, nid); return; }
   render();
 }
-async function duplica(id) {
+function duplica(id) {
   var k = by(D.com, id); if (!k) return;
-  var titolo = prompt("Titolo del nuovo preventivo", k.titolo + " (copia)");
-  if (!titolo) return;
-  var nuovo = { titolo: titolo, cliente_id: k.cliente_id, owner_id: me.pro_id || k.owner_id, pm_id: k.pm_id, stato: "Bozza", tipo_prezzo: k.tipo_prezzo, budget_ore: k.budget_ore, probabilita: 50, note: k.note, inizio: today() };
+  modal('<form class="box" data-dupl-form="' + k.id + '"><h2>Duplica «' + esc(k.titolo) + '»</h2>' +
+    '<p class="faint" style="margin:-6px 0 14px">Copio voci, progetti, testi, sezioni, IVA, sconto e validità. Le date ripartono da oggi.</p>' +
+    fld("titolo", "Titolo del nuovo preventivo", "text", k.titolo + " (copia)", true) +
+    selField("cliente_id", "Per quale cliente", opt(D.cli, k.cliente_id)) +
+    '<div class="actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn" type="submit">Crea la copia</button></div></form>');
+}
+async function duplicaDavvero(id, titolo, cliente_id) {
+  var k = by(D.com, id); if (!k) return;
+  var nuovo = { titolo: titolo, cliente_id: cliente_id || k.cliente_id, owner_id: me.pro_id || k.owner_id, pm_id: k.pm_id, pr_id: k.pr_id, stato: "Bozza", tipo_prezzo: k.tipo_prezzo, budget_ore: k.budget_ore, budget_importo: k.budget_importo, retainer_mensile: k.retainer_mensile, probabilita: 50, note: k.note, inizio: today(),
+    ambito: k.ambito, iva: k.iva, sconto: k.sconto, validita: k.validita, condizioni: k.condizioni, premessa: k.premessa, chiusura: k.chiusura, sezioni: sezioniDi(k), mostra_ore: k.mostra_ore, mostra_stato: k.mostra_stato };
   var r = await sb.from("commesse").insert(nuovo).select().single();
   if (r.error) { toast(erroreUmano(r.error), true); return; }
   var nid = r.data.id, base = new Date();
@@ -5228,8 +5316,8 @@ async function duplica(id) {
   });
   if (rg.length) await sb.from("righe").insert(rg);
   await logEv(nid, "Preventivo creato dal modello “" + k.titolo + "”");
-  await reload(["com", "fasi", "righe", "ev"]);
-  toast("Preventivo duplicato"); go("commessa", nid, "fasi");
+  await reload(["com", "fasi", "righe", "prog", "ev"]);
+  closeModal(); toast("Preventivo duplicato"); go("commessa", nid, "servizi");
 }
 async function delRow(entity, id) {
   var F = FORMS[entity], tbk = F ? F.tb : entity, key = (F && F.key) || "id";
@@ -5521,6 +5609,22 @@ async function clicApp(e, t, d) {
     if (PLINK) { location.hash = ""; location.reload(); return; }
     await sb.auth.signOut(); location.reload(); return;
   }
+  if (d.sezpreset) {
+    var kp = by(D.com, d.sezpreset); if (!kp) return;
+    var gia9 = sezioniDi(kp).map(function (x) { return (x.t || "").toLowerCase(); });
+    var nuove9 = presetSezioni(kp).filter(function (p) { return gia9.indexOf(p[0].toLowerCase()) === -1; }).map(function (p) { return { t: p[0], d: p[1], x: "", v: p[2] }; });
+    if (!nuove9.length) { toast("Le sezioni tipiche ci sono già."); return; }
+    if (await salvaSezioni(kp.id, sezioniDi(kp).concat(nuove9))) { toast("Aggiunte " + nuove9.length + " sezioni: riscrivile come vuoi"); render(); }
+    return;
+  }
+  if (d.sezmuovi) {
+    var pm9 = d.sezmuovi.split("|"), km9 = by(D.com, pm9[0]); if (!km9) return;
+    var sm9 = sezioniDi(km9).slice(), i9 = +pm9[1], j9 = i9 + (+pm9[2]);
+    if (j9 < 0 || j9 >= sm9.length) return;
+    var tmp9 = sm9[i9]; sm9[i9] = sm9[j9]; sm9[j9] = tmp9;
+    if (await salvaSezioni(pm9[0], sm9)) render();
+    return;
+  }
   if (d.seznuova) {
     var pn = d.seznuova.split("|"), kn = by(D.com, pn[0]); if (!kn) return;
     var sn = sezioniDi(kn).slice(); sn.push({ t: "Nuova sezione", d: pn[1] === "dopo" ? "dopo" : "prima", x: "", v: [] });
@@ -5544,7 +5648,11 @@ async function clicApp(e, t, d) {
   }
   if (d.impSez && IMP) { IMP.sezioni.splice(+d.impSez.split("|")[0], 1); render(); return; }
   if (d.impPag && IMP) { IMP.pagamenti.splice(+d.impPag.split("|")[0], 1); render(); return; }
-  if (d.stampa) { window.print(); return; }
+  if (d.stampa) {
+    /* il nome del PDF è il titolo della pagina: lo cambio per il tempo della stampa */
+    var tprima = document.title; if (d.stampa !== "1") document.title = d.stampa;
+    window.print(); setTimeout(function () { document.title = tprima; }, 2000); return;
+  }
   if (d.calCopia) {
     var inp = el("#icslink"); if (!inp) return;
     inp.focus(); inp.select(); inp.setSelectionRange(0, 999);
@@ -5570,6 +5678,7 @@ async function clicApp(e, t, d) {
   if (d.tstartLav) {
     var lw = by(D.lav, d.tstartLav); if (!lw) return;
     if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
+    if (!await primaFermaTimer()) return;
     var rtl = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: lw.commessa_id, progetto_id: lw.progetto_id, lavorazione_id: lw.id, iniziato: new Date().toISOString() });
     if (rtl.error) { toast(erroreUmano(rtl.error), true); return; }
     await reload(["tmr"]); toast("Timer avviato su " + lw.nome); render(); return;
@@ -5740,6 +5849,7 @@ async function clicApp(e, t, d) {
   if (d.tstartTask) {
     var tk9 = by(D.task, d.tstartTask); if (!tk9) return;
     if (!me.pro_id) { toast("Il tuo utente non è collegato a una scheda", true); return; }
+    if (!await primaFermaTimer()) return;
     var rtt = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: tk9.commessa_id, progetto_id: tk9.progetto_id, lavorazione_id: tk9.lavorazione_id, task_id: tk9.id, iniziato: new Date().toISOString() });
     if (rtt.error) { toast(erroreUmano(rtt.error), true); return; }
     await reload(["tmr"]); toast("Timer avviato"); render(); return;
@@ -5797,6 +5907,7 @@ async function clicApp(e, t, d) {
   }
   if (d.tstart) {
     if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
+    if (!await primaFermaTimer()) return;
     var r5 = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: d.tstart, iniziato: new Date().toISOString() });
     if (r5.error) { toast(erroreUmano(r5.error), true); return; }
     await reload(["tmr"]); toast("Timer avviato"); render(); return;
@@ -6071,22 +6182,44 @@ async function scadenzeDaAccettazione(kid) {
 }
 function aggGiorni(d, n) { var x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
 async function accettaPreventivo(kid) {
+  var k0 = by(D.com, kid), c0 = k0 ? by(D.cli, k0.cliente_id) : null;
+  if (c0 && (c0.stato === "Lead" || c0.stato === "Dormiente")) { await sb.from("clienti").update({ stato: "Attivo" }).eq("id", c0.id); await reload(["cli"]); }
   var f = await apriIlLavoro(kid);
   var n = await scadenzeDaAccettazione(kid);
   toast("Accettato. " + esitoLavoro(f) + (n ? " Create " + n + " scadenze di pagamento." : ""));
   render();
 }
-async function stopTimer() {
+/* Prima di avviare un timer nuovo, quello vecchio si chiude e le sue ore restano. */
+async function primaFermaTimer() {
+  var tm = timerMio(); if (!tm) return true;
+  var dove = tm.task_id ? nameOf(D.task, tm.task_id, "titolo") : tm.lavorazione_id ? nameOf(D.lav, tm.lavorazione_id) : nameOf(D.com, tm.commessa_id, "titolo");
+  if (!confirm("Hai già un timer acceso su «" + dove + "» da " + durata(tm.iniziato) + ". Lo fermo, registro le ore e parto col nuovo?")) return false;
+  await stopTimer(true);
+  return true;
+}
+/* Un timer dimenticato acceso per una notte non deve scrivere dodici ore: si chiede. */
+async function timerDimenticato() {
   var tm = timerMio(); if (!tm) return;
-  var ore = Math.round((Date.now() - new Date(tm.iniziato).getTime()) / 360000) / 10;
+  var oreT = (Date.now() - new Date(tm.iniziato).getTime()) / 3600000;
+  if (oreT < 10) return;
+  var quando = new Date(tm.iniziato);
+  var risp = prompt("Hai un timer acceso dal " + quando.toLocaleDateString("it-IT") + " alle " + quando.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) + " (" + num(oreT, 1) + " ore). Quante ore vuoi registrare davvero su quel giorno? (0 per buttarlo)", "4");
+  if (risp === null) return;
+  var ore = Math.round((parseFloat(String(risp).replace(",", ".")) || 0) * 10) / 10;
+  await stopTimer(true, ore);
+}
+async function stopTimer(zitto, oreForzate) {
+  var tm = timerMio(); if (!tm) return;
+  var ore = oreForzate != null ? oreForzate : Math.round((Date.now() - new Date(tm.iniziato).getTime()) / 360000) / 10;
+  var giorno = iso(new Date(tm.iniziato));
   await sb.from("timer").delete().eq("pro_id", me.pro_id);
   if (ore >= 0.1) {
     var p = by(D.pros, me.pro_id);
-    var r = await sb.from("ore").insert({ pro_id: me.pro_id, commessa_id: tm.commessa_id, progetto_id: tm.progetto_id || null, lavorazione_id: tm.lavorazione_id || null, task_id: tm.task_id || null, data: today(), ore: ore, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: tm.task_id ? nameOf(D.task, tm.task_id, "titolo") : tm.lavorazione_id ? nameOf(D.lav, tm.lavorazione_id) : "Sessione di lavoro" });
+    var r = await sb.from("ore").insert({ pro_id: me.pro_id, commessa_id: tm.commessa_id, progetto_id: tm.progetto_id || null, lavorazione_id: tm.lavorazione_id || null, task_id: tm.task_id || null, data: giorno, ore: ore, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: tm.task_id ? nameOf(D.task, tm.task_id, "titolo") : tm.lavorazione_id ? nameOf(D.lav, tm.lavorazione_id) : "Sessione di lavoro" });
     if (r.error) { toast(erroreUmano(r.error), true); }
     else toast("Registrate " + num(ore, 1) + " h");
-  } else toast("Sessione troppo breve, non registrata");
-  await reload(["tmr", "ore"]); render();
+  } else if (!zitto) toast("Sessione troppo breve, non registrata");
+  await reload(["tmr", "ore"]); if (!zitto) render();
 }
 async function salvaTs(lid, data, val) {
   var lav = by(D.lav, lid);
@@ -6098,7 +6231,7 @@ async function salvaTs(lid, data, val) {
     if (righe.length > 1) await sb.from("ore").delete().in("id", righe.slice(1).map(function (x) { return x.id; }));
   } else {
     var p = by(D.pros, me.pro_id);
-    var r = await sb.from("ore").insert({ pro_id: me.pro_id, lavorazione_id: lid, progetto_id: lav ? lav.progetto_id : null, commessa_id: lav ? lav.commessa_id : null, data: data, ore: v, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: lav ? lav.nome : "Timesheet" });
+    var r = await sb.from("ore").insert({ pro_id: me.pro_id, lavorazione_id: lid, progetto_id: lav ? lav.progetto_id : null, commessa_id: lav ? lav.commessa_id : null, data: data, ore: v, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: lav ? lav.nome : "Ore della settimana" });
     if (r.error) { toast(erroreUmano(r.error), true); return; }
   }
   await reload(["ore"]);
@@ -6154,6 +6287,7 @@ document.addEventListener("submit", function (e) {
 async function invioModulo(e, f) {
   if (f.id === "loginform") { e.preventDefault(); return doLogin(f); }
   if (f.dataset.save) { e.preventDefault(); return saveForm(f); }
+  if (f.dataset.duplForm) { e.preventDefault(); var td = (f.titolo.value || "").trim(); if (!td) return; return duplicaDavvero(f.dataset.duplForm, td, f.cliente_id.value); }
   if (f.dataset.post) {
     e.preventDefault();
     var tp = (f.testo.value || "").trim(); if (!tp) return;
@@ -6685,6 +6819,24 @@ async function start() {
   if (!daUrl || isCliente()) { view = isCliente() ? "progetti" : "dash"; current = null; tab = ""; }
   if (!isCliente()) { ROUTING = true; try { location.hash = hashOf(view, current, tab); } catch (e) {} ROUTING = false; }
   show("app"); render();
+  if (!isCliente()) { await timerDimenticato(); avviaAggiornamenti(); }
+}
+/* ---- nodo 9: chat, bacheca e badge si aggiornano da soli, senza ricaricare ----
+   Ogni mezzo minuto, solo se la finestra è visibile e nessuno sta scrivendo. */
+var AGG_T = null;
+function avviaAggiornamenti() {
+  if (AGG_T) return;
+  AGG_T = setInterval(aggiornaVivo, 30000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) aggiornaVivo(); });
+}
+function impronta(k) { return D[k].length + "|" + (D[k].length ? (D[k][D[k].length - 1].id || "") : ""); }
+async function aggiornaVivo() {
+  if (document.hidden || !user || isCliente() || inForm() || document.querySelector("#modal .box") || (document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) return;
+  var prima = ["msg", "post", "risp", "reaz", "lett", "ag", "riu", "task", "comm"].map(impronta).join("#");
+  await reload(["msg", "post", "risp", "reaz", "lett", "ag", "riu", "task", "comm"]);
+  var dopo = ["msg", "post", "risp", "reaz", "lett", "ag", "riu", "task", "comm"].map(impronta).join("#");
+  if (prima === dopo) return;
+  if (["chat", "studio", "eventi", "riunioni", "task", "dash"].indexOf(view) > -1 || (view === "commessa" && tab === "discussione")) render(); else buildNav();
 }
 async function init() {
   if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY) { show("setup"); return; }
