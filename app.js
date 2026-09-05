@@ -350,12 +350,22 @@ function oreOfProg(pid) { var ids = lavOf(pid).map(function (l) { return l.id; }
 function matOfProg(pid) { return D.mat.filter(function (m) { return m.progetto_id === pid; }); }
 function righeProg(pid) { return D.righe.filter(function (r) { return r.progetto_id === pid; }); }
 function valoreProg(pid) { return sum(righeProg(pid).filter(function (r) { return !r.opzionale; }), function (r) { return rigaCalc(r).prezzo; }); }
+/* A che punto è un progetto lo dicono le cose fatte, non le ore: le attività
+   chiuse su quelle aperte. Se non ha attività, vale quello che si è scritto
+   a mano sulla scheda. */
 function avanzProg(p) {
+  if (p.stato === "Completato") return 100;
+  var tk = taskOfProg(p.id).filter(function (t) { return !t.padre_id; });
+  if (tk.length) {
+    var fatte = tk.filter(function (t) { return t.stato === "Fatto"; }).length;
+    var incorso = tk.filter(function (t) { return t.stato === "In corso"; }).length;
+    return Math.round((fatte + incorso * 0.5) / tk.length * 100);
+  }
   var lv = lavOf(p.id);
   if (!lv.length) return p.avanzamento || 0;
-  var fatte = lv.filter(function (l) { return l.stato === "Completata"; }).length;
-  var incorso = lv.filter(function (l) { return l.stato === "In corso"; }).length;
-  return Math.round((fatte + incorso * 0.5) / lv.length * 100);
+  var f2 = lv.filter(function (l) { return l.stato === "Completata"; }).length;
+  var c2 = lv.filter(function (l) { return l.stato === "In corso"; }).length;
+  return Math.round((f2 + c2 * 0.5) / lv.length * 100);
 }
 function progVisibili() {
   return D.prog.filter(function (p) { return by(D.com, p.commessa_id); }).sort(function (a, b) { return (a.ordine || 0) - (b.ordine || 0); });
@@ -1417,21 +1427,37 @@ function barraTask(vista) {
     '<button class="lnk mini" data-vista-salva="1">Salva questa vista</button>' +
     "</div></div>";
 }
+/* Un'attività da sola non dice niente: "Posizionamento" per chi? dentro cosa?
+   Sotto il titolo sta la sua strada — cliente, preventivo, progetto — tolto
+   quello per cui la lista è già raggruppata. A destra le cose che cambiano:
+   stato, scadenza, chi la fa. */
+function stradaTask(t) {
+  var k = t.commessa_id ? by(D.com, t.commessa_id) : null;
+  var cli = t.cliente_id || (k && k.cliente_id);
+  var pezzi = [];
+  if (cli) pezzi.push(nameOf(D.cli, cli));
+  if (k && TGROUP !== "progetto") pezzi.push(k.titolo);
+  if (t.progetto_id && TGROUP !== "progetto") pezzi.push(nameOf(D.prog, t.progetto_id));
+  if (t.sezione && TGROUP === "progetto" && t.sezione !== nameOf(D.prog, t.progetto_id)) pezzi.push(t.sezione);
+  return pezzi.filter(Boolean).join(" · ");
+}
 function rigaTaskLista(t) {
   var fatto = t.stato === "Fatto";
   var late = t.scadenza && t.scadenza < today() && !fatto;
   var sub = D.task.filter(function (x) { return x.padre_id === t.id; });
   var subFatte = sub.filter(function (x) { return x.stato === "Fatto"; }).length;
   var bloccata = D.dip.filter(function (d) { return d.task_id === t.id; }).some(function (d) { var b = by(D.task, d.blocca_id); return b && b.stato !== "Fatto"; });
+  var strada = stradaTask(t);
   return '<div class="trow' + (fatto ? " fatta" : "") + '">' +
     '<button class="ck' + (fatto ? " on" : "") + '" data-tck="' + t.id + '" title="Segna fatta"></button>' +
-    '<button class="ttit" data-open-task="' + t.id + '">' + esc(t.titolo) +
+    '<button class="ttit" data-open-task="' + t.id + '"><span class="tt1">' + esc(t.titolo) +
       (sub.length ? '<span class="faint"> · ' + subFatte + "/" + sub.length + " sotto-attività</span>" : "") +
-      (bloccata ? ' <span class="badge b-amber">bloccata</span>' : "") + "</button>" +
+      (bloccata ? ' <span class="badge b-amber">bloccata</span>' : "") + "</span>" +
+      (strada ? '<span class="tt2">' + esc(strada) + "</span>" : "") + "</button>" +
     '<span class="tmeta">' +
-      (t.stimate ? '<span class="faint">' + num(t.stimate, 1) + " h</span>" : "") +
-      '<span class="badge ' + (PRIO_COL[t.priorita] || "") + '">' + esc(t.priorita || "Media") + "</span>" +
-      (t.scadenza ? '<span class="badge ' + (late ? "b-red" : "") + '">' + dshort(t.scadenza) + "</span>" : '<span class="faint">—</span>') +
+      (t.stato === "In corso" ? '<span class="badge b-terra">in corso</span>' : t.stato === "In review" ? '<span class="badge b-blue">in review</span>' : "") +
+      (t.priorita && t.priorita !== "Media" ? '<span class="badge ' + (PRIO_COL[t.priorita] || "") + '">' + esc(t.priorita) + "</span>" : "") +
+      (t.scadenza ? '<span class="badge ' + (late ? "b-red" : "") + '" title="Scadenza">' + (late ? "in ritardo · " : "entro ") + dshort(t.scadenza) + "</span>" : "") +
       (t.assegnato_id ? avatar(t.assegnato_id, 22) : '<span class="av vuoto">?</span>') +
     "</span></div>";
 }
@@ -1446,7 +1472,13 @@ function vistaLista(list) {
   if (TGROUP === "priorita") ordine = ["Alta", "Media", "Bassa"].filter(function (x) { return g[x]; });
   return ordine.map(function (k) {
     var aperte = g[k].filter(function (t) { return t.stato !== "Fatto"; }).length;
-    return '<div class="card tgroup"><div class="cardhead"><h2>' + esc(k) + '</h2><span class="faint">' + aperte + " aperte su " + g[k].length + "</span></div>" +
+    var sotto = "";
+    if (TGROUP === "progetto") {
+      var t0 = g[k][0], k0 = t0.commessa_id ? by(D.com, t0.commessa_id) : null;
+      var cli0 = t0.cliente_id || (k0 && k0.cliente_id);
+      sotto = [cli0 ? nameOf(D.cli, cli0) : "", k0 && k0.titolo !== k ? k0.titolo : ""].filter(Boolean).join(" · ");
+    }
+    return '<div class="card tgroup"><div class="cardhead"><h2>' + esc(k) + (sotto ? '<span class="sub">' + esc(sotto) + "</span>" : "") + '</h2><span class="faint">' + aperte + " aperte su " + g[k].length + "</span></div>" +
       '<div class="tlist">' + g[k].map(rigaTaskLista).join("") + "</div></div>";
   }).join("");
 }
@@ -2924,7 +2956,8 @@ function vProgetti() {
     var lv = lavOf(p.id);
     var ore = sum(oreOfProg(p.id), function (o) { return o.ore; });
     var stim = sum(lv, function (l) { return l.ore_stimate; });
-    var tk = taskOfProg(p.id).filter(function (t) { return t.stato !== "Fatto"; });
+    var tkTutte = taskOfProg(p.id).filter(function (t) { return !t.padre_id; });
+    var tk = tkTutte.filter(function (t) { return t.stato !== "Fatto"; });
     var late = p.fine && p.fine < today() && p.stato !== "Completato";
     var pal = p.stato === "Completato" ? "b-green" : p.stato === "In corso" ? "b-terra" : p.stato === "In attesa cliente" ? "b-amber" : "";
     return '<div class="prow" data-route="progetto|' + p.id + '|lavorazioni">' +
@@ -2932,8 +2965,8 @@ function vProgetti() {
       '<span class="pnome">' + esc(p.nome) + "</span>" +
       '<span class="pstato badge ' + pal + '">' + esc(p.stato || "—") + "</span>" +
       '<span class="pav">' + prog(avanzProg(p)) + '<i>' + num(avanzProg(p), 0) + "%</i></span>" +
-      '<span class="pore">' + num(ore, 1) + (stim ? " / " + num(stim, 0) : "") + " h</span>" +
-      '<span class="pattivita">' + (tk.length ? tk.length + " attività" : '<i class="faint">—</i>') + "</span>" +
+      '<span class="pore">' + (ore ? num(ore, 1) + " h" : '<i class="faint">—</i>') + "</span>" +
+      '<span class="pattivita">' + (tkTutte.length ? (tkTutte.length - tk.length) + " su " + tkTutte.length + " fatte" : '<i class="faint">—</i>') + "</span>" +
       '<span class="pdata">' + (p.fine ? (late ? '<b class="neg">' + dshort(p.fine) + "</b>" : dshort(p.fine)) : "—") + "</span>" +
       '<span class="pchi">' + (p.pro_id ? avatar(p.pro_id, 22) : "") + "</span></div>";
   }
@@ -5475,6 +5508,7 @@ function figuraNome(nome) {
    compaiono davvero nei preventivi italiani. Si estende aggiungendo una riga. */
 var VOCE_FIGURA = [
   [/\b(sito|siti|web|landing|e-?commerce|wordpress|pagin[ae] web|hosting)\b/, "Sviluppatore web"],
+  [/\b(crm|gestionale|software|piattaforma|portale|integrazion|automazion)/, "Sviluppatore web"],
   [/\b(app|applicazione mobile|ios|android)\b/, "Sviluppatore app"],
   [/\b(ads|advertising|adv|campagn[ae]|sponsorizzat)/, "Media buyer"],
   [/\b(social|instagram|facebook|tiktok|linkedin|piano editoriale|community)\b/, "Social media manager"],
@@ -5572,7 +5606,6 @@ async function apriIlLavoro(kid) {
       /* un canone è un mese dopo l'altro: ogni mese la sua attività, con dentro
          cosa comprende. Quelli passati nascono fatti. */
       var cosa = mod.att.map(function (a) { return a.n || a.nome; }).filter(Boolean).join(" · ");
-      var oreMese = mod.att.reduce(function (n, a) { return n + (+a.o || 0); }, 0) || null;
       for (var m = 0; m < cicli; m++) {
         var dal = aggMesi(inizio, m), al = fineMese(dal);
         var tit = (nome + " — " + meseEt(dal.slice(0, 7))).slice(0, 200);
@@ -5583,7 +5616,7 @@ async function apriIlLavoro(kid) {
           assegnato_id: chi || null, stato: passato ? "Fatto" : corrente ? "In corso" : "Da fare",
           priorita: "Media", ordine: m + 1, inizio: dal, scadenza: al,
           completata_il: passato ? al + "T18:00:00Z" : null,
-          stimate: oreMese, sezione: nome.slice(0, 80), descrizione: cosa || null
+          stimate: null, sezione: nome.slice(0, 80), descrizione: cosa || null
         });
       }
     } else {
@@ -5594,7 +5627,7 @@ async function apriIlLavoro(kid) {
         nuove.push({
           titolo: tit2, commessa_id: kid, cliente_id: k.cliente_id || null, progetto_id: pid,
           assegnato_id: chi || null, stato: "Da fare", priorita: "Media", ordine: j + 1,
-          stimate: (a.o == null || a.o === "") ? null : +a.o, sezione: nome.slice(0, 80)
+          stimate: null, sezione: nome.slice(0, 80)
         });
       });
     }
