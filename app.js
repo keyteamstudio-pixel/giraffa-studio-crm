@@ -5254,6 +5254,9 @@ async function delRow(entity, id) {
     go(s ? s[0] : "dash"); return;
   }
   if ((view === "commessa" && tbk === "com") || (view === "cliente" && tbk === "cli")) { go(tbk === "com" ? "commesse" : "clienti"); return; }
+  /* cancellata la scheda su cui ero: torno al suo elenco, non a una pagina vuota */
+  var dett = FDETT[entity];
+  if (dett && view === dett[0] && current === id) { toast("Eliminato"); go((FSEZ[entity] || ["dash"])[0]); return; }
   toast("Eliminato"); render();
 }
 function openRiga(kid, rid) {
