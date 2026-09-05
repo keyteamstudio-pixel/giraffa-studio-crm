@@ -31,7 +31,7 @@ var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
 var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
-  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi" };
+  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni" };
 
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
@@ -60,15 +60,20 @@ function closeModal() { el("#modal").innerHTML = ""; CHATOP = false; }
 var ROUTING = false, FCTX = null, FDIRTY = false, FBACK = null;
 function hashOf(v, id, t) { return "#/" + (v || "dash") + (id ? "/" + id : t ? "/-" : "") + (t ? "/" + t : ""); }
 function inForm() { return view === "nuovo" || view === "mod"; }
+function inFormNome(v) { return v === "nuovo" || v === "mod"; }
 function go(v, id, t) {
   if (FDIRTY && inForm() && v !== view) {
     if (!confirm("Hai modifiche non salvate su questo modulo. Vuoi uscire senza salvare?")) return;
   }
   FDIRTY = false;
+  /* cambiare scheda dentro la stessa pagina non è cambiare pagina: niente salto
+     in cima e niente voce in più nella cronologia */
+  var stessa = v === view && (id || null) === current;
   view = v; current = id || null; tab = t || ""; search = "";
-  document.body.classList.remove("navopen"); window.scrollTo(0, 0);
+  document.body.classList.remove("navopen");
+  if (!stessa) window.scrollTo(0, 0);
   ROUTING = true;
-  try { location.hash = hashOf(v, id, t); } catch (e) {}
+  try { if (stessa && history.replaceState) history.replaceState(null, "", hashOf(v, id, t)); else location.hash = hashOf(v, id, t); } catch (e) {}
   ROUTING = false;
   render();
 }
@@ -104,10 +109,10 @@ var STATI_CHIUSI = ["Completato", "Perso"];           /* non si muovono piu' */
 var STATO_DATA = { Inviato: "inviato_il", Accettato: "accettato_il", Completato: "completato_il" };
 var STATO_SPIEGA = {
   Bozza: "Lo stai ancora scrivendo. Non l'ha visto nessuno.",
-  Inviato: "E' uscito al cliente. Da qui si aspetta una risposta.",
-  Accettato: "Il cliente ha detto si: da qui nascono progetti e attivita.",
-  Completato: "Il lavoro e' finito e consegnato.",
-  Perso: "Il cliente ha detto no, o non ha risposto piu'."
+  Inviato: "È uscito al cliente. Da qui si aspetta una risposta.",
+  Accettato: "Il cliente ha detto sì: da qui nascono progetti e attività.",
+  Completato: "Il lavoro è finito e consegnato.",
+  Perso: "Il cliente ha detto no, o non ha più risposto."
 };
 var TASK_STATI = ["Da fare", "In corso", "In review", "Fatto"];
 var FASE_STATI = ["Da iniziare", "In corso", "In attesa cliente", "Completata"];
@@ -414,9 +419,38 @@ function calc(k) {
   var iva = Math.round(tot * (k.iva == null ? 22 : +k.iva) / 100);
   return { imp: imp, cost: cost, fee: fee, tot: tot, iva: iva, lordo: tot + iva, margine: tot - cost, mio: mio, opz: opz, mrr: mrr, sconto: sconto, spese: spese };
 }
-function avanzamento(k) {
-  var f = fasiOf(k); if (!f.length) return null;
+/* Una misura sola: le attività fatte dentro i progetti. Le fasi restano solo
+   per chi le usa ancora e non ha progetti. */
+function avanzamento(kid) {
+  var k = by(D.com, kid);
+  if (k && k.stato === "Completato") return 100;
+  var pg = progOf(kid);
+  if (pg.length) return Math.round(sum(pg, avanzProg) / pg.length);
+  var f = fasiOf(kid); if (!f.length) return null;
   return Math.round(sum(f, function (x) { return x.avanzamento; }) / f.length);
+}
+function riuOf(kid) { return D.riu.filter(function (r) { return r.commessa_id === kid; }).sort(function (a, b) { return (a.data + (a.ora || "")) < (b.data + (b.ora || "")) ? 1 : -1; }); }
+function matOfRiu(rid) { return D.mat.filter(function (m) { return m.riunione_id === rid; }); }
+/* Gli errori del database in italiano, per chi non deve sapere cos'è un JWT. */
+function erroreUmano(e) {
+  var m = String((e && e.message) || e || "");
+  var c = e && e.code;
+  if (/Invalid login credentials/i.test(m)) return "Email o password sbagliate.";
+  if (/Email not confirmed/i.test(m)) return "L'email non è ancora confermata: guarda la posta.";
+  if (/JWT|expired|token/i.test(m)) return "La sessione è scaduta: ricarica la pagina e rientra.";
+  if (/row-level security|permission denied|42501/i.test(m) || c === "42501") return "Non hai i permessi per questa modifica.";
+  if (c === "23505" || /duplicate key/i.test(m)) return "Esiste già una voce uguale.";
+  if (c === "23503" || /foreign key/i.test(m)) return "C'è qualcosa di collegato a questa voce: toglilo prima.";
+  if (c === "23502" || /not-null|null value/i.test(m)) return "Manca un campo obbligatorio.";
+  if (/invalid input syntax/i.test(m)) return "Un valore non è nel formato giusto: controlla numeri e date.";
+  if (/Failed to fetch|NetworkError|Load failed|network/i.test(m)) return "Non riesco a raggiungere il server: controlla la connessione e riprova.";
+  if (/does not exist|PGRST|schema cache/i.test(m)) return "Il CRM e il database non sono allineati: ricarica la pagina.";
+  return m || "Qualcosa è andato storto.";
+}
+function femm(t) { var w = String(t || "").split(" ")[0]; return /[aà]$/.test(w) || /ione$/.test(w) || w === "Fase" || w === "Variante"; }
+function dettoFatto(t, mod) {
+  if (t === "Ore") return "Ore " + (mod ? "aggiornate" : "registrate");
+  return t + (mod ? (femm(t) ? " aggiornata" : " aggiornato") : (femm(t) ? " creata" : " creato"));
 }
 function valoreCliente(c) { return sum(comOfCliente(c).filter(function (k) { return k.stato !== "Perso"; }), function (k) { return calc(k).tot; }); }
 
@@ -445,7 +479,7 @@ function ftask() { return D.task.filter(function (t) { return mio(t, "task"); })
 async function loadAll() {
   me.email = user.email;
   var m = await sb.from("membri").select("*").eq("user_id", user.id).maybeSingle();
-  if (m.error) toast("Non riesco a leggere il tuo profilo: " + m.error.message, true);
+  if (m.error) toast("Non riesco a leggere il tuo profilo: " + erroreUmano(m.error), true);
   if (m.data) {
     me.ruolo = m.data.ruolo || "professionista"; me.pro_id = m.data.pro_id; me.cliente_id = m.data.cliente_id;
     me.perm = { spazi: !!m.data.perm_spazi, studio: !!m.data.perm_studio, accessi: !!m.data.perm_accessi };
@@ -463,7 +497,7 @@ async function loadAll() {
   if (rotte.length) toast("Non riesco a leggere: " + rotte.join(", ") + ". Quello che vedi è incompleto.", true);
   SET = D.set[0] || SET;
   var st = await sb.rpc("studio_stats");
-  if (st.error) toast("Riepilogo dello studio non disponibile: " + st.error.message, true);
+  if (st.error) toast("Riepilogo dello studio non disponibile: " + erroreUmano(st.error), true);
   STATS = st.data || null;
   mieiDatiPersonali();
   var pr = me.pro_id ? by(D.pros, me.pro_id) : null;
@@ -491,7 +525,7 @@ async function salvaSubito(tbk, id, patch) {
   var r = await sb.from(TB[tbk]).update(patch).eq("id", id);
   if (r.error) {
     if (riga) { applicaLocale(tbk, id, prima); render(); }
-    toast(r.error.message, true);
+    toast(erroreUmano(r.error), true);
     return false;
   }
   if (!riga) await reload([tbk]);
@@ -549,7 +583,8 @@ function navFor() {
     { g: "Lavoro" },
     { k: "dash", t: "Oggi", d: "Cosa guardare adesso" },
     { k: "calendario", t: "Calendario", d: "Scadenze e consegne sul mese" },
-    { k: "progetti", t: "Progetti", d: "Progetti aperti in cui sei dentro", c: function () { return progVisibili().filter(function (p) { return p.stato !== "Completato"; }).length; } },
+    { k: "riunioni", t: "Riunioni", d: "Videocall, appunti, decisioni", c: function () { return D.riu.filter(function (r) { return r.data >= today() && r.stato !== "Annullata"; }).length; } },
+    { k: "progetti", t: "Progetti", d: "Progetti aperti in cui sei dentro", c: function () { return progVisibili().filter(function (p) { return p.stato !== "Completato" && p.stato !== "Sospeso"; }).length; } },
     { k: "task", t: "Attività", d: "Attività aperte assegnate a te", c: function () { return ftask().filter(function (t) { return t.stato !== "Fatto" && t.assegnato_id === me.pro_id; }).length; } },
     { k: "ore", t: "Ore", d: "La tua settimana, ora per ora" },
     { k: "carico", t: "Carico", d: "Quanto lavoro hai davanti" },
@@ -599,7 +634,7 @@ function buildNav() {
   var vv = view;
   if (vv === "nuovo" || vv === "mod") { var fs = FSEZ[current]; vv = fs ? fs[0] : "dash"; }
   if (vv === "riga") vv = "commesse";
-  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse", documento: "commesse", importa: "commesse", professioni: "profilo" }[vv] || vv;
+  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse", documento: "commesse", importa: "commesse", professioni: "profilo", riunione: "riunioni" }[vv] || vv;
   h += '<button class="cerca" data-pal="1" title="Cerca ovunque (⌘K)"><span>Cerca o esegui un\'azione…</span><kbd>⌘K</kbd></button>';
   h += '<button class="cerca chiedi" data-chiedi="1" title="Fai una domanda sui tuoi dati"><span>Chiedi…</span></button>';
   var ap = navAperti(), qui = gruppoDi(cur), gr = null, gsub = "", buf = "";
@@ -895,17 +930,17 @@ async function faiProposta(az, id) {
       { commessa_id: k.id, nome: "Acconto 50% alla firma", importo: meta, stato: "Da incassare" },
       { commessa_id: k.id, nome: "Saldo 50% alla consegna", importo: Math.round((tot - meta) * 100) / 100, stato: "Da incassare" }
     ]);
-    if (r.error) { toast(r.error.message, true); return; }
+    if (r.error) { toast(erroreUmano(r.error), true); return; }
     await reload(["pag"]); propScarta(id); toast("Due scadenze create"); render(); return;
   }
   if (p[0] === "rinnova") {
     var r2 = await sb.from("commesse").update({ data: today() }).eq("id", p[1]);
-    if (r2.error) { toast(r2.error.message, true); return; }
+    if (r2.error) { toast(erroreUmano(r2.error), true); return; }
     await reload(["com"]); toast("Preventivo rinnovato da oggi"); render(); return;
   }
   if (p[0] === "allinea") {
     var r3 = await sb.from("righe").update({ prezzo_unit: +p[2] }).eq("id", p[1]);
-    if (r3.error) { toast(r3.error.message, true); return; }
+    if (r3.error) { toast(erroreUmano(r3.error), true); return; }
     await reload(["righe"]); propScarta(id); toast("Prezzo allineato al listino"); render(); return;
   }
 }
@@ -1149,7 +1184,7 @@ function vCommessa() {
 
   var b = budget(k), sal = salute(k), vr = variOf(k.id);
 
-  var h = crumbs([["Amministrazione"], ["Preventivi", "commesse"], [k.titolo]]);
+  var h = crumbs([[gruppoDi("commesse") || "Clienti"], ["Preventivi", "commesse"], [k.titolo]]);
   h += '<div class="top"><h1>' + esc(k.titolo) + '<span class="sub">' + lnkCli(k.cliente_id) + " · " + esc(k.stato) + " · " + esc(k.tipo_prezzo || "Fisso") + (condivisa(k) ? " · condivisa con " + (proDi(k.id).length - 1) + " colleghi" : " · solo tua") + '</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-edit="com:' + k.id + '">Modifica</button>' +
     '<button class="btn sm ghost" data-route="documento|' + k.id + '|">Documento</button>' +
@@ -1162,9 +1197,38 @@ function vCommessa() {
 
   h += cicloBar(k);
 
+  /* Le proprietà in cima, come una pagina di Notion: si cambiano sul posto. */
+  var aperto = STATI_APERTI.indexOf(k.stato) > -1;
+  h += '<div class="card props"><div class="pgrid">' +
+    qcampo("com", k.id, "stato", "Stato", qsel("com", k.id, "stato", sel(STATI, k.stato || "Bozza"))) +
+    qcampo("com", k.id, "cliente_id", "Cliente", qsel("com", k.id, "cliente_id", opt(D.cli, k.cliente_id))) +
+    qcampo("com", k.id, "owner_id", "Chi lo segue", qsel("com", k.id, "owner_id", opt(D.pros, k.owner_id))) +
+    qcampo("com", k.id, "inizio", "Inizio", qinput("com", k.id, "inizio", "date", k.inizio)) +
+    qcampo("com", k.id, "scadenza", "Consegna", qinput("com", k.id, "scadenza", "date", k.scadenza)) +
+    (aperto && k.stato !== "Accettato" ? qcampo("com", k.id, "probabilita", "Probabilità (%)", qinput("com", k.id, "probabilita", "number", k.probabilita == null ? 50 : k.probabilita, ' step="5" min="0" max="100"')) : "") +
+    '<div class="qfield ro"><label>Valore</label><b>' + eur(b.ricavo) + "</b>" + (c.mrr ? '<span class="faint">' + eur(c.mrr) + " al mese</span>" : "") + "</div>" +
+    '<div class="qfield ro"><label>Avanzamento</label><b>' + (av == null ? "—" : av + " %") + "</b>" + (av == null ? "" : prog(av)) + "</div>" +
+    '<div class="qfield ro"><label>Salute</label><span class="badge ' + sal.c + '">' + sal.t + '</span><span class="faint">' + esc(sal.d || "") + "</span></div>" +
+    (k.pr_id ? '<div class="qfield ro"><label>Portato da</label><b>' + esc(nameOf(D.pros, k.pr_id)) + "</b></div>" : "") +
+    "</div></div>";
+  h += cardProposte(k.id);
+  var riu = riuOf(k.id);
+  var TABS = [["note", "Note"], ["discussione", "Discussione", D.comm.filter(function (x) { return x.commessa_id === k.id; }).length], ["materiali", "Allegati", mt.length],
+    ["attivita", "Attività", tk.filter(function (z) { return z.stato !== "Fatto"; }).length], ["riunioni", "Riunioni", riu.length],
+    ["servizi", "Preventivo", righeOf(k.id).length], ["numeri", "Numeri"], ["pagamenti", "Pagamenti", pg.length], ["costi", "Costi", costiOf(k.id).length]];
+  if (!isPR()) TABS.push(["ore", "Ore", num(oreT, 1)]);
+  TABS.push(["approvazioni", "Approvazioni", ap.filter(function (a) { return a.stato === "In attesa"; }).length], ["varianti", "Varianti", vr.length]);
+  if (fs.length) TABS.push(["fasi", "Fasi", fs.length]);
+  TABS.push(["log", "Diario"]);
+  h += '<div class="card">' + schede(TABS, t, "commessa", k.id);
+  if (t === "riunioni") {
+    h += '<div class="cardhead"><h2>Riunioni su questo lavoro</h2><button class="btn sm ghost" data-new="riu" data-ctx="' + k.id + '">+ Riunione</button></div>';
+    h += riu.length ? riu.map(rigaRiunione).join("") : vuoto("Nessuna riunione ancora. Quando ne fissi una, qui trovi ordine del giorno, appunti e decisioni.", '<button class="lnk" data-new="riu" data-ctx="' + k.id + '">Fissa la prima</button>');
+  }
+  if (t === "numeri") {
   h += '<div class="grid g4">' +
     kpi(eur(b.ricavo), "Valore del lavoro", c.mrr ? eur(c.mrr) + " al mese ricorrenti" : b.extra ? eur(k.budget_importo || c.tot) + " + " + eur(b.extra) + " di varianti" : "imponibile " + eur(c.imp) + " · IVA " + eur(c.iva)) +
-    kpi(av == null ? "—" : av + " %", "Avanzamento", fs.length + " fasi") +
+    kpi(av == null ? "—" : av + " %", "Avanzamento", progOf(k.id).length + " progetti") +
     kpi('<span class="badge ' + sal.c + '" style="font-size:.9rem;padding:5px 12px">' + sal.t + "</span>", "Salute", sal.d) +
     kpi(vediCosti() ? eur(b.margReale) : num(b.oreFatte, 1) + " h", vediCosti() ? "Margine atteso" : "Ore registrate", vediCosti() ? "pianificato " + eur(b.margPian) : "su " + num(b.oreStim, 0) + " stimate") + "</div>";
 
@@ -1183,12 +1247,30 @@ function vCommessa() {
     }).join("") + "</div>";
   }
 
-  h += cardProposte(k.id);
-  h += '<div class="grid g32" style="margin-top:18px"><div>';
-  var TABS = [["fasi", "Fasi", fs.length], ["servizi", "Preventivo", righeOf(k.id).length], ["attivita", "Attività", tk.filter(function (z) { return z.stato !== "Fatto"; }).length], ["materiali", "Materiali", mt.length], ["pagamenti", "Pagamenti", pg.length], ["costi", "Costi", costiOf(k.id).length], ["approvazioni", "Approvazioni", ap.filter(function (a) { return a.stato === "In attesa"; }).length], ["varianti", "Varianti", vr.length], ["log", "Diario"]];
-  if (!isPR()) TABS.splice(3, 0, ["ore", "Ore", num(oreT, 1)]);
-  TABS.unshift(["note", "Note"], ["discussione", "Discussione", D.comm.filter(function (x) { return x.commessa_id === k.id; }).length]);
-  h += '<div class="card">' + schede(TABS, t, "commessa", k.id);
+  h += '<div class="card"><h3 style="margin-bottom:12px">Economics</h3><table><tbody>' +
+    row2("Imponibile servizi", eur(c.imp)) +
+    (b.extra ? row2("Varianti approvate", eur(b.extra)) : "") +
+    row2("<b>Valore del lavoro</b>", "<b>" + eur(b.ricavo) + "</b>") +
+    (vediCosti() ? row2("Costo pianificato", eur(b.costoPian)) + row2("Costo reale (ore)", eur(b.costoReale)) +
+      row2("Margine pianificato", eur(b.margPian) + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margPian / b.ricavo * 100) : 0) + "%)</span>") +
+      row2("<b>Margine atteso</b>", "<b>" + eur(b.margReale) + "</b>" + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margReale / b.ricavo * 100) : 0) + "%)</span>") : "") +
+
+    (me.pro_id ? row2("Il mio compenso", eur(c.mio)) : "") +
+    row2("Ore stimate / fatte", num(b.oreStim, 0) + " h / " + num(b.oreFatte, 1) + " h") +
+    (b.oreFatte ? row2("€/h reale sul valore", eur(b.ricavo / b.oreFatte)) : "") +
+    (k.tipo_prezzo === "Retainer" && k.retainer_mensile ? row2("Retainer mensile", eur(k.retainer_mensile)) : "") +
+    "</tbody></table></div>";
+
+  h += '<div class="card"><h3 style="margin-bottom:12px">Chi ci lavora</h3>';
+  var perPro = {};
+  righeOf(k.id).forEach(function (r) { var s = by(D.serv, r.serv_id); var pid = r.assegnato_id || (s && s.pro_id); if (pid) perPro[pid] = (perPro[pid] || 0) + (+r.ore_stimate || 0); });
+  ore.forEach(function (o) { if (o.pro_id && perPro[o.pro_id] == null) perPro[o.pro_id] = 0; });
+  var pk = Object.keys(perPro);
+  h += pk.length ? '<div class="bars">' + pk.map(function (pid) {
+    var reali = sum(ore.filter(function (o) { return o.pro_id === pid; }), function (o) { return o.ore; });
+    return bar(nameOf(D.pros, pid), reali, Math.max(1, perPro[pid], reali), num(reali, 1) + " / " + num(perPro[pid], 0) + " h");
+  }).join("") + "</div>" : vuoto("Nessuno assegnato.");
+  }
 
   if (t === "note") {
     h += '<div class="cardhead"><h2>Note del lavoro</h2><div style="display:flex;gap:8px;align-items:center"><span class="faint" id="notestat"></span><button class="btn sm ghost" data-notedit="' + (NOTEDIT ? "0" : "1") + '">' + (NOTEDIT ? "Anteprima" : "Scrivi") + "</button></div></div>";
@@ -1325,49 +1407,78 @@ function vCommessa() {
       return "<li>" + esc(e.testo) + '<div class="when">' + dt(e.created_at) + " · " + esc(e.pro_id ? nameOf(D.pros, e.pro_id) : "sistema") + "</div></li>";
     }).join("") + "</ul>" : vuoto("Nessun evento registrato.");
   }
-  h += "</div></div><div>";
-  h += '<div class="card"><h3 style="margin-bottom:14px">Scheda</h3>' +
-    qcampo("com", k.id, "stato", "Stato", qsel("com", k.id, "stato", sel(STATI, k.stato || "Bozza"))) +
-    qcampo("com", k.id, "cliente_id", "Cliente", qsel("com", k.id, "cliente_id", opt(D.cli, k.cliente_id))) +
-    '<div class="row2">' +
-      qcampo("com", k.id, "inizio", "Inizio", qinput("com", k.id, "inizio", "date", k.inizio)) +
-      qcampo("com", k.id, "scadenza", "Consegna", qinput("com", k.id, "scadenza", "date", k.scadenza)) +
-    "</div>" +
-    '<div class="row2">' +
-      qcampo("com", k.id, "probabilita", "Probabilità (%)", qinput("com", k.id, "probabilita", "number", k.probabilita == null ? 50 : k.probabilita, ' step="5" min="0" max="100"')) +
-      qcampo("com", k.id, "owner_id", "Chi lo segue", qsel("com", k.id, "owner_id", opt(D.pros, k.owner_id))) +
-    "</div>" +
-    '<table><tbody>' +
-    row2("Cliente", '<button class="lnk" data-open-cli="' + k.cliente_id + '">' + esc(nameOf(D.cli, k.cliente_id)) + "</button>") +
-    (k.pr_id ? row2("Portato da", esc(nameOf(D.pros, k.pr_id))) : "") +
-    row2("Fatturazione", "Ognuno fattura la sua parte al cliente") +
-    row2("Note", esc(k.note || "—")) + "</tbody></table>" +
-    '<div style="margin-top:12px"><button class="btn sm ghost" data-edit="com:' + k.id + '">Apri il modulo completo</button></div></div>';
-
-  h += '<div class="card"><h3 style="margin-bottom:12px">Economics</h3><table><tbody>' +
-    row2("Imponibile servizi", eur(c.imp)) +
-    (b.extra ? row2("Varianti approvate", eur(b.extra)) : "") +
-    row2("<b>Valore del lavoro</b>", "<b>" + eur(b.ricavo) + "</b>") +
-    (vediCosti() ? row2("Costo pianificato", eur(b.costoPian)) + row2("Costo reale (ore)", eur(b.costoReale)) +
-      row2("Margine pianificato", eur(b.margPian) + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margPian / b.ricavo * 100) : 0) + "%)</span>") +
-      row2("<b>Margine atteso</b>", "<b>" + eur(b.margReale) + "</b>" + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margReale / b.ricavo * 100) : 0) + "%)</span>") : "") +
-
-    (me.pro_id ? row2("Il mio compenso", eur(c.mio)) : "") +
-    row2("Ore stimate / fatte", num(b.oreStim, 0) + " h / " + num(b.oreFatte, 1) + " h") +
-    (b.oreFatte ? row2("€/h reale sul valore", eur(b.ricavo / b.oreFatte)) : "") +
-    (k.tipo_prezzo === "Retainer" && k.retainer_mensile ? row2("Retainer mensile", eur(k.retainer_mensile)) : "") +
-    "</tbody></table></div>";
-
-  h += '<div class="card"><h3 style="margin-bottom:12px">Chi ci lavora</h3>';
-  var perPro = {};
-  righeOf(k.id).forEach(function (r) { var s = by(D.serv, r.serv_id); var pid = r.assegnato_id || (s && s.pro_id); if (pid) perPro[pid] = (perPro[pid] || 0) + (+r.ore_stimate || 0); });
-  ore.forEach(function (o) { if (o.pro_id && perPro[o.pro_id] == null) perPro[o.pro_id] = 0; });
-  var pk = Object.keys(perPro);
-  h += pk.length ? '<div class="bars">' + pk.map(function (pid) {
-    var reali = sum(ore.filter(function (o) { return o.pro_id === pid; }), function (o) { return o.ore; });
-    return bar(nameOf(D.pros, pid), reali, Math.max(1, perPro[pid], reali), num(reali, 1) + " / " + num(perPro[pid], 0) + " h");
-  }).join("") + "</div>" : vuoto("Nessuno assegnato.");
-  return h + "</div></div></div>";
+  return h + "</div>";
+}
+/* ---------------- riunioni ----------------
+   Uno strumento pratico: prima della riunione il link e l'ordine del giorno,
+   durante gli appunti, dopo le decisioni e i prossimi passi, che con un clic
+   diventano attività dentro il lavoro giusto. */
+var RF = { cerca: "" };
+function oraRiu(r) { return r.ora ? r.ora.slice(0, 5) + (r.fine ? "–" + r.fine.slice(0, 5) : "") : ""; }
+function rigaRiunione(r) {
+  var oggi = today();
+  var sub = dt(r.data) + (oraRiu(r) ? " · " + oraRiu(r) : "") + " · " + esc(r.tipo || "Videocall") + (r.cliente_id ? " · " + lnkCli(r.cliente_id) : "");
+  var meta = (r.stato === "Tenuta" ? '<span class="badge b-green">tenuta</span>' : r.stato === "Annullata" ? '<span class="badge b-red">annullata</span>' : r.data < oggi ? '<span class="badge b-amber">da chiudere</span>' : r.data === oggi ? '<span class="badge b-blue">oggi</span>' : "") +
+    (r.partecipanti || []).map(function (p) { return avatar(p, 22); }).join("") +
+    (r.link && r.stato !== "Annullata" && r.data >= oggi ? ' <a class="btn sm" href="' + esc(r.link) + '" target="_blank" rel="noopener">Entra</a>' : "");
+  return rigaEl("riunione|" + r.id + "|", r.titolo, sub, meta);
+}
+function vRiunioni() {
+  var oggi = today(), q = RF.cerca.toLowerCase();
+  var tutte = D.riu.filter(function (r) { return !q || (r.titolo + " " + (r.note || "") + " " + (r.decisioni || "") + " " + nameOf(D.cli, r.cliente_id) + " " + nameOf(D.com, r.commessa_id, "titolo")).toLowerCase().indexOf(q) > -1; });
+  var pros = tutte.filter(function (r) { return r.data >= oggi && r.stato !== "Annullata"; }).sort(function (a, b) { return (a.data + (a.ora || "")) < (b.data + (b.ora || "")) ? -1 : 1; });
+  var pass = tutte.filter(function (r) { return r.data < oggi || r.stato === "Annullata"; }).sort(function (a, b) { return (a.data + (a.ora || "")) < (b.data + (b.ora || "")) ? 1 : -1; });
+  var vista = tab === "passate" ? "passate" : "prossime", lista = vista === "passate" ? pass : pros;
+  var h = head("Riunioni", "Videocall e incontri: link, ordine del giorno, appunti, decisioni, prossimi passi", '<button class="btn sm" data-new="riu">+ Riunione</button>');
+  h += barraViste([["prossime", "Prossime", pros.length], ["passate", "Passate", pass.length]], vista, "riunioni",
+    '<input id="fcerca" data-rf="cerca" placeholder="Cerca per titolo, cliente, appunti…" value="' + esc(RF.cerca) + '">');
+  var daChiudere = pass.filter(function (r) { return r.stato !== "Tenuta" && r.stato !== "Annullata"; });
+  if (vista === "prossime" && daChiudere.length) h += '<div class="card" style="border-color:var(--terra)"><div class="cardhead"><h2>Da chiudere</h2><span class="faint">riunioni passate senza decisioni segnate</span></div>' + daChiudere.slice(0, 5).map(rigaRiunione).join("") + "</div>";
+  h += '<div class="card">' + (lista.length ? lista.map(rigaRiunione).join("") : vuoto(vista === "passate" ? "Nessuna riunione passata." : "Nessuna riunione in programma.", '<button class="lnk" data-new="riu">Fissane una</button>')) + "</div>";
+  return h;
+}
+function vRiunione() {
+  var r = by(D.riu, current);
+  if (!r) return '<div class="card">Riunione non trovata. <button class="lnk" data-route="riunioni">Torna alle riunioni</button></div>';
+  var oggi = today(), mia = r.pro_id === me.pro_id;
+  var h = crumbs([[gruppoDi("riunioni") || "Lavoro"], ["Riunioni", "riunioni"], [r.titolo]]);
+  h += '<div class="top"><h1>' + esc(r.titolo) + '<span class="sub">' + dt(r.data) + (oraRiu(r) ? " · " + oraRiu(r) : "") + " · " + esc(r.tipo || "Videocall") +
+    (r.cliente_id ? " · " + lnkCli(r.cliente_id) : "") + (r.commessa_id ? " · " + lnkCom(r.commessa_id) : "") + (r.progetto_id ? " · " + lnkProg(r.progetto_id) : "") + '</span></h1><div class="tools">' +
+    (r.link ? '<a class="btn sm" href="' + esc(r.link) + '" target="_blank" rel="noopener">Entra nella videocall</a>' : "") +
+    (r.stato !== "Tenuta" ? '<button class="btn sm ghost" data-riu-stato="' + r.id + '|Tenuta">Segna come tenuta</button>' : '<button class="btn sm ghost" data-riu-stato="' + r.id + '|Programmata">Riapri</button>') +
+    (r.stato !== "Annullata" && r.stato !== "Tenuta" ? '<button class="btn sm ghost" data-riu-stato="' + r.id + '|Annullata">Annulla</button>' : "") +
+    '<button class="btn sm ghost" data-edit="riu:' + r.id + '">Modifica</button>' +
+    (mia ? '<button class="btn sm danger" data-del="riu:' + r.id + '">Elimina</button>' : "") + "</div></div>";
+  h += '<div class="card props"><div class="pgrid">' +
+    qcampo("riu", r.id, "data", "Giorno", qinput("riu", r.id, "data", "date", r.data)) +
+    qcampo("riu", r.id, "ora", "Dalle", qinput("riu", r.id, "ora", "time", r.ora ? r.ora.slice(0, 5) : "")) +
+    qcampo("riu", r.id, "fine", "Alle", qinput("riu", r.id, "fine", "time", r.fine ? r.fine.slice(0, 5) : "")) +
+    qcampo("riu", r.id, "tipo", "Come", qsel("riu", r.id, "tipo", sel(["Videocall", "In presenza", "Telefonata"], r.tipo || "Videocall"))) +
+    qcampo("riu", r.id, "link", "Link videocall", qinput("riu", r.id, "link", "text", r.link)) +
+    qcampo("riu", r.id, "luogo", "Dove", qinput("riu", r.id, "luogo", "text", r.luogo)) +
+    qcampo("riu", r.id, "cliente_id", "Cliente", qsel("riu", r.id, "cliente_id", opt(D.cli, r.cliente_id))) +
+    qcampo("riu", r.id, "commessa_id", "Preventivo", qsel("riu", r.id, "commessa_id", opt(D.com, r.commessa_id, "titolo"))) +
+    qcampo("riu", r.id, "progetto_id", "Progetto", qsel("riu", r.id, "progetto_id", '<option value=""></option>' + progOf(r.commessa_id).map(function (p) { return '<option value="' + p.id + '"' + (r.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + "</option>"; }).join(""))) +
+    qcampo("riu", r.id, "registrazione", "Registrazione (link)", qinput("riu", r.id, "registrazione", "text", r.registrazione)) +
+    '<div class="qfield ro"><label>Chi c\'è</label>' + avatar(r.pro_id, 22) + (r.partecipanti || []).map(function (p) { return avatar(p, 22); }).join("") + (r.esterni ? '<span class="faint"> · ' + esc(r.esterni) + "</span>" : "") + "</div>" +
+    "</div></div>";
+  var box = function (campo, titolo, sotto, ph) {
+    return '<div class="card"><div class="cardhead"><h2>' + titolo + '</h2><span class="faint">' + sotto + "</span></div>" +
+      '<textarea class="doc" data-autosave="riu|' + campo + "|" + r.id + '" placeholder="' + esc(ph) + '">' + esc(r[campo] || "") + "</textarea></div>";
+  };
+  h += '<p class="faint" style="margin:-6px 0 12px">Si salva da solo mentre scrivi. <span id="notestat"></span></p>';
+  h += '<div class="riugrid">' +
+    box("ordine_giorno", "Ordine del giorno", "prima", "- Cosa dobbiamo decidere\n- Cosa mostrare") +
+    box("note", "Appunti", "durante", "Quello che viene detto, così com'è") +
+    box("decisioni", "Decisioni", "dopo", "Cosa abbiamo deciso, una per riga") +
+    '<div class="card"><div class="cardhead"><h2>Prossimi passi</h2><button class="btn sm ghost" data-riu-task="' + r.id + '">Crea le attività</button></div>' +
+    '<textarea class="doc" data-autosave="riu|prossimi|' + r.id + '" placeholder="Una riga per ogni cosa da fare: con un clic diventano attività dentro il lavoro">' + esc(r.prossimi || "") + "</textarea>";
+  var nate = D.task.filter(function (t) { return t.origine_id === r.id; });
+  if (nate.length) h += '<div class="checklist" style="margin-top:10px">' + nate.map(function (x) { return riga(x, nate); }).join("") + "</div>";
+  h += "</div></div>";
+  var ctx = ctxAll(r.commessa_id, r.progetto_id, "", "", r.id), mt = matOfRiu(r.id);
+  h += '<div class="card"><div class="cardhead"><h2>Allegati</h2><div style="display:flex;gap:8px"><button class="btn sm ghost" data-link="' + esc(ctx) + '">+ Link</button></div></div>' + zonaAllegati(ctx) + tabellaAllegati(mt, {}) + "</div>";
+  return h;
 }
 /* ---------------- attività ---------------- */
 function riga(x, tutte, liv) {
@@ -1675,7 +1786,7 @@ async function creaModelloDaProgetto() {
   });
   if (!voci.length) { toast("Quel progetto non ha ancora lavorazioni o attività", true); return; }
   var r = await sb.from("modelli").insert({ pro_id: me.pro_id, nome: nome, descrizione: "Ricavato da " + p.nome, voci: voci });
-  if (r.error) { toast(r.error.message, true); return; }
+  if (r.error) { toast(erroreUmano(r.error), true); return; }
   await reload(["modelli"]); closeModal(); toast("Modello creato con " + voci.length + " voci"); render();
 }
 async function applicaModello(mid) {
@@ -2091,7 +2202,7 @@ async function prendiListino() {
   });
   if (!nuovi.length) { toast("Il tuo listino ha già tutte le voci tipiche"); return; }
   var r = await sb.from("servizi").insert(nuovi);
-  if (r.error) { toast(r.error.message, true); return; }
+  if (r.error) { toast(erroreUmano(r.error), true); return; }
   await reload(["serv"]);
   toast("Aggiunte " + nuovi.length + " voci: ora mettici i tuoi prezzi");
   render();
@@ -2456,7 +2567,7 @@ function vCliente() {
   var accesso = D.membri.filter(function (m) { return m.cliente_id === c.id; })[0];
   var pl = D.port.filter(function (x) { return x.cliente_id === c.id; })[0];
 
-  var h = crumbs([["Amministrazione"], ["Clienti", "clienti"], [c.nome]]);
+  var h = crumbs([[gruppoDi("clienti") || "Clienti"], ["Clienti", "clienti"], [c.nome]]);
   h += '<div class="top"><h1>' + esc(c.nome) + '<span class="sub">' + esc(c.settore || "—") + " · " + esc(c.stato || "Lead") + '</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-go="clienti">← Clienti</button>' +
     '<button class="btn sm ghost" data-anadi="' + c.id + '">Analisi online</button>' +
@@ -2627,8 +2738,8 @@ function urlValido(u) {
   try { var p = new URL(u); return p.protocol === "http:" || p.protocol === "https:"; } catch (e) { return false; }
 }
 /* contesto di un allegato: preventivo|progetto|lavorazione|attività, come stringa */
-function ctxAll(kid, pid, lid, tid) { return [kid || "", pid || "", lid || "", tid || ""].join("|"); }
-function ctxLeggi(s) { var p = String(s || "").split("|"); return { commessa_id: p[0] || null, progetto_id: p[1] || null, lavorazione_id: p[2] || null, task_id: p[3] || null }; }
+function ctxAll(kid, pid, lid, tid, rid) { return [kid || "", pid || "", lid || "", tid || "", rid || ""].join("|"); }
+function ctxLeggi(s) { var p = String(s || "").split("|"); return { commessa_id: p[0] || null, progetto_id: p[1] || null, lavorazione_id: p[2] || null, task_id: p[3] || null, riunione_id: p[4] || null }; }
 
 /* la zona per trascinare, con accanto il pulsante per incollare un link */
 function zonaAllegati(ctx) {
@@ -2692,7 +2803,7 @@ async function salvaLink(ctx, dati) {
   riga.visibile_cliente = !!dati.visibile_cliente;
   riga.caricato_da = me.pro_id;
   var r = await sb.from("materiali").insert(riga);
-  if (r.error) { toast(r.error.message, true); return false; }
+  if (r.error) { toast(erroreUmano(r.error), true); return false; }
   if (riga.commessa_id) await logEv(riga.commessa_id, "Aggiunto link: " + riga.nome);
   await reload(["mat", "ev"]);
   toast("Link aggiunto");
@@ -2993,7 +3104,7 @@ function vProgetti() {
     '<button class="btn sm" data-new="prog">+ Nuovo progetto</button>');
   h += barraViste([["percliente", "Per cliente"], ["elenco", "Elenco"], ["bacheca", "Bacheca"]], vista, "progetti",
     fcerca("prog", "Cerca un progetto…") +
-    fsel("prog", "stato", [["", "Ogni stato"], ["Da iniziare", "Da iniziare"], ["In corso", "In corso"], ["In attesa cliente", "In attesa cliente"], ["Completato", "Completato"]]) +
+    fsel("prog", "stato", [["", "Ogni stato"], ["Da iniziare", "Da iniziare"], ["In corso", "In corso"], ["In attesa cliente", "In attesa cliente"], ["Sospeso", "Sospeso"], ["Completato", "Completato"]]) +
     fsel("prog", "cli", [["", "Ogni cliente"]].concat(fcli().map(function (c) { return [c.id, c.nome]; }))) +
     fsel("prog", "pro", [["", "Chiunque"], ["io", "Seguiti da me"]].concat(D.pros.map(function (p) { return [p.id, p.nome]; }))) +
     (f.stato || f.cli || f.pro || f.cerca ? '<button class="lnk mini" data-f-reset="prog">azzera</button>' : ""));
@@ -3006,7 +3117,7 @@ function vProgetti() {
     var tkTutte = taskOfProg(p.id).filter(function (t) { return !t.padre_id; });
     var tk = tkTutte.filter(function (t) { return t.stato !== "Fatto"; });
     var late = p.fine && p.fine < today() && p.stato !== "Completato";
-    var pal = p.stato === "Completato" ? "b-green" : p.stato === "In corso" ? "b-terra" : p.stato === "In attesa cliente" ? "b-amber" : "";
+    var pal = p.stato === "Completato" ? "b-green" : p.stato === "In corso" ? "b-terra" : p.stato === "In attesa cliente" ? "b-amber" : p.stato === "Sospeso" ? "b-red" : "";
     return '<div class="prow" data-route="progetto|' + p.id + '|lavorazioni">' +
       '<span class="pdot ' + pal + '"></span>' +
       '<span class="pnome">' + esc(p.nome) + "</span>" +
@@ -3157,7 +3268,7 @@ function vProgetto() {
   h += "</div></div><div>";
 
   h += '<div class="card"><h3 style="margin-bottom:14px">Scheda</h3>' +
-    qcampo("prog", p.id, "stato", "Stato", qsel("prog", p.id, "stato", sel(["Da iniziare", "In corso", "In attesa cliente", "Completato"], p.stato || "Da iniziare"))) +
+    qcampo("prog", p.id, "stato", "Stato", qsel("prog", p.id, "stato", sel(["Da iniziare", "In corso", "In attesa cliente", "Sospeso", "Completato"], p.stato || "Da iniziare"))) +
     qcampo("prog", p.id, "pro_id", "Chi lo segue", qsel("prog", p.id, "pro_id", opt(D.pros, p.pro_id))) +
     '<div class="row2">' +
       qcampo("prog", p.id, "inizio", "Inizio", qinput("prog", p.id, "inizio", "date", p.inizio)) +
@@ -3247,6 +3358,7 @@ function eventiDi(g) {
   D.lav.forEach(function (l) { if (l.fine === g && l.stato !== "Completata") out.push({ c: "b-terra", t: l.nome, s: "consegna lavorazione", act: 'data-open-lav="' + l.id + '"' }); });
   D.pag.forEach(function (p) { if (p.scadenza === g && p.stato !== "Incassato") out.push({ c: "b-red", t: eur(p.importo) + " · " + p.nome, s: "pagamento", act: 'data-open-com="' + p.commessa_id + '"' }); });
   D.pren.forEach(function (r) { if (r.data === g) out.push({ c: "b-green", t: nameOf(D.spazi, r.spazio_id), s: r.slot || "prenotazione", act: 'data-go="spazi"' }); });
+  D.riu.forEach(function (r) { if (r.data === g && r.stato !== "Annullata") out.push({ c: "b-blue", t: (r.ora ? r.ora.slice(0, 5) + " " : "") + r.titolo, s: "riunione", act: 'data-route="riunione|' + r.id + '|"' }); });
   return out;
 }
 function vCalendario() {
@@ -3391,7 +3503,7 @@ async function apprRispondi(id, esito) {
   var r = PLINK
     ? await sb.rpc("portale_link_rispondi", { tok: PLINK.tok, pwd: PLINK.pwd, a: id, esito: esito, nota: nota })
     : await sb.rpc("portale_rispondi", { a: id, esito: esito, nota: nota });
-  if (r.error) { toast(r.error.message, true); return; }
+  if (r.error) { toast(erroreUmano(r.error), true); return; }
   PORT = (PLINK ? (r.data && r.data.progetti) : r.data) || PORT;
   toast(esito === "Approvata" ? "Approvato, grazie!" : "Richiesta inviata allo studio");
   render();
@@ -3687,7 +3799,7 @@ async function importaPdf(file) {
   go("importa");
 }
 function vImporta() {
-  var h = crumbs([["Amministrazione"], ["Preventivi", "commesse"], ["Importa"]]);
+  var h = crumbs([[gruppoDi("commesse") || "Clienti"], ["Preventivi", "commesse"], ["Importa"]]);
   h += '<div class="top"><h1>Importa un preventivo<span class="sub">Da un PDF, una scansione o una foto</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-route="commesse|-|personali">Torna ai preventivi</button></div></div>';
 
@@ -3912,7 +4024,7 @@ async function creaDaImport() {
     var nuovo = { nome: nome, owner_id: me.pro_id, stato: "Attivo" };
     ["referente", "piva", "indirizzo", "email"].forEach(function (c) { if (anag[c]) nuovo[c] = anag[c]; });
     var rc = await sb.from("clienti").insert(nuovo).select().single();
-    if (rc.error) { toast(rc.error.message, true); return; }
+    if (rc.error) { toast(erroreUmano(rc.error), true); return; }
     cid = rc.data.id;
   } else if (IMP.salvaAnag) {
     /* riempio solo i buchi: quello che c'è già non si tocca */
@@ -3920,7 +4032,7 @@ async function creaDaImport() {
     ["referente", "piva", "indirizzo", "email"].forEach(function (c) { if (anag[c] && !vecchio[c]) tappi[c] = anag[c]; });
     if (Object.keys(tappi).length) {
       var ru = await sb.from("clienti").update(tappi).eq("id", cid);
-      if (ru.error) toast("Anagrafica non aggiornata: " + ru.error.message, true);
+      if (ru.error) toast("Anagrafica non aggiornata: " + erroreUmano(ru.error), true);
     }
   }
   var rk = await sb.from("commesse").insert({
@@ -3935,7 +4047,7 @@ async function creaDaImport() {
     sezioni: IMP.tieniSez ? (IMP.sezioni || []) : [],
     note: "Importato da " + IMP.file.name
   }).select().single();
-  if (rk.error) { toast(rk.error.message, true); return; }
+  if (rk.error) { toast(erroreUmano(rk.error), true); return; }
   var kid = rk.data.id;
   if (IMP.righe.length) {
     var righe = IMP.righe.map(function (r, i) {
@@ -3946,7 +4058,7 @@ async function creaDaImport() {
         inizio: r.inizio || null, stato: r.stato || "Da iniziare", nota_prezzo: r.nota_prezzo || null };
     });
     var rr = await sb.from("righe").insert(righe);
-    if (rr.error) toast("Preventivo creato, ma le voci no: " + rr.error.message, true);
+    if (rr.error) toast("Preventivo creato, ma le voci no: " + erroreUmano(rr.error), true);
   }
   /* le scadenze: senza data, perché il documento dice «alla firma», non «il 12» */
   if (IMP.creaPag && IMP.pagamenti.length) {
@@ -3955,14 +4067,15 @@ async function creaDaImport() {
     var rp = await sb.from("pagamenti").insert(impPagImporti(totP).map(function (p) {
       return { commessa_id: kid, nome: p.nome.slice(0, 140), importo: p.importo, stato: "Da incassare" };
     }));
-    if (rp.error) toast("Preventivo creato, ma le scadenze no: " + rp.error.message, true);
+    if (rp.error) toast("Preventivo creato, ma le scadenze no: " + erroreUmano(rp.error), true);
   }
   var canoni = IMP.creaCanoni !== false ? impCanoni() : [];
   if (canoni.length) {
     var rcan = await sb.from("pagamenti").insert(canoni.map(function (c) {
-      return { commessa_id: kid, nome: c.nome, importo: c.importo, scadenza: c.scadenza, stato: "Da incassare" };
+      var passato = c.scadenza && fineMese(c.scadenza) < today();
+      return { commessa_id: kid, nome: c.nome, importo: c.importo, scadenza: fineMese(c.scadenza), stato: passato ? "Incassato" : "Da incassare", pagato_il: passato ? fineMese(c.scadenza) : null };
     }));
-    if (rcan.error) toast("Preventivo creato, ma i canoni no: " + rcan.error.message, true);
+    if (rcan.error) toast("Preventivo creato, ma i canoni no: " + erroreUmano(rcan.error), true);
   }
   /* il documento di partenza resta attaccato: serve per controllare cosa avevi promesso */
   try {
@@ -4109,7 +4222,7 @@ function vDocumento() {
   var amb = ambitoCom(k), em = emittente(k), cl = by(D.cli, k.cliente_id) || {};
   var c = calc(k), rr = righeOf(k.id), pgt = progOf(k.id), pg = pagOf(k.id);
 
-  var h = crumbs([["Amministrazione"], ["Preventivi", "commesse"], [k.titolo, "commessa", k.id, "servizi"], ["Documento"]]);
+  var h = crumbs([[gruppoDi("commesse") || "Clienti"], ["Preventivi", "commesse"], [k.titolo, "commessa", k.id, "servizi"], ["Documento"]]);
   h += '<div class="docbar noprint">' +
     '<div class="dbleft"><span class="badge ' + (amb === "studio" ? "b-blue" : "b-amber") + '">' + ambitoEt(amb) + "</span>" +
     '<select data-qset="com|ambito|' + k.id + '" title="Chi emette questo preventivo">' +
@@ -4320,12 +4433,12 @@ async function faiAzioneChat(i) {
       titolo: (a.titolo || "Nuova attività").slice(0, 200), stato: "Da fare", priorita: "Media",
       assegnato_id: me.pro_id, commessa_id: a.commessa_id || null, scadenza: a.scadenza || null
     });
-    if (r.error) { toast(r.error.message, true); return; }
+    if (r.error) { toast(erroreUmano(r.error), true); return; }
     await reload(["task"]); m.fatta = true; toast("Attività creata"); aggiornaAssistente(); render(); return;
   }
   if (a.tipo === "crea_cliente") {
     var r2 = await sb.from("clienti").insert({ nome: (a.titolo || "Nuovo cliente").slice(0, 140), owner_id: me.pro_id, stato: "Attivo" });
-    if (r2.error) { toast(r2.error.message, true); return; }
+    if (r2.error) { toast(erroreUmano(r2.error), true); return; }
     await reload(["cli"]); m.fatta = true; toast("Cliente creato"); aggiornaAssistente(); render(); return;
   }
 }
@@ -4353,7 +4466,7 @@ function analisiDi(cid) {
     .sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; })[0] || null;
 }
 function vAnalisi() {
-  var h = crumbs([["Clienti"], ["Amministrazione", "amm"], ["Analisi cliente"]]);
+  var h = crumbs([[gruppoDi("amm") || "Clienti"], ["Amministrazione", "amm"], ["Analisi cliente"]]);
   h += '<div class="top"><h1>Analisi cliente<span class="sub">Quello che di un\'azienda è pubblico online</span></h1></div>';
 
   h += '<div class="card"><div class="grid g32"><div>';
@@ -4717,19 +4830,35 @@ var PROS_PR = function () { return D.pros; };
 
 var FORMS = {
   com: { t: "Preventivo", tb: "com", f: function (r) {
+    var nuovo = !r.id;
     return fld("titolo", "Titolo", "text", r.titolo, true) +
-      selField("ambito", "A nome di chi esce", selKV([["personale", "Tuo — esce con la tua partita IVA e la tua serie P/anno"], ["studio", "Dello studio — esce a nome Giraffa Studio, serie S/anno"]], r.ambito === "studio" ? "studio" : "personale")) +
-      '<div class="row2">' + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) + selField("stato", "Stato", sel(STATI, r.stato || "Bozza")) + "</div>" +
-      '<div class="row2">' + selField("owner_id", "Owner (chi ha il rapporto)", opt(D.pros, r.owner_id || me.pro_id)) + selField("pm_id", "Regia / PM", opt(D.pros, r.pm_id)) + "</div>" +
-      selField("pr_id", "Chi ha portato il cliente", opt(D.pros, r.pr_id)) +
-
-      '<div class="row2">' + selField("tipo_prezzo", "Come si paga il lavoro", sel(["Fisso", "Tempo e materiali", "Retainer"], r.tipo_prezzo || "Fisso")) + fld("budget_importo", "Budget concordato (€)", "number", r.budget_importo) + "</div>" +
-      '<div class="row2">' + fld("retainer_mensile", "Retainer mensile (€, se ricorrente)", "number", r.retainer_mensile) + fld("budget_ore", "Budget ore", "number", r.budget_ore) + "</div>" +
+      '<div class="row2">' + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) +
+      (nuovo ? fld("nuovo_cliente", "Oppure un cliente nuovo: scrivi il nome", "text", "") : selField("stato", "Stato", sel(STATI, r.stato || "Bozza"))) + "</div>" +
+      '<div class="row2">' + selField("ambito", "A nome di chi esce", selKV([["personale", "Tuo — con la tua partita IVA, serie P/anno"], ["studio", "Dello studio — a nome Giraffa Studio, serie S/anno"]], r.ambito === "studio" ? "studio" : "personale")) +
+      selField("owner_id", "Chi lo segue", opt(D.pros, r.owner_id || me.pro_id)) + "</div>" +
       '<div class="row2">' + fld("inizio", "Inizio", "date", r.inizio) + fld("scadenza", "Consegna prevista", "date", r.scadenza) + "</div>" +
+      '<details class="fmore"' + (nuovo ? "" : " open") + "><summary>Altro: chi coordina, IVA, sconto, validità, condizioni, note</summary>" +
+      '<div class="row2">' + selField("pm_id", "Chi coordina (se non sei tu)", opt(D.pros, r.pm_id)) + selField("pr_id", "Chi ha portato il cliente", opt(D.pros, r.pr_id)) + "</div>" +
+      '<div class="row2">' + selField("tipo_prezzo", "Come si paga il lavoro", sel(["Fisso", "Tempo e materiali", "Retainer"], r.tipo_prezzo || "Fisso")) + fld("budget_importo", "Budget concordato (€)", "number", r.budget_importo) + "</div>" +
+      '<div class="row2">' + fld("retainer_mensile", "Canone mensile (€, se ricorrente)", "number", r.retainer_mensile) + fld("budget_ore", "Ore previste in tutto", "number", r.budget_ore) + "</div>" +
       '<div class="row2">' + fld("sconto", "Sconto commerciale (%)", "number", r.sconto || 0) + fld("iva", "IVA (%)", "number", r.iva == null ? 22 : r.iva) + "</div>" +
-      '<div class="row2">' + fld("validita", "Validità preventivo (giorni)", "number", r.validita == null ? 30 : r.validita) + fld("probabilita", "Probabilità di chiusura (%)", "number", r.probabilita == null ? 50 : r.probabilita) + "</div>" +
-      fld("condizioni", "Condizioni e tempi (compaiono sul preventivo)", "textarea", r.condizioni) +
-      fld("note", "Note interne", "textarea", r.note);
+      '<div class="row2">' + fld("validita", "Validità del preventivo (giorni)", "number", r.validita == null ? 30 : r.validita) + fld("probabilita", "Quante probabilità che si chiuda (%)", "number", r.probabilita == null ? 50 : r.probabilita) + "</div>" +
+      fld("condizioni", "Condizioni e tempi (compaiono sul foglio)", "textarea", r.condizioni) +
+      fld("note", "Note interne", "textarea", r.note) + "</details>";
+  }},
+  riu: { t: "Riunione", tb: "riu", f: function (r) {
+    var part = r.partecipanti || [];
+    return fld("titolo", "Di cosa si parla", "text", r.titolo, true) +
+      '<div class="row2">' + selField("tipo", "Come", sel(["Videocall", "In presenza", "Telefonata"], r.tipo || "Videocall")) + fld("data", "Giorno", "date", r.data || today(), true) + "</div>" +
+      '<div class="row2">' + fld("ora", "Dalle", "time", r.ora) + fld("fine", "Alle", "time", r.fine) + "</div>" +
+      '<div class="row2">' + fld("link", "Link della videocall (Meet, Zoom, Teams…)", "text", r.link) + fld("luogo", "Dove, se di persona", "text", r.luogo) + "</div>" +
+      '<div class="row2">' + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) + selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) + "</div>" +
+      selField("progetto_id", "Progetto", '<option value="">— nessuno —</option>' + progVisibili().map(function (p) { return '<option value="' + p.id + '"' + (r.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + " · " + esc(nameOf(D.com, p.commessa_id, "titolo")) + "</option>"; }).join("")) +
+      '<div class="field"><label>Colleghi che partecipano</label><div class="chks">' + D.pros.filter(function (p) { return p.id !== me.pro_id; }).map(function (p) {
+        return '<label class="chk"><input type="checkbox" name="part_' + p.id + '" value="1"' + (part.indexOf(p.id) > -1 ? " checked" : "") + "> " + esc(p.nome) + "</label>";
+      }).join("") + "</div></div>" +
+      fld("esterni", "Chi c'è dall'esterno (nomi, email)", "text", r.esterni) +
+      fld("ordine_giorno", "Ordine del giorno", "textarea", r.ordine_giorno);
   }},
   ag: { t: "Evento", tb: "ag", f: function (r) {
     return fld("titolo", "Cosa succede", "text", r.titolo, true) +
@@ -4835,10 +4964,16 @@ var FORMS = {
   }},
   ore: { t: "Ore", tb: "ore", f: function (r) {
     var p = me.pro_id ? by(D.pros, me.pro_id) : null;
-    return selField("lavorazione_id", "Lavorazione", '<option value="">— nessuna —</option>' + D.lav.map(function (l) {
-      return '<option value="' + l.id + '"' + (r.lavorazione_id === l.id ? " selected" : "") + ">" + esc(nameOf(D.prog, l.progetto_id)) + " · " + esc(l.nome) + "</option>";
-    }).join("")) +
-      '<div class="row2">' + selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) + selField("pro_id", "Chi", opt(PROS_PRO(), r.pro_id || me.pro_id)) + "</div>" +
+    var aperte = D.task.filter(function (t) { return t.stato !== "Fatto" && (!r.progetto_id || t.progetto_id === r.progetto_id) && (!r.commessa_id || t.commessa_id === r.commessa_id); });
+    return '<div class="row2">' + selField("progetto_id", "Progetto", '<option value="">— nessuno —</option>' + progVisibili().map(function (p) {
+      return '<option value="' + p.id + '"' + (r.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + " · " + esc(nameOf(D.com, p.commessa_id, "titolo")) + "</option>";
+    }).join("")) + selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) + "</div>" +
+      '<div class="row2">' + selField("task_id", "Attività (se vuoi)", '<option value="">— nessuna —</option>' + aperte.map(function (t) {
+        return '<option value="' + t.id + '"' + (r.task_id === t.id ? " selected" : "") + ">" + esc(t.titolo) + "</option>";
+      }).join("")) + selField("lavorazione_id", "Lavorazione (se vuoi)", '<option value="">— nessuna —</option>' + D.lav.filter(function (l) { return !r.progetto_id || l.progetto_id === r.progetto_id; }).map(function (l) {
+        return '<option value="' + l.id + '"' + (r.lavorazione_id === l.id ? " selected" : "") + ">" + esc(nameOf(D.prog, l.progetto_id)) + " · " + esc(l.nome) + "</option>";
+      }).join("")) + "</div>" +
+      selField("pro_id", "Chi", opt(PROS_PRO(), r.pro_id || me.pro_id)) +
       '<div class="row2">' + fld("data", "Data", "date", r.data || today()) + fld("ore", "Ore", "number", r.ore) + "</div>" +
       '<div class="row2">' + fld("tariffa", "Tariffa oraria (€)", "number", r.tariffa == null ? (p ? p.tariffa_oraria : 0) : r.tariffa) + selField("fatturabile", "Fatturabile", sel(["si", "no"], r.fatturabile === false ? "no" : "si")) + "</div>" +
       fld("descrizione", "Descrizione", "text", r.descrizione);
@@ -4933,9 +5068,9 @@ var FSEZ = {
   membri: ["impostazioni", "Impostazioni"], fasi: ["commesse", "Preventivi"], pag: ["commesse", "Preventivi"], costi: ["commesse", "Preventivi"],
   vari: ["commesse", "Preventivi"], appr: ["commesse", "Preventivi"], righe: ["commesse", "Preventivi"],
   task: ["task", "Attività"], ore: ["ore", "Ore & timesheet"], inter: ["clienti", "Clienti"], modelli: ["task", "Attività"],
-  mat: ["commesse", "Preventivi"], ev: ["commesse", "Preventivi"], pren: ["spazi", "Coworking & spazi"]
+  mat: ["commesse", "Preventivi"], ev: ["commesse", "Preventivi"], pren: ["spazi", "Coworking & spazi"], riu: ["riunioni", "Riunioni"]
 };
-var FDETT = { com: ["commessa", "servizi"], cli: ["cliente", ""], prog: ["progetto", "lavorazioni"], lav: ["lavorazione", ""], pros: ["pro", ""], task: ["attivita", ""] };
+var FDETT = { com: ["commessa", "note"], cli: ["cliente", ""], prog: ["progetto", "lavorazioni"], lav: ["lavorazione", ""], pros: ["pro", ""], task: ["attivita", ""], riu: ["riunione", ""] };
 
 function openForm(entity, id, ctx) {
   var F = FORMS[entity]; if (!F) return;
@@ -5007,6 +5142,30 @@ async function saveForm(f) {
     privati = {};
     F.priv.forEach(function (c) { if (c in obj) { privati[c] = obj[c]; delete obj[c]; } });
   }
+  /* le caselle dei partecipanti diventano un elenco */
+  if (entity === "riu") {
+    var part = [];
+    Object.keys(obj).forEach(function (c) { if (c.indexOf("part_") === 0) { var on = f.querySelector('[name="' + c + '"]'); if (on && on.checked) part.push(c.slice(5)); delete obj[c]; } });
+    obj.partecipanti = part;
+    if (!obj.pro_id) obj.pro_id = me.pro_id;
+    if (obj.progetto_id && !obj.commessa_id) { var pgr = by(D.prog, obj.progetto_id); if (pgr) obj.commessa_id = pgr.commessa_id; }
+    if (obj.commessa_id && !obj.cliente_id) { var kr = by(D.com, obj.commessa_id); if (kr) obj.cliente_id = kr.cliente_id; }
+  }
+  /* il cliente nuovo nasce sul posto, senza uscire dal modulo */
+  if ("nuovo_cliente" in obj) {
+    var nc = (obj.nuovo_cliente || "").trim(); delete obj.nuovo_cliente;
+    if (nc && !obj.cliente_id) {
+      var gia = D.cli.filter(function (c) { return (c.nome || "").toLowerCase() === nc.toLowerCase(); })[0];
+      if (gia) obj.cliente_id = gia.id;
+      else {
+        var rc = await sb.from("clienti").insert({ nome: nc, stato: "Lead", owner_id: me.pro_id }).select().single();
+        if (rc.error) { toast("Non riesco a creare il cliente: " + erroreUmano(rc.error), true); return; }
+        await reload(["cli"]); obj.cliente_id = rc.data.id;
+      }
+    }
+  }
+  if (entity === "com" && !obj.cliente_id) { toast("Scegli un cliente, o scrivi il nome di uno nuovo.", true); return; }
+  if (obj.task_id && !obj.progetto_id) { var tk0 = by(D.task, obj.task_id); if (tk0) { obj.progetto_id = tk0.progetto_id; if (!obj.commessa_id) obj.commessa_id = tk0.commessa_id; } }
   if (entity === "ev" && !obj.pro_id) obj.pro_id = me.pro_id;
   if (entity === "ag" && !obj.pro_id) obj.pro_id = me.pro_id;
   if (entity === "costi" && !obj.pro_id) obj.pro_id = me.pro_id;
@@ -5030,17 +5189,17 @@ async function saveForm(f) {
   var btn = f.querySelector('button[type="submit"]'), lbl = btn ? btn.textContent : "";
   if (btn) { btn.disabled = true; btn.textContent = "Salvo…"; }
   var r = id ? await sb.from(TB[F.tb]).update(obj).eq(key, id).select().single() : await sb.from(TB[F.tb]).insert(obj).select().single();
-  if (r.error) { if (btn) { btn.disabled = false; btn.textContent = lbl; } toast(r.error.message, true); return; }
+  if (r.error) { if (btn) { btn.disabled = false; btn.textContent = lbl; } toast(erroreUmano(r.error), true); return; }
   var nid = (r.data && r.data[key]) || id;
   if (privati && Object.keys(privati).length && nid === me.pro_id) {
     privati.pro_id = nid; privati.aggiornato = new Date().toISOString();
     var rp = await sb.from("pro_privato").upsert(privati, { onConflict: "pro_id" });
-    if (rp.error) toast("Scheda salvata, ma i dati personali no: " + rp.error.message, true);
+    if (rp.error) toast("Scheda salvata, ma i dati personali no: " + erroreUmano(rp.error), true);
     else await reload(["priv"]);
   }
   if (obj.commessa_id && entity !== "ev") await logEv(obj.commessa_id, (id ? "Modificato" : "Aggiunto") + ": " + F.t.toLowerCase() + (obj.nome ? " — " + obj.nome : obj.titolo ? " — " + obj.titolo : ""));
   await reload([F.tb, "ev"]);
-  closeModal(); toast(F.t + (id ? " aggiornato" : " creato"));
+  closeModal(); toast(dettoFatto(F.t, !!id));
   if (inPagina) { FDIRTY = false; dopoSalva(entity, nid); return; }
   render();
 }
@@ -5050,7 +5209,7 @@ async function duplica(id) {
   if (!titolo) return;
   var nuovo = { titolo: titolo, cliente_id: k.cliente_id, owner_id: me.pro_id || k.owner_id, pm_id: k.pm_id, stato: "Bozza", tipo_prezzo: k.tipo_prezzo, budget_ore: k.budget_ore, probabilita: 50, note: k.note, inizio: today() };
   var r = await sb.from("commesse").insert(nuovo).select().single();
-  if (r.error) { toast(r.error.message, true); return; }
+  if (r.error) { toast(erroreUmano(r.error), true); return; }
   var nid = r.data.id, base = new Date();
   var fs = fasiOf(k.id).map(function (f, i) {
     return { commessa_id: nid, nome: f.nome, ordine: f.ordine || i + 1, stato: "Da iniziare", avanzamento: 0, visibile_cliente: f.visibile_cliente, inizio: iso(new Date(base.getTime() + i * 10 * 86400000)), fine: iso(new Date(base.getTime() + (i + 1) * 10 * 86400000)) };
@@ -5083,11 +5242,17 @@ async function delRow(entity, id) {
       return;
     }
     if (r.error.code === "23503") { toast("Non si può eliminare: ci sono altre cose collegate. Toglile prima.", true); return; }
-    toast(r.error.message, true); return;
+    toast(erroreUmano(r.error), true); return;
   }
   await reload([tbk]); closeModal();
   FDIRTY = false;
-  if (inForm() || view === "riga") { var s = FSEZ[entity] || FSEZ[tbk]; toast("Eliminato"); FBACK = null; go(s ? s[0] : "dash"); return; }
+  if (inForm() || view === "riga") {
+    var s = FSEZ[entity] || FSEZ[tbk]; toast("Eliminato");
+    var det = FDETT[entity], b = FBACK; FBACK = null;
+    /* torno da dove ero, a meno che fosse proprio la scheda appena eliminata */
+    if (b && b[0] && !inFormNome(b[0]) && !(det && b[0] === det[0] && b[1] === id)) { go(b[0], b[1], b[2]); return; }
+    go(s ? s[0] : "dash"); return;
+  }
   if ((view === "commessa" && tbk === "com") || (view === "cliente" && tbk === "cli")) { go(tbk === "com" ? "commesse" : "clienti"); return; }
   toast("Eliminato"); render();
 }
@@ -5105,7 +5270,7 @@ function vRiga() {
   var r = rid ? (by(D.righe, rid) || {}) : {};
   var pg = progOf(k);
   return '<div class="formpage">' +
-    crumbs([["Amministrazione"], ["Preventivi", "commesse"], [kk.titolo, "commessa", kk.id, "servizi"], [rid ? "Modifica voce" : "Nuova voce"]]) +
+    crumbs([[gruppoDi("commesse") || "Clienti"], ["Preventivi", "commesse"], [kk.titolo, "commessa", kk.id, "servizi"], [rid ? "Modifica voce" : "Nuova voce"]]) +
     '<div class="top"><h1>' + esc(rid ? (r.nome || "Voce di preventivo") : "Nuova voce di preventivo") + '<span class="sub">' + esc(kk.titolo) + "</span></h1></div>" +
     '<form class="fpage" data-page="1" data-riga-save="' + k + ":" + (rid || "") + '"><div class="card">' +
     '<div class="row2">' + selField("tipo", "Tipo di voce", sel(["Servizio", "Trasferta", "Spesa", "Sconto"], r.tipo || "Servizio")) +
@@ -5115,7 +5280,7 @@ function vRiga() {
     }).join("")) +
     fld("nome", "Come appare sul preventivo", "text", r.nome) +
     fld("descrizione", "Descrizione per il cliente", "textarea", r.descrizione) +
-    '<div class="row2">' + fld("qty", "Quantità", "number", r.qty == null ? 1 : r.qty) + selField("unita", "Unità", sel(["", "progetto", "giornata", "mezza giornata", "ora", "mese", "anno", "scatto", "post", "trasferta", "km", "pezzo"], r.unita || "")) + "</div>" +
+    '<div class="row2">' + fld("qty", "Quantità", "number", r.qty == null ? 1 : r.qty) + fld("unita", "Unità (progetto, ora, mese, seduta, cartella…)", "text", r.unita) + "</div>" +
     '<div class="row2">' + fld("prezzo_unit", "Prezzo unitario al cliente (€)", "number", r.prezzo_unit) + fld("costo_unit", "Compenso unitario al professionista (€)", "number", r.costo_unit) + "</div>" +
     '<div class="row2">' + fld("sconto", "Sconto su questa voce (%)", "number", r.sconto || 0) + selField("opzionale", "Voce opzionale", sel(["no", "si"], r.opzionale ? "si" : "no")) + "</div>" +
     '<div class="row2">' + selField("ricorrente", "Ricorrente", sel(["no", "si"], r.ricorrente ? "si" : "no")) + selField("periodo", "Periodo", sel(["Mensile", "Annuale"], r.periodo || "Mensile")) + "</div>" +
@@ -5134,8 +5299,9 @@ function openPalette() {
   D.com.forEach(function (k) { PAL.push({ t: k.titolo, s: "Preventivo · " + nameOf(D.cli, k.cliente_id), i: "◧", go: ["commessa", k.id, "note"] }); });
   D.cli.forEach(function (c) { PAL.push({ t: c.nome, s: "Cliente", i: "◐", go: ["cliente", c.id] }); });
   D.pros.forEach(function (p) { PAL.push({ t: p.nome, s: "Professionista" + (p.ruolo ? " · " + p.ruolo : ""), i: "◍", go: ["pro", p.id] }); });
+  D.riu.forEach(function (r) { PAL.push({ t: r.titolo, s: "Riunione · " + dt(r.data), i: "◷", go: ["riunione", r.id] }); });
   navFor().forEach(function (n) { if (n.k) PAL.push({ t: n.t, s: "Vai a", i: "→", go: [n.k] }); });
-  [["com", "Nuovo preventivo"], ["ore", "Registra ore"], ["task", "Nuova attività"], ["cli", "Nuovo cliente"], ["serv", "Nuovo servizio"]].forEach(function (a) {
+  [["com", "Nuovo preventivo"], ["ore", "Registra ore"], ["task", "Nuova attività"], ["riu", "Nuova riunione"], ["cli", "Nuovo cliente"], ["serv", "Nuovo servizio"]].forEach(function (a) {
     PAL.push({ t: a[1], s: "Azione", i: "+", act: a[0] });
   });
   modal('<div class="box pal"><input id="palq" placeholder="Cerca un preventivo, un cliente, una persona… o un\'azione" autocomplete="off" spellcheck="false"><div id="palres"></div><div class="palfoot"><span><kbd>↑</kbd><kbd>↓</kbd> muoviti</span><span><kbd>↵</kbd> apri</span><span><kbd>esc</kbd> chiudi</span></div></div>');
@@ -5176,11 +5342,11 @@ function render() {
     return;
   }
   buildNav();
-  var V = { attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi, professioni: vProfessioni, eventi: vEventi, chat: vChat };
+  var V = { riunioni: vRiunioni, riunione: vRiunione, attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi, professioni: vProfessioni, eventi: vEventi, chat: vChat };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search") || el("#tcerca") || el("#fcerca");
-  if (s) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
+  if (s && window.innerWidth > 760 && !("ontouchstart" in window)) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
   if (view === "chat") { var cms = el(".chatms"); if (cms) cms.scrollTop = cms.scrollHeight; segnaLetto(); }
   countUp();
 }
@@ -5226,13 +5392,13 @@ async function caricaImmagine(cosa, file) {
 async function salvaImmagine(cosa, dati) {
   if (cosa === "studio_logo") {
     var rs = await sb.from("settings").update({ studio_logo: dati }).eq("id", SET.id || 1);
-    if (rs.error) { toast(rs.error.message, true); return; }
+    if (rs.error) { toast(erroreUmano(rs.error), true); return; }
     await reload(["set"]); SET = D.set[0] || SET;
   } else {
     if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
     var patch = { pro_id: me.pro_id, aggiornato: new Date().toISOString() }; patch[cosa] = dati;
     var rp = await sb.from("pro_privato").upsert(patch, { onConflict: "pro_id" });
-    if (rp.error) { toast(rp.error.message, true); return; }
+    if (rp.error) { toast(erroreUmano(rp.error), true); return; }
     await reload(["priv"]);
   }
   toast(dati ? "Salvato" : "Tolto");
@@ -5262,10 +5428,26 @@ function countUp() {
 }
 
 /* ---------------- eventi ---------------- */
-document.addEventListener("click", async function (e) {
+/* Un clic solo: finché la prima azione non ha finito, la seconda uguale non parte. */
+var INCORSO = {};
+var GUARDIA = ["avvia", "impCrea", "ciclo", "incassa", "tck", "apprVar", "tstart", "tstop", "tstartTask", "tstartLav", "propSi", "portnew", "riuTask", "riuStato", "duplTask", "dupl"];
+document.addEventListener("click", function (e) {
   var t = e.target.closest("button, [data-open-task], [data-open-com], [data-open-prog], [data-open-lav], [data-day], [data-close]");
   if (!t) return;
-  var d = t.dataset || {};
+  var d = t.dataset || {}, chiave = "";
+  for (var gi = 0; gi < GUARDIA.length; gi++) if (d[GUARDIA[gi]] !== undefined) { chiave = GUARDIA[gi] + ":" + d[GUARDIA[gi]]; break; }
+  if (chiave) {
+    if (INCORSO[chiave]) { e.preventDefault(); return; }
+    INCORSO[chiave] = 1; t.classList.add("busy");
+    var fine = function () { delete INCORSO[chiave]; t.classList.remove("busy"); };
+    var pr = clicApp(e, t, d);
+    if (pr && pr.then) pr.then(fine, function (err) { fine(); toast(erroreUmano(err), true); }); else fine();
+    return;
+  }
+  var p2 = clicApp(e, t, d);
+  if (p2 && p2.catch) p2.catch(function (err) { toast(erroreUmano(err), true); });
+});
+async function clicApp(e, t, d) {
   if (t.hasAttribute("data-close")) { closeModal(); return; }
   if (d.palI !== undefined) { palGo(+d.palI); return; }
   if (d.pal) { openPalette(); return; }
@@ -5308,7 +5490,7 @@ document.addEventListener("click", async function (e) {
         cliente_id: ANA.cliente_id || null, piva: ANA.piva || null,
         nome: dati.ragione_sociale || ANA.nome || null, dati: dati, creata_da: me.pro_id
       });
-      if (ins.error) toast("Trovata, ma non salvata: " + ins.error.message, true);
+      if (ins.error) toast("Trovata, ma non salvata: " + erroreUmano(ins.error), true);
       await reload(["ana"]);
       toast(dati.trovata ? "Analisi pronta" : "Non ho trovato niente di attendibile", !dati.trovata);
     } catch (e) { ANA.err = e.message; }
@@ -5317,14 +5499,14 @@ document.addEventListener("click", async function (e) {
   if (d.anaelimina) {
     if (!confirm("Elimino questa analisi?")) return;
     var rae = await sb.from("analisi").delete().eq("id", d.anaelimina);
-    if (rae.error) { toast(rae.error.message, true); return; }
+    if (rae.error) { toast(erroreUmano(rae.error), true); return; }
     await reload(["ana"]); toast("Eliminata"); render(); return;
   }
   if (d.diag) { toast("Leggo il sistema…"); await caricaDiagnostica(); render(); return; }
   if (d.diagpulisci) {
     if (!confirm("Svuoto il registro degli errori? Non si torna indietro.")) return;
     var rdp = await sb.from("errori").delete().gte("created_at", "1970-01-01");
-    if (rdp.error) { toast(rdp.error.message, true); return; }
+    if (rdp.error) { toast(erroreUmano(rdp.error), true); return; }
     await caricaDiagnostica(); toast("Registro svuotato"); render(); return;
   }
   if (d.proscarica) { var pp = d.proscarica.split("|"); scaricaProspetto(pp[0], pp[1]); return; }
@@ -5371,7 +5553,7 @@ document.addEventListener("click", async function (e) {
   if (d.calNuovo) {
     if (urlIcs() && !confirm("Il link di adesso smetterà di funzionare e i calendari già collegati andranno rifatti. Procedo?")) return;
     var rct = await sb.rpc("cal_rigenera");
-    if (rct.error) { toast(rct.error.message, true); return; }
+    if (rct.error) { toast(erroreUmano(rct.error), true); return; }
     await reload(["caltok"]); toast("Link pronto"); render(); return;
   }
   if (d.day) { openForm("task", null, { scadenza: d.day }); return; }
@@ -5379,14 +5561,14 @@ document.addEventListener("click", async function (e) {
   if (d.visprog) {
     var pv = by(D.prog, d.visprog); if (!pv) return;
     var rvp = await sb.from("progetti").update({ visibile_cliente: !pv.visibile_cliente }).eq("id", pv.id);
-    if (rvp.error) { toast(rvp.error.message, true); return; }
+    if (rvp.error) { toast(erroreUmano(rvp.error), true); return; }
     await reload(["prog"]); toast(!pv.visibile_cliente ? "Il cliente ora vede questo progetto" : "Progetto reso interno"); render(); return;
   }
   if (d.tstartLav) {
     var lw = by(D.lav, d.tstartLav); if (!lw) return;
     if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
     var rtl = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: lw.commessa_id, progetto_id: lw.progetto_id, lavorazione_id: lw.id, iniziato: new Date().toISOString() });
-    if (rtl.error) { toast(rtl.error.message, true); return; }
+    if (rtl.error) { toast(erroreUmano(rtl.error), true); return; }
     await reload(["tmr"]); toast("Timer avviato su " + lw.nome); render(); return;
   }
   if (d.openCli) { go("cliente", d.openCli); return; }
@@ -5412,6 +5594,25 @@ document.addEventListener("click", async function (e) {
   if (d.rigaEdit) { openRiga(null, d.rigaEdit); return; }
   if (d.portale) { openPortale(d.portale); return; }
   if (d.avvia) { await avviaLavoro(d.avvia); return; }
+  if (d.riuStato) {
+    var rz = d.riuStato.split("|");
+    if (await salvaSubito("riu", rz[0], { stato: rz[1] })) toast(rz[1] === "Tenuta" ? "Segnata come tenuta" : rz[1] === "Annullata" ? "Riunione annullata" : "Rimessa in programma");
+    render(); return;
+  }
+  if (d.riuTask) {
+    var ru = by(D.riu, d.riuTask); if (!ru) return;
+    var righeP = String(ru.prossimi || "").split("\n").map(function (x) { return x.replace(/^[-*•\d.)\s\[\]x]+/i, "").trim(); }).filter(Boolean);
+    if (!righeP.length) { toast("Scrivi prima i prossimi passi, una riga per ognuno."); return; }
+    var giaT = D.task.filter(function (t) { return t.origine_id === ru.id; }).map(function (t) { return t.titolo; });
+    var nuoveT = righeP.filter(function (x) { return giaT.indexOf(x.slice(0, 200)) === -1; }).map(function (x, i) {
+      return { titolo: x.slice(0, 200), commessa_id: ru.commessa_id || null, progetto_id: ru.progetto_id || null, cliente_id: ru.cliente_id || null, assegnato_id: me.pro_id, stato: "Da fare", priorita: "Media", ordine: i + 1, origine_id: ru.id, sezione: ("Riunione " + dshort(ru.data)).slice(0, 80) };
+    });
+    if (!nuoveT.length) { toast("C'erano già tutte: nessun doppione."); return; }
+    var rnt = await sb.from("task").insert(nuoveT);
+    if (rnt.error) { toast(erroreUmano(rnt.error), true); return; }
+    if (ru.commessa_id) await logEv(ru.commessa_id, "Dalla riunione «" + ru.titolo + "»: " + nuoveT.length + " attività");
+    await reload(["task", "ev"]); toast("Create " + nuoveT.length + (nuoveT.length === 1 ? " attività" : " attività")); render(); return;
+  }
   if (d.fig) { FIGAP = FIGAP === d.fig ? null : d.fig; render(); return; }
   if (d.postap) { POSTAP = POSTAP === d.postap ? null : d.postap; render(); return; }
   if (d.postlike) {
@@ -5419,7 +5620,7 @@ document.addEventListener("click", async function (e) {
     var rl = hoReagito(d.postlike)
       ? await sb.from("post_reaz").delete().eq("post_id", d.postlike).eq("pro_id", me.pro_id)
       : await sb.from("post_reaz").insert({ post_id: d.postlike, pro_id: me.pro_id });
-    if (rl.error) { toast(rl.error.message, true); return; }
+    if (rl.error) { toast(erroreUmano(rl.error), true); return; }
     await reload(["reaz"]); render(); return;
   }
   if (d.postfix) {
@@ -5430,7 +5631,7 @@ document.addEventListener("click", async function (e) {
   if (d.postvia) {
     if (!confirm("Eliminare questo messaggio dalla bacheca?")) return;
     var rv = await sb.from("post").delete().eq("id", d.postvia);
-    if (rv.error) { toast(rv.error.message, true); return; }
+    if (rv.error) { toast(erroreUmano(rv.error), true); return; }
     await reload(["post", "risp", "reaz"]); toast("Eliminato"); render(); return;
   }
   if (d.evsi || d.evno) {
@@ -5439,7 +5640,7 @@ document.addEventListener("click", async function (e) {
     var re = await sb.from("iscrizioni").upsert(
       { agenda_id: eid, pro_id: me.pro_id, stato: d.evsi ? "Ci sono" : "Non ci sono" },
       { onConflict: "agenda_id,pro_id" });
-    if (re.error) { toast(re.error.message, true); return; }
+    if (re.error) { toast(erroreUmano(re.error), true); return; }
     await reload(["iscr"]); toast(d.evsi ? "Segnato: ci sei" : "Va bene, sarà per la prossima"); render(); return;
   }
   if (d.listino) { await prendiListino(); return; }
@@ -5453,14 +5654,14 @@ document.addEventListener("click", async function (e) {
     var alfa = "abcdefghijkmnopqrstuvwxyz23456789";
     for (var ti = 0; ti < 22; ti++) tok += alfa[Math.floor(Math.random() * alfa.length)];
     var rp = await sb.from("portali").insert({ cliente_id: d.portnew, token: tok, attivo: true }).select();
-    if (rp.error) { toast(rp.error.message, true); return; }
+    if (rp.error) { toast(erroreUmano(rp.error), true); return; }
     await reload(["port"]);
     toast("Link creato: ora imposta la password");
     render();
     var pwd0 = prompt("Scegli la password da comunicare al cliente (almeno 6 caratteri):");
     if (pwd0) {
       var rq = await sb.rpc("portale_pwd", { pid: rp.data[0].id, pwd: pwd0 });
-      if (rq.error) toast(rq.error.message, true); else { await reload(["port"]); toast("Password impostata"); render(); }
+      if (rq.error) toast(erroreUmano(rq.error), true); else { await reload(["port"]); toast("Password impostata"); render(); }
     }
     return;
   }
@@ -5468,13 +5669,13 @@ document.addEventListener("click", async function (e) {
     var pwd1 = prompt("Nuova password del portale (almeno 6 caratteri):");
     if (!pwd1) return;
     var rr = await sb.rpc("portale_pwd", { pid: d.portpwd, pwd: pwd1 });
-    if (rr.error) { toast(rr.error.message, true); return; }
+    if (rr.error) { toast(erroreUmano(rr.error), true); return; }
     await reload(["port"]); toast("Password aggiornata"); render(); return;
   }
   if (d.portoff) {
     var pp = d.portoff.split("|");
     var ro = await sb.from("portali").update({ attivo: pp[1] === "1" }).eq("id", pp[0]);
-    if (ro.error) { toast(ro.error.message, true); return; }
+    if (ro.error) { toast(erroreUmano(ro.error), true); return; }
     await reload(["port"]); toast(pp[1] === "1" ? "Accesso riattivato" : "Accesso sospeso"); render(); return;
   }
   if (d.portcopy) {
@@ -5485,14 +5686,14 @@ document.addEventListener("click", async function (e) {
   if (d.incassa) {
     var pgm = by(D.pag, d.incassa);
     var r3 = await sb.from("pagamenti").update({ stato: "Incassato", pagato_il: today() }).eq("id", d.incassa);
-    if (r3.error) { toast(r3.error.message, true); return; }
+    if (r3.error) { toast(erroreUmano(r3.error), true); return; }
     if (pgm) await logEv(pgm.commessa_id, "Incassato: " + pgm.nome + " (" + eur(pgm.importo) + ")");
     await reload(["pag", "ev"]); toast("Pagamento incassato"); render(); return;
   }
   if (d.apprVar) {
     var vv = by(D.vari, d.apprVar);
     var r4 = await sb.from("varianti").update({ stato: "Approvata", approvata_il: today() }).eq("id", d.apprVar);
-    if (r4.error) { toast(r4.error.message, true); return; }
+    if (r4.error) { toast(erroreUmano(r4.error), true); return; }
     if (vv) await logEv(vv.commessa_id, "Variante approvata: " + vv.nome + " (+" + eur(vv.importo) + ", +" + num(vv.ore, 0) + " h)");
     await reload(["vari", "ev"]); toast("Variante approvata: budget aggiornato"); render(); return;
   }
@@ -5503,7 +5704,7 @@ document.addEventListener("click", async function (e) {
     var nuovo = toggleCk(kk.note_doc, +d.ck);
     kk.note_doc = nuovo;
     var rc = await sb.from("commesse").update({ note_doc: nuovo }).eq("id", kk.id);
-    if (rc.error) { toast(rc.error.message, true); return; }
+    if (rc.error) { toast(erroreUmano(rc.error), true); return; }
     render(); return;
   }
   if (d.tck) {
@@ -5511,15 +5712,15 @@ document.addEventListener("click", async function (e) {
     var fattoOra = tt.stato !== "Fatto";
     var st2 = fattoOra ? "Fatto" : "Da fare";
     var rt = await sb.from("task").update({ stato: st2, completata_il: fattoOra ? new Date().toISOString() : null }).eq("id", tt.id);
-    if (rt.error) { toast(rt.error.message, true); return; }
+    if (rt.error) { toast(erroreUmano(rt.error), true); return; }
     if (fattoOra && tt.commessa_id) await logEv(tt.commessa_id, "Attività completata: " + tt.titolo);
     if (fattoOra && tt.ricorrenza) await prossimaRicorrenza(tt);
-    await reload(["task", "ev"]); render(); return;
+    await reload(["task", "ev"]); await dopoAttivita(tt.id); render(); return;
   }
   if (d.dipVia) {
     var dv = d.dipVia.split("|");
     var rdv = await sb.from("task_dip").delete().eq("task_id", dv[0]).eq("blocca_id", dv[1]);
-    if (rdv.error) { toast(rdv.error.message, true); return; }
+    if (rdv.error) { toast(erroreUmano(rdv.error), true); return; }
     await reload(["dip"]); render(); return;
   }
   if (d.duplTask) {
@@ -5530,14 +5731,14 @@ document.addEventListener("click", async function (e) {
       scadenza: td.scadenza, inizio: td.inizio, stimate: td.stimate, sezione: td.sezione, etichette: td.etichette
     };
     var rdt = await sb.from("task").insert(copia).select().single();
-    if (rdt.error) { toast(rdt.error.message, true); return; }
+    if (rdt.error) { toast(erroreUmano(rdt.error), true); return; }
     await reload(["task"]); toast("Attività duplicata"); go("attivita", rdt.data.id); return;
   }
   if (d.tstartTask) {
     var tk9 = by(D.task, d.tstartTask); if (!tk9) return;
     if (!me.pro_id) { toast("Il tuo utente non è collegato a una scheda", true); return; }
     var rtt = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: tk9.commessa_id, progetto_id: tk9.progetto_id, lavorazione_id: tk9.lavorazione_id, task_id: tk9.id, iniziato: new Date().toISOString() });
-    if (rtt.error) { toast(rtt.error.message, true); return; }
+    if (rtt.error) { toast(erroreUmano(rtt.error), true); return; }
     await reload(["tmr"]); toast("Timer avviato"); render(); return;
   }
   if (d.fReset) {
@@ -5553,7 +5754,7 @@ document.addEventListener("click", async function (e) {
     var nomeV = prompt("Come si chiama questa vista?", "La mia vista");
     if (!nomeV) return;
     var rvs = await sb.from("viste").insert({ pro_id: me.pro_id, ambito: "task", nome: nomeV, config: { TF: TF, TGROUP: TGROUP, TSORT: TSORT, vista: tab || "lista" } });
-    if (rvs.error) { toast(rvs.error.message, true); return; }
+    if (rvs.error) { toast(erroreUmano(rvs.error), true); return; }
     await reload(["viste"]); toast("Vista salvata"); render(); return;
   }
   if (d.servAdd) { apriAggiungiServizio(d.servAdd); return; }
@@ -5564,13 +5765,13 @@ document.addEventListener("click", async function (e) {
   if (d.file) {
     var mf = by(D.mat, d.file); if (!mf || !mf.path) return;
     var sg = await sb.storage.from("materiali").createSignedUrl(mf.path, 120);
-    if (sg.error) { toast(sg.error.message, true); return; }
+    if (sg.error) { toast(erroreUmano(sg.error), true); return; }
     window.open(sg.data.signedUrl, "_blank"); return;
   }
   if (d.vis) {
     var mv2 = by(D.mat, d.vis); if (!mv2) return;
     var rv = await sb.from("materiali").update({ visibile_cliente: !mv2.visibile_cliente }).eq("id", mv2.id);
-    if (rv.error) { toast(rv.error.message, true); return; }
+    if (rv.error) { toast(erroreUmano(rv.error), true); return; }
     await reload(["mat"]); toast(!mv2.visibile_cliente ? "Ora è visibile al cliente" : "Ora è solo interno"); render(); return;
   }
   if (d.wk !== undefined) { WEEK = d.wk === "0" ? 0 : WEEK + (+d.wk); render(); return; }
@@ -5588,17 +5789,17 @@ document.addEventListener("click", async function (e) {
     if (!nuoveC.length) { toast("Niente da copiare: la settimana scorsa è vuota o è già stata copiata"); return; }
     if (!confirm("Copio " + nuoveC.length + " registrazioni dalla settimana scorsa?")) return;
     var rcp = await sb.from("ore").insert(nuoveC);
-    if (rcp.error) { toast(rcp.error.message, true); return; }
+    if (rcp.error) { toast(erroreUmano(rcp.error), true); return; }
     await reload(["ore"]); toast(nuoveC.length + " registrazioni copiate"); render(); return;
   }
   if (d.tstart) {
     if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
     var r5 = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: d.tstart, iniziato: new Date().toISOString() });
-    if (r5.error) { toast(r5.error.message, true); return; }
+    if (r5.error) { toast(erroreUmano(r5.error), true); return; }
     await reload(["tmr"]); toast("Timer avviato"); render(); return;
   }
   if (d.tstop) { await stopTimer(); return; }
-});
+}
 
 /* ---------------- dal preventivo al lavoro ----------------
    Quando il cliente dice sì il preventivo smette di essere un foglio. Da ogni
@@ -5707,7 +5908,7 @@ async function apriIlLavoro(kid) {
         pro_id: chi, stato: statoP, avanzamento: avanz, ordine: i + 1,
         inizio: inizio, fine: fine
       }).select();
-      if (np.error) { toast(np.error.message, true); return fatti; }
+      if (np.error) { toast(erroreUmano(np.error), true); return fatti; }
       pid = np.data[0].id; esistenti.push(np.data[0]); fatti.p++;
       if (!r.progetto_id) await sb.from("righe").update({ progetto_id: pid }).eq("id", r.id);
     } else fatti.gia++;
@@ -5746,7 +5947,7 @@ async function apriIlLavoro(kid) {
     }
     if (nuove.length) {
       var nt = await sb.from("task").insert(nuove);
-      if (nt.error) { toast(nt.error.message, true); return fatti; }
+      if (nt.error) { toast(erroreUmano(nt.error), true); return fatti; }
       fatti.a += nuove.length;
     }
   }
@@ -5778,16 +5979,98 @@ async function cambiaStato(kid, val, quando) {
   if (STATO_DATA[val] && (quando || !k[STATO_DATA[val]])) patch[STATO_DATA[val]] = quando || today();
   if (val !== "Bozza" && !k.numero) patch.numero = numeroDoc(k);
   var eraAvviato = k.avviato;
+  /* tornando indietro si cancellano le date dei passaggi successivi */
+  var iv = STATI.indexOf(val), ic = STATI.indexOf(k.stato);
+  if (iv > -1 && iv < ic) {
+    STATI.slice(iv + 1).forEach(function (st) { if (STATO_DATA[st]) patch[STATO_DATA[st]] = null; });
+    if (val === "Bozza" || val === "Inviato") patch.avviato = false;
+  }
+  if (val === "Bozza" && k.stato === "Perso") { patch.avviato = false; patch.inviato_il = null; patch.accettato_il = null; patch.completato_il = null; }
+  if (val === "Perso") {
+    var apertiP = progOf(kid).filter(function (p) { return p.stato !== "Completato"; }).length;
+    var aperteT = taskOf(kid).filter(function (t) { return t.stato !== "Fatto"; }).length;
+    var daInc = pagOf(kid).filter(function (p) { return p.stato !== "Incassato"; }).length;
+    if (apertiP || aperteT || daInc) {
+      if (!confirm("Preventivo perso. Tolgo anche " + [aperteT ? aperteT + " attività aperte" : "", daInc ? daInc + " scadenze da incassare" : ""].filter(Boolean).join(" e ") + (apertiP ? " e sospendo " + apertiP + " progetti" : "") + "? Le note e i file restano.")) { render(); return; }
+    }
+  }
   if (!await salvaSubito("com", kid, patch)) return;
   await logEv(kid, "Preventivo " + val.toLowerCase());
+  if (val === "Completato") await chiudiLavoro(kid);
+  if (val === "Perso") await sospendiLavoro(kid);
   await reload(["ev"]);
   if (val === "Accettato" && !eraAvviato) { await accettaPreventivo(kid); return; }
   toast("Preventivo " + val.toLowerCase());
   render();
 }
+/* Il lavoro finito chiude tutto quello che c'è sotto. */
+async function chiudiLavoro(kid) {
+  var pg = progOf(kid).filter(function (p) { return p.stato !== "Completato"; }).map(function (p) { return p.id; });
+  var tk = taskOf(kid).filter(function (t) { return t.stato !== "Fatto"; }).map(function (t) { return t.id; });
+  if (pg.length) await sb.from("progetti").update({ stato: "Completato", avanzamento: 100 }).in("id", pg);
+  if (tk.length) await sb.from("task").update({ stato: "Fatto", completata_il: new Date().toISOString() }).in("id", tk);
+  if (pg.length || tk.length) await logEv(kid, "Chiusi " + pg.length + " progetti e " + tk.length + " attività col preventivo");
+  await reload(["prog", "task"]);
+}
+/* Il lavoro perso non lascia code: via le attività mai fatte e le scadenze mai
+   dovute; i progetti restano, sospesi, con dentro note e file. */
+async function sospendiLavoro(kid) {
+  var tk = taskOf(kid).filter(function (t) { return t.stato !== "Fatto"; }).map(function (t) { return t.id; });
+  var pg = pagOf(kid).filter(function (p) { return p.stato !== "Incassato"; }).map(function (p) { return p.id; });
+  var pr = progOf(kid).filter(function (p) { return p.stato !== "Completato"; }).map(function (p) { return p.id; });
+  if (tk.length) await sb.from("task").delete().in("id", tk);
+  if (pg.length) await sb.from("pagamenti").delete().in("id", pg);
+  if (pr.length) await sb.from("progetti").update({ stato: "Sospeso" }).in("id", pr);
+  await reload(["task", "pag", "prog"]);
+}
+/* Quando cambia un'attività, il progetto sopra si accorge: tutte fatte → completato,
+   qualcuna in mano → in corso. */
+async function dopoAttivita(tid) {
+  var t = by(D.task, tid); if (!t || !t.progetto_id) return;
+  var p = by(D.prog, t.progetto_id); if (!p) return;
+  var radici = taskOfProg(p.id).filter(function (x) { return !x.padre_id; });
+  if (!radici.length) return;
+  var fatte = radici.filter(function (x) { return x.stato === "Fatto"; }).length;
+  var mosse = radici.filter(function (x) { return x.stato !== "Da fare"; }).length;
+  var nuovo = fatte === radici.length ? "Completato" : mosse ? "In corso" : "Da iniziare";
+  if (nuovo === p.stato) return;
+  var r = await sb.from("progetti").update({ stato: nuovo, avanzamento: nuovo === "Completato" ? 100 : avanzProg(p) }).eq("id", p.id);
+  if (r.error) return;
+  await reload(["prog"]);
+  if (nuovo === "Completato") {
+    toast("Progetto «" + p.nome + "» completato");
+    var k = by(D.com, p.commessa_id);
+    if (k && k.stato === "Accettato" && progOf(k.id).every(function (x) { return x.stato === "Completato"; })) toast("Tutti i progetti sono finiti: puoi segnare «Il lavoro è finito» sul preventivo.");
+  }
+}
+/* All'accettazione i soldi prendono forma: un canone al mese sulle voci
+   ricorrenti, un saldo alla consegna sul resto. Solo se non c'è già un piano. */
+async function scadenzeDaAccettazione(kid) {
+  var k = by(D.com, kid); if (!k || pagOf(kid).length) return 0;
+  var out = [], partenza = k.accettato_il || today(), unaTantum = 0;
+  righeOf(kid).filter(function (r) { return !r.opzionale && r.tipo !== "Sconto"; }).forEach(function (r) {
+    var rc = rigaCalc(r);
+    if (r.ricorrente && r.periodo !== "Annuale") {
+      var da = r.inizio || partenza, per = Math.round(rc.pu * rc.q * (1 - rc.sc));
+      for (var m = 0; m < rc.cic; m++) {
+        var dm = aggMesi(da, m);
+        out.push({ commessa_id: kid, nome: (rc.nome + " — " + meseEt(dm.slice(0, 7))).slice(0, 140), importo: per, scadenza: fineMese(dm), stato: "Da incassare" });
+      }
+    } else unaTantum += rc.prezzo;
+  });
+  if (k.sconto) unaTantum = Math.round(unaTantum * (1 - (+k.sconto || 0) / 100));
+  if (unaTantum > 0) out.push({ commessa_id: kid, nome: "Saldo alla consegna", importo: unaTantum, scadenza: k.scadenza || aggGiorni(partenza, 30), stato: "Da incassare" });
+  if (!out.length) return 0;
+  var r = await sb.from("pagamenti").insert(out);
+  if (r.error) { toast("Le scadenze non sono state create: " + erroreUmano(r.error), true); return 0; }
+  await reload(["pag"]);
+  return out.length;
+}
+function aggGiorni(d, n) { var x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
 async function accettaPreventivo(kid) {
   var f = await apriIlLavoro(kid);
-  toast("Accettato. " + esitoLavoro(f));
+  var n = await scadenzeDaAccettazione(kid);
+  toast("Accettato. " + esitoLavoro(f) + (n ? " Create " + n + " scadenze di pagamento." : ""));
   render();
 }
 async function stopTimer() {
@@ -5796,8 +6079,8 @@ async function stopTimer() {
   await sb.from("timer").delete().eq("pro_id", me.pro_id);
   if (ore >= 0.1) {
     var p = by(D.pros, me.pro_id);
-    var r = await sb.from("ore").insert({ pro_id: me.pro_id, commessa_id: tm.commessa_id, progetto_id: tm.progetto_id || null, lavorazione_id: tm.lavorazione_id || null, data: today(), ore: ore, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: tm.lavorazione_id ? nameOf(D.lav, tm.lavorazione_id) : "Sessione di lavoro" });
-    if (r.error) { toast(r.error.message, true); }
+    var r = await sb.from("ore").insert({ pro_id: me.pro_id, commessa_id: tm.commessa_id, progetto_id: tm.progetto_id || null, lavorazione_id: tm.lavorazione_id || null, task_id: tm.task_id || null, data: today(), ore: ore, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: tm.task_id ? nameOf(D.task, tm.task_id, "titolo") : tm.lavorazione_id ? nameOf(D.lav, tm.lavorazione_id) : "Sessione di lavoro" });
+    if (r.error) { toast(erroreUmano(r.error), true); }
     else toast("Registrate " + num(ore, 1) + " h");
   } else toast("Sessione troppo breve, non registrata");
   await reload(["tmr", "ore"]); render();
@@ -5813,7 +6096,7 @@ async function salvaTs(lid, data, val) {
   } else {
     var p = by(D.pros, me.pro_id);
     var r = await sb.from("ore").insert({ pro_id: me.pro_id, lavorazione_id: lid, progetto_id: lav ? lav.progetto_id : null, commessa_id: lav ? lav.commessa_id : null, data: data, ore: v, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: lav ? lav.nome : "Timesheet" });
-    if (r.error) { toast(r.error.message, true); return; }
+    if (r.error) { toast(erroreUmano(r.error), true); return; }
   }
   await reload(["ore"]);
   totaliTs();
@@ -5839,26 +6122,33 @@ function totaliTs() {
 async function uploadFile(files, ctx) {
   var dove = ctxLeggi(ctx);
   toast("Carico " + files.length + (files.length === 1 ? " file…" : " file…"));
-  var cartella = dove.commessa_id || dove.progetto_id || dove.task_id || "personali";
+  var cartella = dove.commessa_id || dove.riunione_id || me.pro_id || "personali";
   for (var i = 0; i < files.length; i++) {
     var f = files[i];
     var path = cartella + "/" + Date.now() + "-" + f.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     var up = await sb.storage.from("materiali").upload(path, f);
-    if (up.error) { toast(up.error.message, true); continue; }
+    if (up.error) { toast(erroreUmano(up.error), true); continue; }
     var est = (f.name.split(".").pop() || "").toLowerCase();
     var tipo = ["jpg", "jpeg", "png", "gif", "webp", "heic"].indexOf(est) > -1 ? "Immagine" : ["pdf"].indexOf(est) > -1 ? "Documento" : ["mp4", "mov"].indexOf(est) > -1 ? "Video" : "File";
     var riga = { nome: f.name, path: path, dim: f.size, tipo: tipo, visibile_cliente: false, caricato_da: me.pro_id };
     riga.commessa_id = dove.commessa_id; riga.progetto_id = dove.progetto_id;
-    riga.lavorazione_id = dove.lavorazione_id; riga.task_id = dove.task_id;
+    riga.lavorazione_id = dove.lavorazione_id; riga.task_id = dove.task_id; riga.riunione_id = dove.riunione_id;
     var ri = await sb.from("materiali").insert(riga);
-    if (ri.error) { toast(ri.error.message, true); }
+    if (ri.error) { toast(erroreUmano(ri.error), true); }
   }
   if (dove.commessa_id) await logEv(dove.commessa_id, "Caricati file nei materiali");
   await reload(["mat", "ev"]); toast("File caricati"); render();
 }
 
-document.addEventListener("submit", async function (e) {
+document.addEventListener("submit", function (e) {
   var f = e.target;
+  if (f.dataset.busy) { e.preventDefault(); return; }
+  f.dataset.busy = "1";
+  var fine = function () { delete f.dataset.busy; };
+  var pr = invioModulo(e, f);
+  if (pr && pr.then) pr.then(fine, function (err) { fine(); toast(erroreUmano(err), true); }); else fine();
+});
+async function invioModulo(e, f) {
   if (f.id === "loginform") { e.preventDefault(); return doLogin(f); }
   if (f.dataset.save) { e.preventDefault(); return saveForm(f); }
   if (f.dataset.post) {
@@ -5866,7 +6156,7 @@ document.addEventListener("submit", async function (e) {
     var tp = (f.testo.value || "").trim(); if (!tp) return;
     if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
     var rp1 = await sb.from("post").insert({ pro_id: me.pro_id, testo: tp, tipo: f.tipo ? f.tipo.value : "Messaggio" });
-    if (rp1.error) { toast(rp1.error.message, true); return; }
+    if (rp1.error) { toast(erroreUmano(rp1.error), true); return; }
     f.testo.value = "";
     await reload(["post"]); toast("Pubblicato"); render(); return;
   }
@@ -5874,7 +6164,7 @@ document.addEventListener("submit", async function (e) {
     e.preventDefault();
     var tr = (f.testo.value || "").trim(); if (!tr) return;
     var rr1 = await sb.from("post_risp").insert({ post_id: f.dataset.risp, pro_id: me.pro_id, testo: tr });
-    if (rr1.error) { toast(rr1.error.message, true); return; }
+    if (rr1.error) { toast(erroreUmano(rr1.error), true); return; }
     await reload(["risp"]); render(); return;
   }
   if (f.dataset.msg) {
@@ -5882,7 +6172,7 @@ document.addEventListener("submit", async function (e) {
     var tm = (f.testo.value || "").trim(); if (!tm) return;
     if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
     var rm1 = await sb.from("messaggi").insert({ canale_id: f.dataset.msg, pro_id: me.pro_id, testo: tm });
-    if (rm1.error) { toast(rm1.error.message, true); return; }
+    if (rm1.error) { toast(erroreUmano(rm1.error), true); return; }
     f.testo.value = "";
     await sb.from("letture").upsert({ canale_id: f.dataset.msg, pro_id: me.pro_id, letto_il: new Date().toISOString() }, { onConflict: "canale_id,pro_id" });
     await reload(["msg", "lett"]); render(); return;
@@ -5913,7 +6203,7 @@ document.addEventListener("submit", async function (e) {
     if (!obj.nome && obj.serv_id) { var sv = by(D.serv, obj.serv_id); if (sv) obj.nome = sv.nome; }
     if (obj.prezzo_unit == null && obj.serv_id) { var sv2 = by(D.serv, obj.serv_id); if (sv2) { obj.prezzo_unit = sv2.prezzo; obj.costo_unit = obj.costo_unit == null ? sv2.costo : obj.costo_unit; } }
     var r = rid ? await sb.from("righe").update(obj).eq("id", rid) : await sb.from("righe").insert(obj);
-    if (r.error) { toast(r.error.message, true); return; }
+    if (r.error) { toast(erroreUmano(r.error), true); return; }
     await reload(["righe"]); closeModal(); toast("Voce salvata");
     if (f.dataset.page) { FDIRTY = false; FBACK = null; go("commessa", kid, "servizi"); return; }
     render(); return;
@@ -5939,7 +6229,7 @@ document.addEventListener("submit", async function (e) {
       assegnato_id: sv9.pro_id, stato: "Da iniziare"
     };
     var rsa = await sb.from("righe").insert(riga9);
-    if (rsa.error) { toast(rsa.error.message, true); return; }
+    if (rsa.error) { toast(erroreUmano(rsa.error), true); return; }
     await logEv(kid9, "Aggiunto al preventivo: " + sv9.nome + " di " + nameOf(D.pros, sv9.pro_id));
     await reload(["righe", "ev"]); closeModal();
     toast(sv9.nome + " aggiunto"); go("commessa", kid9, "servizi"); return;
@@ -5955,21 +6245,21 @@ document.addEventListener("submit", async function (e) {
     var tsub = f.titolo.value.trim(); if (!tsub) return;
     var pd = by(D.task, f.dataset.qaddSub); if (!pd) return;
     var rqs = await sb.from("task").insert({ titolo: tsub, padre_id: pd.id, commessa_id: pd.commessa_id, progetto_id: pd.progetto_id, lavorazione_id: pd.lavorazione_id, assegnato_id: pd.assegnato_id || me.pro_id, stato: "Da fare", priorita: "Media" });
-    if (rqs.error) { toast(rqs.error.message, true); return; }
+    if (rqs.error) { toast(erroreUmano(rqs.error), true); return; }
     f.titolo.value = ""; await reload(["task"]); render(); return;
   }
   if (f.dataset.commTask) {
     e.preventDefault();
     var testo = f.testo.value.trim(); if (!testo) return;
     var rct = await sb.from("commenti").insert({ task_id: f.dataset.commTask, pro_id: me.pro_id, testo: testo });
-    if (rct.error) { toast(rct.error.message, true); return; }
+    if (rct.error) { toast(erroreUmano(rct.error), true); return; }
     f.testo.value = ""; await reload(["comm"]); render(); return;
   }
   if (f.dataset.dipAdd) {
     e.preventDefault();
     var bl = f.blocca.value; if (!bl) return;
     var rda = await sb.from("task_dip").insert({ task_id: f.dataset.dipAdd, blocca_id: bl });
-    if (rda.error) { toast(rda.error.message, true); return; }
+    if (rda.error) { toast(erroreUmano(rda.error), true); return; }
     await reload(["dip"]); render(); return;
   }
   if (f.dataset.qaddLav) {
@@ -5977,7 +6267,7 @@ document.addEventListener("submit", async function (e) {
     var titl = f.titolo.value.trim(); if (!titl) return;
     var lv2 = by(D.lav, f.dataset.qaddLav);
     var rql = await sb.from("task").insert({ titolo: titl, commessa_id: lv2 ? lv2.commessa_id : null, progetto_id: lv2 ? lv2.progetto_id : null, lavorazione_id: f.dataset.qaddLav, assegnato_id: me.pro_id, stato: "Da fare", priorita: "Media" });
-    if (rql.error) { toast(rql.error.message, true); return; }
+    if (rql.error) { toast(erroreUmano(rql.error), true); return; }
     f.titolo.value = "";
     await reload(["task"]); render();
     return;
@@ -5986,7 +6276,7 @@ document.addEventListener("submit", async function (e) {
     e.preventDefault();
     var tit = f.titolo.value.trim(); if (!tit) return;
     var rq = await sb.from("task").insert({ titolo: tit, commessa_id: f.dataset.qadd, assegnato_id: me.pro_id, stato: "Da fare", priorita: "Media" });
-    if (rq.error) { toast(rq.error.message, true); return; }
+    if (rq.error) { toast(erroreUmano(rq.error), true); return; }
     f.titolo.value = "";
     await reload(["task"]); render();
     var inp = document.querySelector(".qadd input"); if (inp) inp.focus();
@@ -6003,7 +6293,7 @@ document.addEventListener("submit", async function (e) {
     e.preventDefault();
     var tx = f.testo.value.trim(); if (!tx) return;
     var rch = await sb.from("commenti").insert({ commessa_id: f.dataset.chat, pro_id: me.pro_id, testo: tx });
-    if (rch.error) { toast(rch.error.message, true); return; }
+    if (rch.error) { toast(erroreUmano(rch.error), true); return; }
     f.testo.value = "";
     await reload(["comm"]); render();
     return;
@@ -6012,7 +6302,7 @@ document.addEventListener("submit", async function (e) {
     e.preventDefault();
     var v = +f.fee_default.value || 0;
     var rs = await sb.from("settings").update({ fee_default: v }).eq("id", 1);
-    if (rs.error) { toast(rs.error.message, true); return; }
+    if (rs.error) { toast(erroreUmano(rs.error), true); return; }
     SET.fee_default = v; toast("Impostazioni salvate"); return;
   }
   if (f.dataset.form === "password") {
@@ -6020,10 +6310,10 @@ document.addEventListener("submit", async function (e) {
     var pw = f.pw.value || "";
     if (pw.length < 8) { toast("La password deve avere almeno 8 caratteri", true); return; }
     var rp = await sb.auth.updateUser({ password: pw });
-    if (rp.error) { toast(rp.error.message, true); return; }
+    if (rp.error) { toast(erroreUmano(rp.error), true); return; }
     f.pw.value = ""; toast("Password aggiornata"); return;
   }
-});
+}
 
 document.addEventListener("change", function (e) {
   if (e.target.dataset && e.target.dataset.persp) { persp = e.target.value; render(); }
@@ -6046,6 +6336,7 @@ document.addEventListener("input", function (e) {
     }, 800);
   }
   if (e.target.id === "tcerca") { TF.cerca = e.target.value; render(); }
+  if (e.target.dataset && e.target.dataset.rf) { RF[e.target.dataset.rf] = e.target.value; render(); return; }
   if (e.target.id === "fcerca" && e.target.dataset.f) { var fq = e.target.dataset.f.split("|"); if (FS[fq[0]]) { FS[fq[0]].cerca = e.target.value; render(); } }
   if (e.target.id === "noteprog") {
     var valp = e.target.value, pid = current, stp = el("#notestat");
@@ -6057,6 +6348,19 @@ document.addEventListener("input", function (e) {
       var s4 = el("#notestat"); if (s4) s4.textContent = rp2.error ? "errore" : "salvato";
       setTimeout(function () { var s5 = el("#notestat"); if (s5) s5.textContent = ""; }, 2200);
     }, 800);
+  }
+  if (e.target.dataset && e.target.dataset.autosave) {
+    var az = e.target.dataset.autosave.split("|"), valA = e.target.value, stA = el("#notestat");
+    if (stA) stA.textContent = "scrivo…";
+    clearTimeout(NOTET);
+    NOTET = setTimeout(async function () {
+      var patchA = {}; patchA[az[1]] = valA;
+      var rA = await sb.from(TB[az[0]]).update(patchA).eq("id", az[2]);
+      applicaLocale(az[0], az[2], patchA);
+      var sA = el("#notestat"); if (sA) sA.textContent = rA.error ? "errore: " + erroreUmano(rA.error) : "salvato";
+      setTimeout(function () { var s3 = el("#notestat"); if (s3) s3.textContent = ""; }, 2200);
+    }, 800);
+    return;
   }
   if (e.target.id === "notedoc") {
     var val = e.target.value, kid = current, st = el("#notestat");
@@ -6150,6 +6454,7 @@ document.addEventListener("change", async function (e) {
     if (tbk === "com" && campo === "stato") { await cambiaStato(rid, val); return; }
     if (await salvaSubito(tbk, rid, patch)) toast("Salvato");
     if (tbk === "set") SET = D.set[0] || SET;
+    if (tbk === "task" && campo === "stato") await dopoAttivita(rid);
     render(); return;
   }
   /* filtri di sezione: ambito|campo */
@@ -6263,7 +6568,7 @@ document.addEventListener("keydown", function (e) {
   if (e.key === "Escape") { closeModal(); return; }
   if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); openPalette(); return; }
   var tag = (e.target.tagName || "").toLowerCase();
-  if (tag === "input" || tag === "textarea" || tag === "select") return;
+  if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
   if (el("#app").classList.contains("hide")) return;
   if (e.key === "/") { e.preventDefault(); var s = el("#search"); if (s) s.focus(); else openPalette(); return; }
   if (e.key === "n" && !e.metaKey && !e.ctrlKey && !isCliente()) { e.preventDefault(); openForm("com"); return; }
@@ -6315,7 +6620,7 @@ document.addEventListener("drop", async function (e) {
     : quando === "settimana" ? iso(new Date(Date.now() + 3 * 86400000))
     : quando === "dopo" ? iso(new Date(Date.now() + 14 * 86400000)) : null;
   var rm9 = await sb.from("task").update({ scadenza: nuova }).eq("id", idm);
-  if (rm9.error) { toast(rm9.error.message, true); return; }
+  if (rm9.error) { toast(erroreUmano(rm9.error), true); return; }
   await reload(["task"]); toast(nuova ? "Spostata al " + dt(nuova) : "Scadenza tolta"); render();
 });
 document.addEventListener("drop", async function (e) {
@@ -6326,16 +6631,16 @@ document.addEventListener("drop", async function (e) {
   var t = by(D.task, id);
   if (!t || t.stato === st) return;
   var r = await sb.from("task").update({ stato: st }).eq("id", id);
-  if (r.error) { toast(r.error.message, true); return; }
+  if (r.error) { toast(erroreUmano(r.error), true); return; }
   if (t.commessa_id && st === "Fatto") await logEv(t.commessa_id, "Attività completata: " + t.titolo);
-  await reload(["task", "ev"]); toast("Spostata in “" + st + "”"); render();
+  await reload(["task", "ev"]); await dopoAttivita(t.id); toast("Spostata in “" + st + "”"); render();
 });
 
 /* ---------------- auth ---------------- */
 async function doLogin(f) {
   var err = el("#loginerr"); err.classList.add("hide");
   var r = await sb.auth.signInWithPassword({ email: f.email.value, password: f.password.value });
-  if (r.error) { err.textContent = r.error.message; err.classList.remove("hide"); return; }
+  if (r.error) { err.textContent = erroreUmano(r.error); err.classList.remove("hide"); return; }
   await start();
 }
 async function portaleDaLink(tok) {
