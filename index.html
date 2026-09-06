@@ -462,6 +462,15 @@ textarea{min-height:86px;resize:vertical;line-height:1.55;padding:10px 12px}
 @media(max-width:1100px){.grid.g4-1{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.grid.g4-1{grid-template-columns:1fr}}
 .mcol.over{outline:2px dashed var(--terra);outline-offset:3px}
+/* il foglio: modelli, blocchi, cliente */
+.dmodelli{margin-bottom:16px}
+.dmodelli .chips{display:flex;flex-wrap:wrap;gap:8px}
+.dcli{margin:2px 0 6px}.dcli select{min-height:32px;font-size:13px}
+.dvia{margin-left:8px;opacity:0;transition:opacity .15s}
+.dpre:hover .dvia,.dsh:hover .dvia,.dchiusa:hover .dvia,.dfirme:hover .dvia,.dpie:hover .dvia{opacity:1}
+.mprow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px solid var(--line-soft)}
+.mprow:last-child{border-bottom:0}
+.mpact{display:flex;align-items:center;gap:10px;flex-shrink:0}
 /* attività: una lista sola */
 .qnew{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-m);padding:6px 14px;margin-bottom:16px;box-shadow:var(--sh-1);position:relative}
 .qnew:focus-within{border-color:var(--terra)}
@@ -1368,6 +1377,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=65"></script>
+<script src="app.js?v=66"></script>
 </body>
 </html>
