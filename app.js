@@ -25,13 +25,13 @@ var APPVER = (function () {
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
 var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
-  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [] };
+  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [], pcfg: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
 var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
-  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi" };
+  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi", pcfg: "prenota_cfg" };
 
 /* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
 var COLONNE = { port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd" };
@@ -1443,6 +1443,7 @@ function vRiunione() {
     return '<div class="card"><div class="cardhead"><h2>' + titolo + '</h2><span class="faint">' + sotto + "</span></div>" +
       '<textarea class="doc" data-autosave="riu|' + campo + "|" + r.id + '" placeholder="' + esc(ph) + '">' + esc(r[campo] || "") + "</textarea></div>";
   };
+  h += cardRegistra(r);
   h += '<p class="faint" style="margin:-6px 0 12px">Si salva da solo mentre scrivi. <span id="notestat"></span></p>';
   h += '<div class="riugrid">' +
     box("ordine_giorno", "Ordine del giorno", "prima", "- Cosa dobbiamo decidere\n- Cosa mostrare") +
@@ -3131,8 +3132,9 @@ function vPro() {
     kpi(String(tk.filter(function (t) { return t.stato !== "Fatto"; }).length), "Attività aperte", "sui lavori che vedi") + "</div>";
   var t = tab || "scheda";
   var TP = [["scheda", "Scheda"], ["servizi", "Servizi", srv.length], ["lavori", "Lavori", com.length]];
-  if (mio) TP.push(["ore", "Ore", num(sum(ore, function (o) { return o.ore; }), 1)]);
+  if (mio) TP.push(["ore", "Ore", num(sum(ore, function (o) { return o.ore; }), 1)], ["prenota", "Prenota una call", pcfgMia() && pcfgMia().attivo ? "on" : null]);
   h += schede(TP, t, view === "profilo" ? "profilo" : "pro", view === "profilo" ? "" : p.id);
+  if (t === "prenota" && mio) h += schedaPrenota(p);
 
   if (t === "scheda" && mio) {
     h += '<div class="card"><div class="cardhead"><h2>Come esci sul foglio</h2><span class="faint">logo e firma finiscono sui tuoi preventivi, e la firma anche su quelli dello studio che mandi tu</span></div>' +
@@ -4681,6 +4683,216 @@ function apriSalvaModello(kid) {
     '<p class="faint" style="margin-top:8px">Salvo titolo, premessa, sezioni, voci (con prezzi), condizioni, chiusura, validità e IVA. Non salvo il cliente.</p>' +
     '<div class="actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn" type="submit">Salva</button></div></form></div>');
 }
+/* ---------------- prenota una call ----------------
+   Ogni professionista ha un link pubblico (#/a/nome) con le sue finestre della
+   settimana. Chi prenota sceglie giorno e ora fra quelli liberi (le riunioni già
+   fissate contano), lascia nome ed email, e la riunione nasce nel calendario con
+   il link della videocall. Niente account, niente Calendly. */
+function pcfgMia() { return D.pcfg.filter(function (c) { return c.pro_id === me.pro_id; })[0] || null; }
+function slugDa(nome) { return String(nome || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40); }
+var GIORNI_SETT = [["1", "Lunedì"], ["2", "Martedì"], ["3", "Mercoledì"], ["4", "Giovedì"], ["5", "Venerdì"], ["6", "Sabato"], ["7", "Domenica"]];
+function finestreTxt(arr) { return (arr || []).map(function (w) { return w[0] + "-" + w[1]; }).join(", "); }
+function finestreDaTxt(t) {
+  var out = [];
+  String(t || "").split(/[,;]/).forEach(function (p) {
+    var m = /^\s*(\d{1,2})(?::(\d{2}))?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*$/.exec(p);
+    if (!m) return;
+    var a = ("0" + m[1]).slice(-2) + ":" + (m[2] || "00"), b = ("0" + m[3]).slice(-2) + ":" + (m[4] || "00");
+    if (a < b) out.push([a, b]);
+  });
+  return out;
+}
+function linkPrenota(c) { return location.origin + location.pathname + "#/a/" + c.slug; }
+function schedaPrenota(p) {
+  var c = pcfgMia();
+  if (!c) {
+    return '<div class="empty" style="padding:24px 8px"><b>Un link per farti prenotare una call.</b><p class="faint" style="margin:8px 0 14px">Tu decidi in quali orari sei disponibile; chi apre il link sceglie un\'ora libera, lascia nome ed email e la riunione compare nel tuo calendario con la videocall. Le riunioni che hai già fissate non si possono sovrapporre.</p><button class="btn" data-pcfg-attiva="1">Prepara il mio link</button></div>';
+  }
+  var url = linkPrenota(c), sett = c.settimana || {};
+  var f = function (campo, et, ctrl, aiuto) { return '<div class="qfield"><label>' + et + "</label>" + ctrl + (aiuto ? '<div class="faint" style="font-size:12px;margin-top:3px">' + aiuto + "</div>" : "") + "</div>"; };
+  var h = '<div class="card" style="background:' + (c.attivo ? "var(--green-soft)" : "var(--cream)") + ';border-color:transparent"><div class="cardhead"><h2>' + (c.attivo ? "Il tuo link è attivo" : "Il link è spento") + '</h2>' +
+    '<label class="chk"><input type="checkbox" data-pcfg="attivo"' + (c.attivo ? " checked" : "") + '><span>accetta prenotazioni</span></label></div>' +
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><code style="font-size:13px">' + esc(url) + '</code><button class="btn sm ghost" data-copia="' + esc(url) + '">Copia</button><a class="btn sm ghost" href="' + esc(url) + '" target="_blank" rel="noopener">Apri</a></div>' +
+    '<p class="faint" style="margin-top:8px">Mettilo nella firma delle email, sul sito, nei messaggi: chi lo apre vede solo gli orari liberi.</p></div>';
+  h += '<div class="card"><div class="grid g2">' +
+    f("slug", "Indirizzo del link", '<input data-pcfg="slug" value="' + esc(c.slug || "") + '">', "solo lettere, numeri e trattini: crm.giraffastudio.it/#/a/<b>" + esc(c.slug || "") + "</b>") +
+    f("videocall", "Link della videocall", '<input data-pcfg="videocall" value="' + esc(c.videocall || "") + '" placeholder="https://meet.google.com/xxx-xxxx-xxx">', "la tua stanza fissa (Google Meet, Zoom…): finisce nella riunione e nella conferma") +
+    f("durata", "Durata di una call (minuti)", '<input type="number" data-pcfg="durata" value="' + (c.durata || 30) + '" min="10" max="180" step="5">') +
+    f("buffer", "Pausa fra una call e l\'altra (minuti)", '<input type="number" data-pcfg="buffer" value="' + (c.buffer || 0) + '" min="0" max="120" step="5">') +
+    f("anticipo_ore", "Preavviso minimo (ore)", '<input type="number" data-pcfg="anticipo_ore" value="' + (c.anticipo_ore || 24) + '" min="0" max="240">', "nessuno può prenotare fra meno di queste ore") +
+    f("orizzonte_giorni", "Quanto avanti si può prenotare (giorni)", '<input type="number" data-pcfg="orizzonte_giorni" value="' + (c.orizzonte_giorni || 30) + '" min="1" max="120">') +
+    "</div>" +
+    f("intro", "Due righe per chi prenota", '<textarea data-pcfg="intro" rows="2" placeholder="Es. Una call di 30 minuti per capire il progetto e dirti se e come posso aiutarti.">' + esc(c.intro || "") + "</textarea>") +
+    "</div>";
+  h += '<div class="card"><div class="cardhead"><h2>Quando sei disponibile</h2><span class="faint">orari di Verona · scrivi le fasce come «9-13, 14-18»; lascia vuoto il giorno in cui non ci sei</span></div><div class="grid g2">' +
+    GIORNI_SETT.map(function (g) { return f("g" + g[0], g[1], '<input data-pcfg-giorno="' + g[0] + '" value="' + esc(finestreTxt(sett[g[0]])) + '" placeholder="es. 9-13, 14-18">'); }).join("") + "</div></div>";
+  var pren = D.riu.filter(function (r) { return r.origine === "prenota" && r.pro_id === me.pro_id; }).sort(function (a, b) { return (a.data + a.ora) < (b.data + b.ora) ? 1 : -1; }).slice(0, 12);
+  h += '<div class="card"><div class="cardhead"><h2>Prenotate dal link</h2><span class="faint">' + pren.length + "</span></div>" + (pren.length ? pren.map(rigaRiunione).join("") : vuoto("Nessuna prenotazione ancora.")) + "</div>";
+  return h;
+}
+async function salvaPcfg(patch) {
+  var c = pcfgMia(); if (!c) return false;
+  var r = await sb.from("prenota_cfg").update(patch).eq("pro_id", me.pro_id);
+  if (r.error) { toast(erroreUmano(r.error), true); return false; }
+  Object.assign(c, patch); return true;
+}
+function icsTesto(x) {
+  var d = String(x.data).replace(/-/g, ""), a = String(x.ora).replace(":", "") + "00", b = String(x.fine).replace(":", "") + "00";
+  var uid = (x.id || Date.now()) + "@giraffastudio.it";
+  return ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Giraffa Studio//CRM//IT", "BEGIN:VEVENT", "UID:" + uid,
+    "DTSTAMP:" + new Date().toISOString().replace(/[-:]/g, "").slice(0, 15) + "Z",
+    "DTSTART;TZID=Europe/Rome:" + d + "T" + a, "DTEND;TZID=Europe/Rome:" + d + "T" + b,
+    "SUMMARY:Call con " + String(x.con || "").replace(/[,;]/g, " "),
+    (x.videocall ? "LOCATION:" + x.videocall : "LOCATION:Videocall"),
+    (x.videocall ? "DESCRIPTION:Link videocall: " + x.videocall : "DESCRIPTION:Call fissata da crm.giraffastudio.it"),
+    "END:VEVENT", "END:VCALENDAR"].join("\r\n");
+}
+async function paginaPrenota(slug) {
+  var box = el("#pub"); show("pub"); el("#splash").classList.add("hide");
+  box.innerHTML = '<div class="pubwrap"><p class="faint">Cerco gli orari liberi…</p></div>';
+  var r = await sb.rpc("prenota_info", { s: slug });
+  if (r.error || !r.data) { box.innerHTML = '<div class="pubwrap"><div class="authcard"><div class="brandmark"><i class="mark"></i></div><h2>Link non attivo</h2><p>Questo link non esiste o le prenotazioni sono chiuse. Chiedi un nuovo link a chi te l\'ha mandato.</p></div></div>'; return; }
+  var info = r.data, giorni = info.giorni || [], scelto = giorni.length ? giorni[0].data : null, ora = null;
+  var disegna = function () {
+    var g = giorni.filter(function (x) { return x.data === scelto; })[0];
+    box.innerHTML = '<div class="pubwrap prenota"><div class="pubhead"><div class="brandmark"><i class="mark"></i></div><div><b>Prenota una call con ' + esc(info.nome) + "</b><div class=\"faint\">" + esc(info.ruolo || "") + (info.ruolo ? " · " : "") + info.durata + " minuti" + (info.videocall ? " · in videocall" : "") + "</div></div></div>" +
+      (info.intro ? '<p class="pintro">' + esc(info.intro) + "</p>" : "") +
+      (!giorni.length ? '<div class="card"><div class="empty">Non ci sono orari liberi nei prossimi giorni. Riprova fra qualche giorno o scrivi direttamente.</div></div>' :
+      '<div class="card"><h3>Scegli il giorno</h3><div class="chips pgiorni">' + giorni.slice(0, 21).map(function (x) { return '<button class="chipbtn' + (x.data === scelto ? " on" : "") + '" data-pg="' + x.data + '">' + etichettaGiornoPub(x.data) + "</button>"; }).join("") + "</div>" +
+      '<h3 style="margin-top:16px">A che ora</h3><div class="chips pore">' + ((g && g.slot) || []).map(function (o) { return '<button class="chipbtn' + (o === ora ? " on" : "") + '" data-po="' + o + '">' + o + "</button>"; }).join("") + "</div>" +
+      (ora ? '<form id="prenform" style="margin-top:18px"><div class="grid g2">' +
+        '<div class="field"><label>Nome e cognome</label><input name="nome" required minlength="2" autocomplete="name"></div>' +
+        '<div class="field"><label>Email</label><input name="email" type="email" required autocomplete="email"></div>' +
+        '<div class="field"><label>Telefono (se vuoi)</label><input name="tel" autocomplete="tel"></div>' +
+        '<div class="field"><label>Di cosa vuoi parlare</label><input name="note" placeholder="due parole, così arrivo preparato"></div></div>' +
+        '<div class="err hide" id="prenerr"></div>' +
+        '<div class="actions" style="justify-content:flex-start"><button class="btn" type="submit">Conferma ' + etichettaGiornoPub(scelto) + " alle " + ora + '</button></div>' +
+        '<p class="faint" style="margin-top:8px">Nessun account: riceverai subito il riepilogo con il link della videocall da salvare in calendario.</p></form>' : '<p class="faint" style="margin-top:14px">Scegli un orario per continuare.</p>') + "</div>") +
+      '<p class="faint" style="text-align:center;margin:24px 0">Giraffa Studio · crm.giraffastudio.it</p></div>';
+    box.querySelectorAll("[data-pg]").forEach(function (b) { b.addEventListener("click", function () { scelto = b.dataset.pg; ora = null; disegna(); }); });
+    box.querySelectorAll("[data-po]").forEach(function (b) { b.addEventListener("click", function () { ora = b.dataset.po; disegna(); var f = el("#prenform"); if (f) f.scrollIntoView({ behavior: "smooth", block: "start" }); }); });
+    var f = el("#prenform");
+    if (f) f.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var err = el("#prenerr"), btn = f.querySelector("button[type=submit]"); err.classList.add("hide"); btn.disabled = true; btn.textContent = "Prenoto…";
+      var rc = await sb.rpc("prenota_conferma", { s: slug, giorno: scelto, ora_i: ora + ":00", nome: f.nome.value.trim(), email: f.email.value.trim(), tel: f.tel.value.trim(), note: f.note.value.trim() });
+      if (rc.error) { err.textContent = (rc.error.message || "").replace(/^[^:]*: /, "") || "Non sono riuscito a prenotare."; err.classList.remove("hide"); btn.disabled = false; btn.textContent = "Riprova"; if (/disponibile/.test(err.textContent)) { var r2 = await sb.rpc("prenota_info", { s: slug }); if (r2.data) { giorni = r2.data.giorni || []; ora = null; } } return; }
+      var x = rc.data;
+      var ics = "data:text/calendar;charset=utf-8," + encodeURIComponent(icsTesto(x));
+      box.innerHTML = '<div class="pubwrap prenota"><div class="card" style="max-width:640px;margin:40px auto;text-align:center"><div class="brandmark"><i class="mark"></i></div><h2>Prenotato</h2>' +
+        '<p style="margin:10px 0 4px"><b>' + etichettaGiornoPub(x.data) + " dalle " + x.ora + " alle " + x.fine + "</b></p><p class=\"faint\">con " + esc(x.con) + (x.videocall ? " · in videocall" : "") + "</p>" +
+        (x.videocall ? '<p style="margin:14px 0"><a class="btn" href="' + esc(x.videocall) + '" target="_blank" rel="noopener">Link della videocall</a></p><p class="faint">Salvalo: è lo stesso link che troverai nel calendario.</p>' : "") +
+        '<p style="margin-top:14px"><a class="btn ghost" download="call-' + esc(x.data) + '.ics" href="' + ics + '">Aggiungi al calendario (.ics)</a></p>' +
+        '<p class="faint" style="margin-top:18px">Se devi spostare o annullare, rispondi a ' + esc(x.con) + '.</p></div></div>';
+    });
+  };
+  disegna();
+}
+function etichettaGiornoPub(k) {
+  var d = new Date(k + "T12:00:00");
+  return ["dom", "lun", "mar", "mer", "gio", "ven", "sab"][d.getDay()] + " " + d.getDate() + " " + ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"][d.getMonth()];
+}
+
+/* ---------------- riunione registrata e trascritta ----------------
+   Premi Registra, parli, premi Ferma: l'audio va in pezzi da un quarto d'ora in
+   un bucket privato, la funzione lo trascrive e lo cancella, e dal testo escono
+   appunti, decisioni e prossimi passi già pronti da mettere nella riunione.
+   Vale anche per una registrazione fatta col telefono: la carichi da file. */
+var REC = null;
+function cardRegistra(r) {
+  var attiva = REC && REC.riu === r.id;
+  var h = '<div class="card reccard"><div class="cardhead"><h2>Registra e trascrivi</h2><span class="faint">' + (r.trascrizione ? "trascritta" : "l\'audio non resta da nessuna parte: solo il testo") + "</span></div>";
+  if (attiva) {
+    h += '<div class="recon"><span class="recdot"></span> <b id="reclbl">' + durataRec() + "</b> · in registrazione" + (REC.busy ? " · carico…" : "") + '<button class="btn sm stop" data-rec-stop="1" style="margin-left:auto">■ Ferma e trascrivi</button></div>';
+  } else if (REC && REC.lavora && REC.riu === r.id) {
+    h += '<div class="recon"><span class="busy"></span> ' + esc(REC.stato || "Trascrivo…") + "</div>";
+  } else {
+    h += '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center"><button class="btn sm" data-rec-start="' + r.id + '">● Registra</button>' +
+      '<label class="btn sm ghost" style="cursor:pointer">Carica un audio<input type="file" accept="audio/*,video/webm" data-rec-file="' + r.id + '" style="display:none"></label>' +
+      (r.trascrizione ? '<button class="btn sm ghost" data-rec-riassumi="' + r.id + '">Rifai appunti dalla trascrizione</button><button class="lnk mini2" data-rec-vedi="' + r.id + '">' + (RECVEDI === r.id ? "nascondi" : "leggi") + " la trascrizione</button>" : "") + "</div>";
+    if (r.trascrizione && RECVEDI === r.id) h += '<div class="trascr">' + esc(r.trascrizione) + "</div>";
+  }
+  return h + "</div>";
+}
+var RECVEDI = null;
+function durataRec() { if (!REC || !REC.t0) return "0:00"; var s = Math.floor((Date.now() - REC.t0) / 1000); return Math.floor(s / 60) + ":" + ("0" + (s % 60)).slice(-2); }
+async function recStart(rid) {
+  if (REC) { toast("C'è già una registrazione in corso", true); return; }
+  if (!navigator.mediaDevices || !window.MediaRecorder) { toast("Questo browser non sa registrare: usa Chrome o Safari aggiornati", true); return; }
+  var stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch (e) { toast("Serve il permesso del microfono", true); return; }
+  var mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg"].filter(function (m) { return MediaRecorder.isTypeSupported(m); })[0] || "";
+  REC = { riu: rid, stream: stream, mime: mime, parti: [], t0: Date.now(), n: 0, busy: false, lavora: false };
+  var avvia = function () {
+    var mr; try { mr = new MediaRecorder(stream, mime ? { mimeType: mime, audioBitsPerSecond: 32000 } : { audioBitsPerSecond: 32000 }); } catch (e) { mr = new MediaRecorder(stream); }
+    var pezzi = [];
+    mr.ondataavailable = function (e) { if (e.data && e.data.size) pezzi.push(e.data); };
+    mr.onstop = function () { if (pezzi.length) REC.parti.push(new Blob(pezzi, { type: mr.mimeType || mime || "audio/webm" })); if (REC && REC.fine) REC.fine(); };
+    mr.start(1000); REC.mr = mr;
+    /* ogni quarto d'ora chiudo un pezzo e ne apro un altro: file piccoli, trascrizione sicura */
+    REC.tm = setTimeout(function () { if (REC && REC.mr === mr && mr.state === "recording") { mr.stop(); avvia(); } }, 15 * 60 * 1000);
+  };
+  avvia();
+  REC.tick = setInterval(function () { var l = el("#reclbl"); if (l) l.textContent = durataRec(); }, 1000);
+  render();
+}
+async function recStop() {
+  if (!REC || !REC.mr) return;
+  var R = REC; clearTimeout(R.tm); clearInterval(R.tick);
+  await new Promise(function (ok) { R.fine = ok; if (R.mr.state !== "inactive") R.mr.stop(); else ok(); });
+  R.stream.getTracks().forEach(function (t) { t.stop(); });
+  R.lavora = true; R.mr = null; render();
+  await trascriviParti(R.riu, R.parti);
+}
+async function trascriviParti(rid, parti) {
+  var r = by(D.riu, rid); if (!r) { REC = null; render(); return; }
+  var testi = [];
+  try {
+    for (var i = 0; i < parti.length; i++) {
+      REC.stato = "Carico l'audio " + (i + 1) + " di " + parti.length + "…"; render();
+      var ext = /mp4/.test(parti[i].type) ? "m4a" : /ogg/.test(parti[i].type) ? "ogg" : "webm";
+      var path = "riunioni/" + rid + "/" + Date.now() + "-" + i + "." + ext;
+      var up = await sb.storage.from("audio").upload(path, parti[i], { contentType: parti[i].type || "audio/webm" });
+      if (up.error) throw new Error(erroreUmano(up.error));
+      REC.stato = "Trascrivo " + (i + 1) + " di " + parti.length + " (ci vuole circa un minuto ogni dieci di audio)…"; render();
+      var j = await chiamaTrascrizione({ azione: "trascrivi", path: path });
+      testi.push(j.testo || "");
+    }
+    var testo = testi.join("\n").trim();
+    if (!testo) throw new Error("non ho sentito niente: audio vuoto");
+    var tutto = (r.trascrizione ? r.trascrizione + "\n\n— — —\n\n" : "") + testo;
+    await sb.from("riunioni").update({ trascrizione: tutto }).eq("id", rid); r.trascrizione = tutto;
+    REC.stato = "Preparo appunti, decisioni e prossimi passi…"; render();
+    await riassumiRiunione(rid, testo);
+  } catch (e) {
+    toast("Registrazione: " + (e && e.message ? e.message : e), true);
+  }
+  REC = null; render();
+}
+async function chiamaTrascrizione(dati) {
+  var s = await sb.auth.getSession(); var ses = s && s.data ? s.data.session : null;
+  if (!ses) throw new Error("la sessione è scaduta, rientra e riprova");
+  var r = await fetch(String(cfg.SUPABASE_URL || "").replace(/\/+$/, "") + "/functions/v1/trascrivi-riunione", {
+    method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + ses.access_token }, body: JSON.stringify(dati)
+  });
+  var j = null; try { j = await r.json(); } catch (e) { }
+  if (r.status === 501) throw new Error("la chiave OpenAI non è configurata nel progetto");
+  if (!r.ok) throw new Error((j && j.errore) || "il server ha risposto " + r.status);
+  return j || {};
+}
+async function riassumiRiunione(rid, testo) {
+  var r = by(D.riu, rid); if (!r) return;
+  var j = await chiamaTrascrizione({ azione: "riassumi", testo: testo || r.trascrizione || "", titolo: r.titolo });
+  var pross = (j.prossimi || []).map(function (p) { return "- " + p.titolo + (p.chi ? " (" + p.chi + ")" : "") + (p.quando ? " · " + p.quando : ""); }).join("\n");
+  modal('<div class="box wide"><h2>Dalla registrazione</h2><p class="faint" style="margin-bottom:10px">Leggi e correggi: con «Metti nella riunione» finiscono negli appunti, nelle decisioni e nei prossimi passi (in coda a quello che c\'è già).</p>' +
+    '<form data-rec-metti="' + rid + '"><div class="riugrid">' +
+    '<div><label class="faint">Appunti</label><textarea name="note" class="doc" rows="8">' + esc(j.appunti || "") + "</textarea></div>" +
+    '<div><label class="faint">Decisioni</label><textarea name="decisioni" class="doc" rows="8">' + esc(j.decisioni || "") + "</textarea></div>" +
+    '<div style="grid-column:1/-1"><label class="faint">Prossimi passi (una riga per attività)</label><textarea name="prossimi" class="doc" rows="5">' + esc(pross) + "</textarea></div></div>" +
+    '<div class="actions"><button type="button" class="btn ghost" data-close>Lascia stare</button><button class="btn" type="submit">Metti nella riunione</button></div></form></div>');
+}
+
 /* ---------------- lettera d'incarico ----------------
    Dal preventivo accettato nasce la lettera: una fotografia di parti, oggetto,
    importi e regole, scritta con articoli che si riscrivono sul posto. Il cliente
@@ -6167,6 +6379,17 @@ async function clicApp(e, t, d) {
     if (PLINK) { location.hash = ""; location.reload(); return; }
     await sb.auth.signOut(); location.reload(); return;
   }
+  if (d.pcfgAttiva) {
+    var pp = by(D.pros, me.pro_id) || {};
+    var rp = await sb.from("prenota_cfg").insert({ pro_id: me.pro_id, slug: slugDa(pp.nome) || ("pro-" + String(me.pro_id).slice(0, 6)), attivo: false }).select().single();
+    if (rp.error) { toast(erroreUmano(rp.error), true); return; }
+    await reload(["pcfg"]); toast("Link pronto: controlla gli orari e accendilo"); render(); return;
+  }
+  if (d.copia) { try { await navigator.clipboard.writeText(d.copia); toast("Copiato"); } catch (x) { prompt("Copia", d.copia); } return; }
+  if (d.recStart) { await recStart(d.recStart); return; }
+  if (d.recStop) { await recStop(); return; }
+  if (d.recVedi) { RECVEDI = RECVEDI === d.recVedi ? null : d.recVedi; render(); return; }
+  if (d.recRiassumi) { var rr7 = by(D.riu, d.recRiassumi); if (!rr7 || !rr7.trascrizione) return; toast("Preparo gli appunti…"); try { await riassumiRiunione(rr7.id, rr7.trascrizione); } catch (e) { toast(String(e && e.message || e), true); } return; }
   if (d.incNuovo) { await creaIncarico(d.incNuovo); return; }
   if (d.incLink) {
     var il = by(D.inc, d.incLink); if (!il) return;
@@ -7009,6 +7232,15 @@ async function invioModulo(e, f) {
     if (TSEXTRA.indexOf(lid9) === -1) TSEXTRA.push(lid9);
     render(); return;
   }
+  if (f.dataset.recMetti) {
+    e.preventDefault();
+    var rm9 = by(D.riu, f.dataset.recMetti); if (!rm9) return;
+    var agg = function (vecchio, nuovo) { nuovo = (nuovo || "").trim(); if (!nuovo) return vecchio || null; return ((vecchio || "").trim() ? vecchio.trim() + "\n\n" : "") + nuovo; };
+    var pm = { note: agg(rm9.note, f.note.value), decisioni: agg(rm9.decisioni, f.decisioni.value), prossimi: agg(rm9.prossimi, f.prossimi.value) };
+    var rq9 = await sb.from("riunioni").update(pm).eq("id", rm9.id);
+    if (rq9.error) { toast(erroreUmano(rq9.error), true); return; }
+    await reload(["riu"]); closeModal(); toast("Messi nella riunione: da «Prossimi passi» crei le attività con un clic"); render(); return;
+  }
   if (f.dataset.mprevForm) {
     e.preventDefault();
     var km = by(D.com, f.dataset.mprevForm); if (!km) return;
@@ -7280,6 +7512,29 @@ document.addEventListener("change", async function (e) {
   if (e.target.dataset && e.target.dataset.comvista) { COMVISTA = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tf) { TF[e.target.dataset.tf] = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.incVedi) { INCVEDI = e.target.value; render(); return; }
+  if (e.target.dataset && e.target.dataset.pcfg) {
+    var cp = e.target.dataset.pcfg, vp = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+    if (cp === "slug") { vp = slugDa(vp); e.target.value = vp; if (!vp) { toast("L'indirizzo non può essere vuoto", true); return; } }
+    if (["durata", "buffer", "anticipo_ore", "orizzonte_giorni"].indexOf(cp) > -1) vp = +vp || 0;
+    var pt = {}; pt[cp] = vp;
+    if (await salvaPcfg(pt)) { toast(cp === "attivo" ? (vp ? "Prenotazioni aperte" : "Prenotazioni chiuse") : "Salvato"); if (cp === "attivo" || cp === "slug") render(); }
+    return;
+  }
+  if (e.target.dataset && e.target.dataset.pcfgGiorno) {
+    var cg = pcfgMia(); if (!cg) return;
+    var settN = Object.assign({}, cg.settimana || {}); var fin = finestreDaTxt(e.target.value);
+    if (fin.length) settN[e.target.dataset.pcfgGiorno] = fin; else delete settN[e.target.dataset.pcfgGiorno];
+    e.target.value = finestreTxt(fin);
+    if (await salvaPcfg({ settimana: settN })) toast("Orari salvati");
+    return;
+  }
+  if (e.target.dataset && e.target.dataset.recFile) {
+    var fa = e.target.files && e.target.files[0]; if (!fa) return;
+    if (fa.size > 24 * 1024 * 1024) { toast("File troppo grande: massimo 24 MB (circa un'ora a bassa qualità). Registra dal CRM per gli incontri lunghi.", true); return; }
+    if (REC) { toast("C'è già una registrazione in corso", true); return; }
+    REC = { riu: e.target.dataset.recFile, parti: [fa], lavora: true, t0: null };
+    render(); await trascriviParti(REC.riu, [fa]); return;
+  }
   if (e.target.dataset && e.target.dataset.bloccoMostra) {
     var kbm = by(D.com, e.target.dataset.bloccoMostra), keym = e.target.value; if (!kbm || !keym) return;
     var obm = opzDoc(kbm); await salvaSubito("com", kbm.id, { doc_opzioni: Object.assign({}, obm, { nascosti: (obm.nascosti || []).filter(function (x) { return x !== keym; }) }) }); return;
@@ -7508,6 +7763,8 @@ async function start() {
   if (pm) { await portaleDaLink(pm[1]); return; }
   var pf = /^#\/f\/([a-z0-9]+)/i.exec(location.hash || "");
   if (pf) { await paginaFirma(pf[1]); return; }
+  var pa = /^#\/a\/([a-z0-9-]+)/i.exec(location.hash || "");
+  if (pa) { await paginaPrenota(pa[1]); return; }
   var s = await sb.auth.getSession();
   if (!s.data.session) { show("login"); return; }
   user = s.data.session.user;
