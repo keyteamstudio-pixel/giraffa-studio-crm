@@ -4851,7 +4851,8 @@ async function trascriviParti(rid, parti) {
   try {
     for (var i = 0; i < parti.length; i++) {
       REC.stato = "Carico l'audio " + (i + 1) + " di " + parti.length + "…"; render();
-      var ext = /mp4/.test(parti[i].type) ? "m4a" : /ogg/.test(parti[i].type) ? "ogg" : "webm";
+      var tp = parti[i].type || "", nm = parti[i].name || "";
+      var ext = /wav/.test(tp) ? "wav" : /mpeg|mp3/.test(tp) ? "mp3" : /mp4|m4a|aac/.test(tp) ? "m4a" : /ogg|opus/.test(tp) ? "ogg" : /webm/.test(tp) ? "webm" : (/\.(wav|mp3|m4a|ogg|webm|mp4|flac)$/i.exec(nm) || [0, "webm"])[1].toLowerCase();
       var path = "riunioni/" + rid + "/" + Date.now() + "-" + i + "." + ext;
       var up = await sb.storage.from("audio").upload(path, parti[i], { contentType: parti[i].type || "audio/webm" });
       if (up.error) throw new Error(erroreUmano(up.error));
