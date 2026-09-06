@@ -31,7 +31,7 @@ var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
 var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
-  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni" };
+  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito" };
 
 /* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
 var COLONNE = { port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd" };
@@ -591,7 +591,7 @@ function navOrdina(v) {
 function navFor() {
   return navOrdina([
     { g: "Lavoro" },
-    { k: "dash", t: "Oggi", d: "Cosa guardare adesso" },
+    { k: "dash", t: "Oggi", d: "Cosa guardare adesso", c: function () { return (D.rich || []).filter(function (r) { return r.stato === "Nuova"; }).length; } },
     { k: "calendario", t: "Calendario", d: "Scadenze e consegne sul mese" },
     { k: "riunioni", t: "Riunioni", d: "Videocall, appunti, decisioni", c: function () { return D.riu.filter(function (r) { return r.data >= today() && r.stato !== "Annullata"; }).length; } },
     { k: "progetti", t: "Progetti", d: "Progetti aperti in cui sei dentro", c: function () { return progVisibili().filter(function (p) { return p.stato !== "Completato" && p.stato !== "Sospeso"; }).length; } },
@@ -921,6 +921,27 @@ function proposte(dove) {
   return out;
 }
 function esc0(s) { return String(s == null ? "" : s); }
+/* Le richieste arrivate dal sito: un cliente che vuole un preventivo, un
+   professionista che vuole entrare. Da qui diventano un cliente o una scheda. */
+function cardRichieste() {
+  var nuove = (D.rich || []).filter(function (r) { return r.stato === "Nuova"; }).sort(function (a, b) { return a.created_at < b.created_at ? 1 : -1; });
+  if (!nuove.length) return "";
+  var h = '<div class="card" style="border-color:var(--terra)"><div class="cardhead"><h2>Richieste dal sito</h2><span class="badge b-amber">' + nuove.length + (nuove.length === 1 ? " nuova" : " nuove") + "</span></div>";
+  h += nuove.map(function (r) {
+    var tipo = r.tipo === "candidatura" ? "Vuole entrare nello studio" : r.tipo === "preventivo" ? "Chiede un preventivo" : "Scrive";
+    var chi = esc(r.nome) + (r.azienda ? " · " + esc(r.azienda) : "") + (r.mestiere ? " · " + esc(r.mestiere) : "") + (r.citta ? " · " + esc(r.citta) : "");
+    var contatti = '<a href="mailto:' + esc(r.email) + '">' + esc(r.email) + "</a>" + (r.telefono ? ' · <a href="tel:' + esc(String(r.telefono).replace(/\s+/g, "")) + '">' + esc(r.telefono) + "</a>" : "") + (r.portfolio ? ' · <a href="' + esc(r.portfolio) + '" target="_blank" rel="noopener">il suo lavoro</a>' : "");
+    return '<div class="rich"><div class="richtop"><b>' + tipo + "</b><span class=\"faint\">" + dt(String(r.created_at).slice(0, 10)) + "</span></div>" +
+      "<div>" + chi + "</div><div class=\"faint\">" + contatti + "</div>" +
+      (r.messaggio ? '<p class="richmsg">' + esc(r.messaggio) + "</p>" : "") +
+      '<div class="richaz">' + (r.tipo === "candidatura"
+        ? (puo("accessi") ? '<button class="btn sm" data-rich-pro="' + r.id + '">Crea la scheda nello studio</button>' : "")
+        : '<button class="btn sm" data-rich-cli="' + r.id + '">Crea il cliente</button>') +
+      '<a class="btn sm ghost" href="mailto:' + esc(r.email) + '?subject=' + encodeURIComponent("Re: la tua richiesta a Giraffa Studio") + '">Rispondi</a>' +
+      '<button class="lnk mini" data-rich-ok="' + r.id + '">Segna come gestita</button></div></div>';
+  }).join("");
+  return h + "</div>";
+}
 function cardProposte(dove) {
   var p = proposte(dove);
   if (!p.length) return "";
@@ -977,6 +998,7 @@ function vDash() {
     '<button class="btn sm ghost" data-pal="1">⌘K  Cerca</button>' +
     '<button class="btn sm" data-new="com">+ Nuovo preventivo</button>' + '<button class="btn sm ghost" data-new="ore">+ Registra ore</button>' + "</div></div>";
 
+  h += cardRichieste();
   h += cardProposte("dash");
   h += '<div class="grid g32">';
   h += '<div class="card"><div class="cardhead"><h2>Da guardare adesso</h2>' + (foc.length ? '<span class="badge ' + (foc[0].c || "") + '">' + foc.length + (foc.length === 1 ? " cosa" : " cose") + "</span>" : '<span class="badge b-green">tutto in ordine</span>') + "</div>";
@@ -5524,7 +5546,7 @@ function countUp() {
 /* ---------------- eventi ---------------- */
 /* Un clic solo: finché la prima azione non ha finito, la seconda uguale non parte. */
 var INCORSO = {};
-var GUARDIA = ["avvia", "impCrea", "ciclo", "incassa", "tck", "apprVar", "tstart", "tstop", "tstartTask", "tstartLav", "propSi", "portnew", "riuTask", "riuStato", "duplTask", "dupl"];
+var GUARDIA = ["avvia", "impCrea", "ciclo", "incassa", "tck", "apprVar", "tstart", "tstop", "tstartTask", "tstartLav", "propSi", "portnew", "riuTask", "riuStato", "duplTask", "dupl", "richCli", "richPro", "richOk"];
 document.addEventListener("click", function (e) {
   var t = e.target.closest("button, [data-open-task], [data-open-com], [data-open-prog], [data-open-lav], [data-day], [data-close]");
   if (!t) return;
@@ -5709,6 +5731,27 @@ async function clicApp(e, t, d) {
   if (d.rigaEdit) { openRiga(null, d.rigaEdit); return; }
   if (d.portale) { openPortale(d.portale); return; }
   if (d.avvia) { await avviaLavoro(d.avvia); return; }
+  if (d.richOk) { if (await salvaSubito("rich", d.richOk, { stato: "Gestita", gestita_da: me.pro_id })) toast("Richiesta gestita"); render(); return; }
+  if (d.richCli) {
+    var rq1 = by(D.rich, d.richCli); if (!rq1) return;
+    var gia1 = D.cli.filter(function (c) { return (c.email || "").toLowerCase() === (rq1.email || "").toLowerCase() || (c.nome || "").toLowerCase() === (rq1.azienda || rq1.nome || "").toLowerCase(); })[0];
+    var cid1 = gia1 && gia1.id;
+    if (!cid1) {
+      var rc1 = await sb.from("clienti").insert({ nome: (rq1.azienda || rq1.nome).slice(0, 140), referente: rq1.azienda ? rq1.nome : null, email: rq1.email, telefono: rq1.telefono || null, stato: "Lead", owner_id: me.pro_id, note: "Dal sito il " + dt(String(rq1.created_at).slice(0, 10)) + ":\n" + (rq1.messaggio || "") }).select().single();
+      if (rc1.error) { toast(erroreUmano(rc1.error), true); return; }
+      cid1 = rc1.data.id; await reload(["cli"]);
+    }
+    await sb.from("interazioni").insert({ cliente_id: cid1, pro_id: me.pro_id, tipo: "Nota", data: today(), testo: "Richiesta dal sito: " + (rq1.messaggio || "—") });
+    await salvaSubito("rich", rq1.id, { stato: "Gestita", gestita_da: me.pro_id, cliente_id: cid1 });
+    await reload(["inter"]); toast(gia1 ? "Cliente già in anagrafica: ho aggiunto la nota" : "Cliente creato come Lead"); go("cliente", cid1, "anagrafica"); return;
+  }
+  if (d.richPro) {
+    var rq2 = by(D.rich, d.richPro); if (!rq2) return;
+    var rp2 = await sb.from("professionisti").insert({ nome: rq2.nome.slice(0, 140), ruolo: rq2.mestiere || null, citta: rq2.citta || null, email: rq2.email, sito: rq2.portfolio || null, vetting: "In valutazione" }).select().single();
+    if (rp2.error) { toast(erroreUmano(rp2.error), true); return; }
+    await salvaSubito("rich", rq2.id, { stato: "Gestita", gestita_da: me.pro_id });
+    await reload(["pros"]); toast("Scheda creata, in valutazione. L\'accesso lo dai da Impostazioni quando è il momento."); go("pro", rp2.data.id, "scheda"); return;
+  }
   if (d.riuStato) {
     var rz = d.riuStato.split("|");
     if (await salvaSubito("riu", rz[0], { stato: rz[1] })) toast(rz[1] === "Tenuta" ? "Segnata come tenuta" : rz[1] === "Annullata" ? "Riunione annullata" : "Rimessa in programma");
@@ -6835,9 +6878,9 @@ function avviaAggiornamenti() {
 function impronta(k) { return D[k].length + "|" + (D[k].length ? (D[k][D[k].length - 1].id || "") : ""); }
 async function aggiornaVivo() {
   if (document.hidden || !user || isCliente() || inForm() || document.querySelector("#modal .box") || (document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName))) return;
-  var prima = ["msg", "post", "risp", "reaz", "lett", "ag", "riu", "task", "comm"].map(impronta).join("#");
-  await reload(["msg", "post", "risp", "reaz", "lett", "ag", "riu", "task", "comm"]);
-  var dopo = ["msg", "post", "risp", "reaz", "lett", "ag", "riu", "task", "comm"].map(impronta).join("#");
+  var prima = ["msg", "post", "risp", "reaz", "lett", "ag", "riu", "task", "comm", "rich"].map(impronta).join("#");
+  await reload(["msg", "post", "risp", "reaz", "lett", "ag", "riu", "task", "comm", "rich"]);
+  var dopo = ["msg", "post", "risp", "reaz", "lett", "ag", "riu", "task", "comm", "rich"].map(impronta).join("#");
   if (prima === dopo) return;
   if (["chat", "studio", "eventi", "riunioni", "task", "dash"].indexOf(view) > -1 || (view === "commessa" && tab === "discussione")) render(); else buildNav();
 }
