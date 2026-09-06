@@ -462,6 +462,17 @@ textarea{min-height:86px;resize:vertical;line-height:1.55;padding:10px 12px}
 @media(max-width:1100px){.grid.g4-1{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.grid.g4-1{grid-template-columns:1fr}}
 .mcol.over{outline:2px dashed var(--terra);outline-offset:3px}
+/* pagina pubblica: la firma dal link */
+.pub{min-height:100vh;padding:24px 16px 40px}
+.pubwrap{max-width:900px;margin:0 auto}
+.pubhead{display:flex;align-items:center;gap:14px;margin:0 auto 18px;max-width:820px}
+.pubhead .brandmark{margin:0}.pubhead>div{flex:1}
+.firmabox h2{margin-bottom:12px}
+.firmapad{position:relative;border:1.5px dashed var(--line);border-radius:12px;background:#fff;overflow:hidden}
+.firmapad canvas{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
+.firmapad .lnk{position:absolute;right:10px;top:8px}
+.lettera .ddest{margin-bottom:10px}
+.lettera .dsezt .dsh b{font-size:1rem}
 /* il foglio: modelli, blocchi, cliente */
 .dmodelli{margin-bottom:16px}
 .dmodelli .chips{display:flex;flex-wrap:wrap;gap:8px}
@@ -1327,6 +1338,8 @@ table.dtot .big{font-size:1.12rem;color:var(--terra-deep)}
   <main class="main" id="main"></main>
 </div>
 
+<div id="pub" class="pub hide"></div>
+
 <div id="modal"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
@@ -1377,6 +1390,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=66"></script>
+<script src="app.js?v=67"></script>
 </body>
 </html>
