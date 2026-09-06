@@ -472,6 +472,29 @@ textarea{min-height:86px;resize:vertical;line-height:1.55;padding:10px 12px}
 .recdot{width:10px;height:10px;border-radius:50%;background:#d92d20;animation:recpulse 1.2s infinite}
 @keyframes recpulse{0%,100%{opacity:1}50%{opacity:.25}}
 .trascr{white-space:pre-wrap;font-size:13px;color:var(--soft);max-height:320px;overflow:auto;margin-top:12px;padding:12px;background:var(--cream);border-radius:10px}
+/* posta */
+.posta{display:grid;grid-template-columns:minmax(300px,380px) 1fr;gap:14px;align-items:start}
+.posta.incli{margin-top:6px}
+.mlist{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;max-height:calc(100vh - 220px);overflow-y:auto}
+.mcerca{display:flex;gap:6px;padding:10px 10px 4px}
+.mcerca input{flex:1;min-width:0}
+.mchips{display:flex;flex-wrap:wrap;gap:6px;padding:6px 10px 10px;border-bottom:1px solid var(--line)}
+.mrow{display:grid;grid-template-columns:1fr auto;gap:0 8px;width:100%;text-align:left;padding:10px 12px;border:0;border-bottom:1px solid var(--line);background:transparent;cursor:pointer;font:inherit;color:inherit}
+.mrow:hover{background:var(--cream)}
+.mrow.on{background:var(--terra-soft)}
+.mrow .mchi{font-size:13px;color:var(--soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:flex;gap:6px;align-items:center}
+.mrow .mcli{font-size:10px;padding:1px 6px}
+.mrow .mdata{font-size:12px;color:var(--soft)}
+.mrow .mogg{grid-column:1/-1;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow .msnip{grid-column:1/-1;font-size:12px;color:var(--soft);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow.nl .mogg,.mrow.nl .mchi{font-weight:600;color:var(--ink)}
+.mread{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px;min-height:200px}
+.mhead h2{font-size:18px;margin-bottom:6px}
+.macts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.mall{margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:12px}
+.mbody{white-space:pre-wrap;margin-top:16px;line-height:1.55;font-size:14px;max-height:calc(100vh - 360px);overflow:auto}
+.calev.gcal{background:transparent;border:1px dashed var(--line);color:var(--soft)}
+@media (max-width:900px){.posta{grid-template-columns:1fr}.mlist{max-height:50vh}}
 /* pagina pubblica: la firma dal link */
 .pub{min-height:100vh;padding:24px 16px 40px}
 .pubwrap{max-width:900px;margin:0 auto}
@@ -1400,6 +1423,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=69"></script>
+<script src="app.js?v=70"></script>
 </body>
 </html>
