@@ -3072,6 +3072,48 @@ function vSpazi() {
   return h + "</div></div>";
 }
 
+/* Le immagini del sito pubblico: loghi dei clienti, delle collaborazioni, dei
+   partner e le foto delle persone. Si caricano da qui e il sito le mostra da solo,
+   col nome del file che il sito si aspetta. */
+var SITO_IMG = null;
+function slugFile(n) { return String(n).toLowerCase().replace(/\.(png|jpe?g|svg|webp)$/i, function (m) { return m; }).replace(/[^a-z0-9.\-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, ""); }
+function cardImmaginiSito() {
+  var cart = [["clients", "Chi ci ha scelto", "lucchi.png, cna-veneto.png, gieffe.png, naturasi.png, noleggio-lorini.png, miola.png, acqua-adv.png, borsari.png, carboni-adv.png, buglioni.png, al-calmiere.svg, 4you.png, logo-flame.png, petit-blanche.svg, la-staffa.png, sport-center-verona.png"], ["collab", "Con chi hanno collaborato i professionisti", "un file per marchio, nome libero"], ["partner", "Partner e coworking", "un file per partner, nome libero"], ["people", "Foto delle persone", "nicola.jpg, goffredo.jpg (quadrate, almeno 400 px)"], ["foto", "Foto dello studio", "nomi liberi"]];
+  var h = '<div class="card" id="imgsito"><div class="cardhead"><h2>Immagini del sito</h2><span class="faint">giraffastudio.it le legge da qui</span></div>' +
+    '<p class="faint" style="margin:-4px 0 14px">PNG o SVG con sfondo trasparente per i loghi, JPG per le foto. Il nome del file conta: il sito cerca quelli scritti accanto a ogni cartella.</p>';
+  cart.forEach(function (c) {
+    var lista = SITO_IMG ? SITO_IMG.filter(function (f) { return f.cartella === c[0]; }) : null;
+    h += '<div class="imgcart"><div class="imgcarth"><b>' + c[1] + '</b><span class="faint">' + esc(c[2]) + "</span>" +
+      '<label class="btn sm ghost">Carica<input type="file" multiple accept="image/*,.svg" data-sitoup="' + c[0] + '" style="display:none"></label></div>' +
+      (lista === null ? '<p class="faint">…</p>' : lista.length ? '<div class="imgfiles">' + lista.map(function (f) {
+        return '<div class="imgfile"><img src="' + IMG_SITO + c[0] + "/" + encodeURIComponent(f.name) + '" alt=""><span>' + esc(f.name) + '</span><button class="lnk mini" data-sitovia="' + c[0] + "/" + esc(f.name) + '">togli</button></div>';
+      }).join("") + "</div>" : '<p class="faint">Ancora niente qui.</p>') + "</div>";
+  });
+  if (SITO_IMG === null) caricaListaSito();
+  return h + "</div>";
+}
+var IMG_SITO = "https://uxeuqyzlikkbkpraeoen.supabase.co/storage/v1/object/public/sito/";
+async function caricaListaSito() {
+  var out = [];
+  for (var i = 0; i < 5; i++) {
+    var cart = ["clients", "collab", "partner", "people", "foto"][i];
+    var r = await sb.storage.from("sito").list(cart, { limit: 200 });
+    (r.data || []).forEach(function (f) { if (f.name && f.name !== ".emptyFolderPlaceholder") out.push({ cartella: cart, name: f.name }); });
+  }
+  SITO_IMG = out;
+  if (view === "impostazioni") render();
+}
+async function caricaImmaginiSito(cart, files) {
+  var ok = 0;
+  for (var i = 0; i < files.length; i++) {
+    var f = files[i], nome = slugFile(f.name);
+    if (f.size > 3000000) { toast(f.name + " è troppo grande (max 3 MB)", true); continue; }
+    var up = await sb.storage.from("sito").upload(cart + "/" + nome, f, { upsert: true, contentType: f.type || undefined, cacheControl: "3600" });
+    if (up.error) toast(f.name + ": " + erroreUmano(up.error), true); else ok++;
+  }
+  if (ok) toast(ok === 1 ? "Immagine caricata" : ok + " immagini caricate");
+  SITO_IMG = null; render();
+}
 function vSettings() {
   var h = head("Impostazioni", "Il tuo accesso, le regole di visibilità e — se le curi — le persone");
   h += '<div class="grid g2">';
@@ -3094,6 +3136,7 @@ function vSettings() {
     row2("Chi cura le aree comuni", "può modificare spazi, impostazioni o accessi, non può entrare nei dati di nessuno") +
     '</tbody></table><p class="faint" style="margin-top:10px">Sono regole del database, non della grafica: anche interrogando il sistema direttamente non si esce da quello che ti spetta.</p></div>';
   if (puo("studio")) {
+    h += cardImmaginiSito();
     h += '<div class="card"><h2>Carta intestata dello studio</h2>' +
       '<p class="faint" style="margin:8px 0 14px">Questi dati vanno in testa ai preventivi che escono a nome dello studio, quelli dove lavorano più professionisti.</p>' +
       '<div class="imgbox" style="margin-bottom:14px"><div class="glab">Il logo dello studio</div>' + (SET.studio_logo ? '<img src="' + esc(SET.studio_logo) + '" alt="">' : '<div class="imgvuoto">si usa il marchio Giraffa</div>') +
@@ -5731,6 +5774,12 @@ async function clicApp(e, t, d) {
   if (d.rigaEdit) { openRiga(null, d.rigaEdit); return; }
   if (d.portale) { openPortale(d.portale); return; }
   if (d.avvia) { await avviaLavoro(d.avvia); return; }
+  if (d.sitovia) {
+    if (!confirm("Tolgo questa immagine dal sito?")) return;
+    var rsv = await sb.storage.from("sito").remove([d.sitovia]);
+    if (rsv.error) { toast(erroreUmano(rsv.error), true); return; }
+    SITO_IMG = null; toast("Tolta"); render(); return;
+  }
   if (d.richOk) { if (await salvaSubito("rich", d.richOk, { stato: "Gestita", gestita_da: me.pro_id })) toast("Richiesta gestita"); render(); return; }
   if (d.richCli) {
     var rq1 = by(D.rich, d.richCli); if (!rq1) return;
@@ -6713,6 +6762,9 @@ document.addEventListener("change", async function (e) {
   }
   if (e.target.dataset && e.target.dataset.imgup && e.target.files && e.target.files.length) {
     await caricaImmagine(e.target.dataset.imgup, e.target.files[0]); return;
+  }
+  if (e.target.dataset && e.target.dataset.sitoup && e.target.files && e.target.files.length) {
+    await caricaImmaginiSito(e.target.dataset.sitoup, e.target.files); return;
   }
   if (e.target.id === "fileinp" && e.target.files && e.target.files.length) {
     var dz = el("#drop");
