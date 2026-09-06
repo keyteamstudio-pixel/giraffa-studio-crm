@@ -1796,7 +1796,7 @@ function etichettaBreve(k) {
 }
 /* «bozza sito Lucchi ven @Goffredo !» → titolo, scadenza, persona, progetto, priorità */
 function capisciTask(testo, ctx) {
-  var t = " " + testo + " ", r = { titolo: "", stato: "Da fare", priorita: "Media", assegnato_id: me.pro_id }, come = [];
+  var t = " " + testo + " ", r = { titolo: "", stato: "Da fare", priorita: "Media", assegnato_id: me.pro_id, creato_da: me.pro_id }, come = [];
   ctx = ctx || "";
   if (/\s!+\s/.test(t)) { r.priorita = "Alta"; t = t.replace(/\s!+\s/g, " "); come.push("priorità alta"); }
   var mp = t.match(/\s@(\S+)/);
@@ -5589,6 +5589,7 @@ async function saveForm(f) {
     privati = {};
     F.priv.forEach(function (c) { if (c in obj) { privati[c] = obj[c]; delete obj[c]; } });
   }
+  if (entity === "task" && !id) obj.creato_da = me.pro_id;
   /* le caselle dei partecipanti diventano un elenco */
   if (entity === "riu") {
     var part = [];
@@ -6800,7 +6801,7 @@ async function invioModulo(e, f) {
     e.preventDefault();
     var tsub = f.titolo.value.trim(); if (!tsub) return;
     var pd = by(D.task, f.dataset.qaddSub); if (!pd) return;
-    var rqs = await sb.from("task").insert({ titolo: tsub, padre_id: pd.id, commessa_id: pd.commessa_id, progetto_id: pd.progetto_id, lavorazione_id: pd.lavorazione_id, assegnato_id: pd.assegnato_id || me.pro_id, stato: "Da fare", priorita: "Media" });
+    var rqs = await sb.from("task").insert({ titolo: tsub, padre_id: pd.id, commessa_id: pd.commessa_id, progetto_id: pd.progetto_id, lavorazione_id: pd.lavorazione_id, assegnato_id: pd.assegnato_id || me.pro_id, creato_da: me.pro_id, stato: "Da fare", priorita: "Media" });
     if (rqs.error) { toast(erroreUmano(rqs.error), true); return; }
     f.titolo.value = ""; await reload(["task"]); render(); return;
   }
