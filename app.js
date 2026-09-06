@@ -25,16 +25,16 @@ var APPVER = (function () {
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
 var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
-  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [], pcfg: [] };
+  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [], pcfg: [], gconn: [], impg: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
 var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
-  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi", pcfg: "prenota_cfg" };
+  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi", pcfg: "prenota_cfg", gconn: "google_conn", impg: "impegni_google" };
 
 /* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
-var COLONNE = { port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd" };
+var COLONNE = { port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd", gconn: "pro_id,email,scopes,created_at,updated_at,sync_at,errore" };
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
 var EXP = {}, VISTA = "tabella", FSTATO = "", FSAL = "", DRAG = null;
@@ -601,6 +601,7 @@ function navFor() {
     { k: "carico", t: "Carico", d: "Quanto lavoro hai davanti" },
     { g: "Clienti" },
     { k: "clienti", t: "Clienti", d: "I tuoi clienti", c: function () { return fcli().length; } },
+    { k: "posta", t: "Posta", d: "La tua Gmail, con i clienti accanto", c: function () { return GM.nonLetti || 0; } },
     { k: "commesse", t: "Preventivi", d: "I tuoi e quelli dello studio", c: function () { return fcom().filter(function (k) { return STATI_APERTI.indexOf(k.stato) > -1; }).length; } },
     { k: "amm", t: "Amministrazione", d: "Incassi, scadenze, preventivi in gioco" },
     { k: "report", t: "Report", d: "Numeri e andamenti" },
@@ -1424,6 +1425,7 @@ function vRiunione() {
     (r.link ? '<a class="btn sm" href="' + esc(r.link) + '" target="_blank" rel="noopener">Entra nella videocall</a>' : "") +
     (r.stato !== "Tenuta" ? '<button class="btn sm ghost" data-riu-stato="' + r.id + '|Tenuta">Segna come tenuta</button>' : '<button class="btn sm ghost" data-riu-stato="' + r.id + '|Programmata">Riapri</button>') +
     (r.stato !== "Annullata" && r.stato !== "Tenuta" ? '<button class="btn sm ghost" data-riu-stato="' + r.id + '|Annullata">Annulla</button>' : "") +
+    (gconnMia() && r.stato !== "Annullata" ? (r.gcal_event_id ? '<button class="btn sm ghost" data-gcal-metti="' + r.id + '" title="Rimanda a Google le modifiche">Aggiorna su Google</button><button class="btn sm ghost" data-gcal-via="' + r.id + '">Togli da Google</button>' : '<button class="btn sm ghost" data-gcal-metti="' + r.id + '">Metti in Google Calendar</button>') : "") +
     '<button class="btn sm ghost" data-edit="riu:' + r.id + '">Modifica</button>' +
     (mia ? '<button class="btn sm danger" data-del="riu:' + r.id + '">Elimina</button>' : "") + "</div></div>";
   h += '<div class="card props"><div class="pgrid">' +
@@ -2867,8 +2869,10 @@ function vCliente() {
     ["progetti", "Progetti", prg.length],
     ["scadenze", "Scadenze", pg.filter(function (p) { return p.stato !== "Incassato"; }).length],
     ["diario", "Diario", inter.length],
+    ["email", "Email"],
     ["portale", "Portale"]
   ], t, "cliente", c.id);
+  if (t === "email") h += schedaEmailCliente(c);
 
   if (t === "anagrafica") {
     h += '<div class="grid g2"><div class="card"><h3 style="margin-bottom:12px">Dati del cliente</h3><table><tbody>' +
@@ -3132,9 +3136,10 @@ function vPro() {
     kpi(String(tk.filter(function (t) { return t.stato !== "Fatto"; }).length), "Attività aperte", "sui lavori che vedi") + "</div>";
   var t = tab || "scheda";
   var TP = [["scheda", "Scheda"], ["servizi", "Servizi", srv.length], ["lavori", "Lavori", com.length]];
-  if (mio) TP.push(["ore", "Ore", num(sum(ore, function (o) { return o.ore; }), 1)], ["prenota", "Prenota una call", pcfgMia() && pcfgMia().attivo ? "on" : null]);
+  if (mio) TP.push(["ore", "Ore", num(sum(ore, function (o) { return o.ore; }), 1)], ["prenota", "Prenota una call", pcfgMia() && pcfgMia().attivo ? "on" : null], ["email", "Email e calendario", gconnMia() ? "on" : null]);
   h += schede(TP, t, view === "profilo" ? "profilo" : "pro", view === "profilo" ? "" : p.id);
   if (t === "prenota" && mio) h += schedaPrenota(p);
+  if (t === "email" && mio) h += schedaEmail(p);
 
   if (t === "scheda" && mio) {
     h += '<div class="card"><div class="cardhead"><h2>Come esci sul foglio</h2><span class="faint">logo e firma finiscono sui tuoi preventivi, e la firma anche su quelli dello studio che mandi tu</span></div>' +
@@ -3688,6 +3693,12 @@ function eventiDi(g) {
   D.pren.forEach(function (r) { if (r.data === g) out.push({ c: "b-green", t: nameOf(D.spazi, r.spazio_id), s: r.slot || "prenotazione", act: 'data-go="spazi"' }); });
   D.riu.forEach(function (r) { if (r.data === g && r.stato !== "Annullata") out.push({ c: "b-blue", t: (r.ora ? r.ora.slice(0, 5) + " " : "") + r.titolo, s: "riunione", act: 'data-route="riunione|' + r.id + '|"' }); });
   D.ag.forEach(function (e) { if (e.data === g) out.push({ c: "b-green", t: (e.ora ? e.ora.slice(0, 5) + " " : "") + e.titolo, s: (e.tipo || "evento").toLowerCase() + " dello studio", act: 'data-route="eventi|-|prossimi"' }); });
+  (D.impg || []).forEach(function (e) {
+    if (e.pro_id !== me.pro_id || giornoImpg(e.inizio) !== g) return;
+    /* le riunioni del CRM già mandate a Google non vanno mostrate due volte */
+    if (D.riu.some(function (r) { return r.gcal_event_id && "g_" + r.gcal_event_id === e.id; })) return;
+    out.push({ c: "gcal", t: (e.tutto_il_giorno ? "" : oraImpg(e.inizio) + " ") + e.titolo, s: "Google Calendar", act: "" });
+  });
   return out;
 }
 function vCalendario() {
@@ -4478,12 +4489,16 @@ function nomeFile(k) {
   return ((k.numero || numeroDoc(k)) + " " + (cl ? cl.nome : "") + " " + (k.titolo || "")).replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
 }
 /* L'email al cliente, già scritta: chi manda deve solo allegare il PDF */
-function mailtoPreventivo(k, cl) {
+function testoMailPreventivo(k, cl) {
   var em = emittente(k), c = calc(k);
   var corpo = "Gentile " + (cl.referente || cl.nome || "") + ",\n\n" +
     "come concordato le invio il preventivo «" + (k.titolo || "") + "» (n. " + (k.numero || numeroDoc(k)) + "), per un totale di " + eur(c.tot) + " + IVA." +
     (k.validita ? " Il preventivo è valido " + k.validita + " giorni." : "") + "\n\nResto a disposizione per qualsiasi chiarimento.\n\nCordiali saluti,\n" + (em.nome || "");
-  return "mailto:" + encodeURIComponent(cl.email || "") + "?subject=" + encodeURIComponent("Preventivo " + (k.numero || numeroDoc(k)) + " — " + (k.titolo || "")) + "&body=" + encodeURIComponent(corpo);
+  return { oggetto: "Preventivo " + (k.numero || numeroDoc(k)) + " — " + (k.titolo || ""), testo: corpo };
+}
+function mailtoPreventivo(k, cl) {
+  var m = testoMailPreventivo(k, cl);
+  return "mailto:" + encodeURIComponent(cl.email || "") + "?subject=" + encodeURIComponent(m.oggetto) + "&body=" + encodeURIComponent(m.testo);
 }
 /* Sezioni tipiche per mestiere: si aggiungono in un colpo e poi si riscrivono sul foglio */
 var SEZ_PRESET = [
@@ -4683,6 +4698,214 @@ function apriSalvaModello(kid) {
     '<p class="faint" style="margin-top:8px">Salvo titolo, premessa, sezioni, voci (con prezzi), condizioni, chiusura, validità e IVA. Non salvo il cliente.</p>' +
     '<div class="actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn" type="submit">Salva</button></div></form></div>');
 }
+/* ---------------- Google: posta e calendario ----------------
+   Il professionista collega il suo account Google dal profilo. Il refresh token
+   resta sul server (la colonna non è nemmeno leggibile dal browser): il CRM parla
+   solo con la funzione «google», che a sua volta parla con Gmail e Calendar.
+   Qui c'è la posta con i clienti accanto, il composer che scrive dal proprio
+   indirizzo, le riunioni che finiscono in Google Calendar (con la Meet) e gli
+   impegni di Google che compaiono nel calendario del CRM. */
+var GM = { chiave: "", lista: [], page: null, caric: false, errore: "", cerca: "", filtro: "inbox", msg: null, msgCaric: "", nonLetti: 0, cli: {} };
+var DOMINI_GENERICI = /^(gmail|googlemail|hotmail|outlook|live|yahoo|libero|virgilio|icloud|me|tin|alice|tiscali|pec|legalmail|fastwebnet|email)\./i;
+function gconnMia() { return (D.gconn || []).filter(function (g) { return g.pro_id === me.pro_id; })[0] || null; }
+async function chiamaGoogle(dati) {
+  var s = await sb.auth.getSession(); var ses = s && s.data ? s.data.session : null;
+  if (!ses) throw new Error("la sessione è scaduta, rientra e riprova");
+  var r = await fetch(String(cfg.SUPABASE_URL || "").replace(/\/+$/, "") + "/functions/v1/google", {
+    method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + ses.access_token }, body: JSON.stringify(dati)
+  });
+  var j = null; try { j = await r.json(); } catch (e) { }
+  if (r.status === 501) throw new Error("Google non è ancora configurato nel progetto (servono GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET tra i secret)");
+  if (r.status === 409) { await reload(["gconn"]); throw new Error("Google non è collegato: vai nel profilo, scheda «Email e calendario»"); }
+  if (!r.ok) throw new Error((j && j.errore) || "il server ha risposto " + r.status);
+  return j || {};
+}
+async function collegaGoogle() {
+  toast("Ti porto da Google…");
+  var j = await chiamaGoogle({ azione: "auth_url", ritorno: location.origin + location.pathname + "#/profilo/-/email" });
+  if (j.url) location.href = j.url;
+}
+/* Si rifà da solo all'apertura se l'ultima volta è di più di un quarto d'ora fa */
+var SYNC_IN = false;
+async function sincronizzaCal(silenzioso) {
+  var g = gconnMia(); if (!g || SYNC_IN) return;
+  if (silenzioso && g.sync_at && Date.now() - new Date(g.sync_at).getTime() < 15 * 60000) return;
+  SYNC_IN = true;
+  try {
+    await chiamaGoogle({ azione: "cal_sync" });
+    await reload(["impg", "gconn"]);
+    if (!silenzioso) toast("Calendario aggiornato");
+    if (view === "calendario" || view === "dash" || view === "profilo") render();
+  } catch (e) { if (!silenzioso) toast(String(e && e.message || e), true); }
+  SYNC_IN = false;
+}
+function giornoImpg(ts) { if (!ts) return ""; var d = new Date(ts); return isNaN(d) ? "" : iso(d); }
+function oraImpg(ts) { var d = new Date(ts); return isNaN(d) ? "" : d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }); }
+function soloEmail(s) { var m = /<([^>]+)>/.exec(s || ""); return (m ? m[1] : String(s || "")).trim().toLowerCase(); }
+function soloNome(s) { var m = /^\s*"?([^"<]*?)"?\s*<[^>]+>/.exec(s || ""); var n = m ? m[1].trim() : ""; return n || soloEmail(s); }
+/* Chi è: prima l'indirizzo esatto, poi il dominio dell'azienda (non quelli di tutti) */
+function clienteDaEmail(addr) {
+  var e = soloEmail(addr); if (!e) return null;
+  var dom = e.split("@")[1] || "";
+  var c = D.cli.filter(function (x) { return x.email && String(x.email).trim().toLowerCase() === e; })[0];
+  if (c) return c;
+  if (!dom || DOMINI_GENERICI.test(dom)) return null;
+  return D.cli.filter(function (x) { return x.email && String(x.email).toLowerCase().split("@")[1] === dom; })[0] ||
+    D.cli.filter(function (x) { return x.sito && String(x.sito).toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] === dom; })[0] || null;
+}
+function clienteDelMessaggio(m) { return clienteDaEmail(m.inviato ? m.a : m.da) || clienteDaEmail(m.inviato ? m.da : m.a) || clienteDaEmail(m.cc); }
+function dataMail(ts) {
+  var d = new Date(ts); if (isNaN(d)) return "";
+  return iso(d) === today() ? d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString("it-IT", { day: "2-digit", month: "short" });
+}
+function queryPosta() {
+  var f = GM.filtro, q = GM.cerca.trim();
+  var base = f === "sent" ? "in:sent" : f === "unread" ? "is:unread in:inbox" : f === "clienti" ? clientiQuery() : "in:inbox";
+  return (base + " " + q).trim();
+}
+function clientiQuery() {
+  var em = D.cli.map(function (c) { return c.email && String(c.email).trim(); }).filter(Boolean).slice(0, 40);
+  if (!em.length) return "in:inbox";
+  return "{" + em.map(function (e) { return "from:" + e + " to:" + e; }).join(" ") + "}";
+}
+/* Carica la lista una volta per chiave (filtro + ricerca); se cambia, ricarica */
+function caricaPosta(chiave, q, altro) {
+  if (GM.caric) return;
+  GM.caric = true; GM.errore = ""; GM.chiave = chiave;
+  chiamaGoogle({ azione: "mail_list", q: q, max: 30, pageToken: altro ? GM.page : null }).then(function (j) {
+    GM.lista = altro ? GM.lista.concat(j.messaggi || []) : (j.messaggi || []);
+    GM.page = j.pageToken || null;
+    if (chiave === "inbox") GM.nonLetti = GM.lista.filter(function (m) { return m.nonLetto; }).length;
+    GM.caric = false; render();
+  }, function (e) { GM.errore = String(e && e.message || e); GM.caric = false; GM.lista = altro ? GM.lista : []; render(); });
+}
+async function apriMessaggio(id) {
+  if (GM.msg && GM.msg.id === id) return;
+  GM.msgCaric = id; GM.msg = null; render();
+  try {
+    var m = await chiamaGoogle({ azione: "mail_get", id: id });
+    GM.msg = m;
+    GM.lista.forEach(function (x) { if (x.id === id && x.nonLetto) { x.nonLetto = false; GM.nonLetti = Math.max(0, GM.nonLetti - 1); } });
+    var inCli = Object.keys(GM.cli); inCli.forEach(function (k) { (GM.cli[k].lista || []).forEach(function (x) { if (x.id === id) x.nonLetto = false; }); });
+  } catch (e) { toast(String(e && e.message || e), true); }
+  GM.msgCaric = ""; render();
+}
+function rigaMail(m, cls) {
+  var c = clienteDelMessaggio(m), chi = m.inviato ? "a " + soloNome(m.a) : soloNome(m.da);
+  return '<button class="mrow' + (m.nonLetto ? " nl" : "") + (GM.msg && GM.msg.id === m.id ? " on" : "") + (cls || "") + '" data-gmail-apri="' + esc(m.id) + '">' +
+    '<span class="mchi">' + esc(chi) + (c ? '<span class="badge b-terra mcli">' + esc(c.nome) + "</span>" : "") + '</span><span class="mdata">' + esc(dataMail(m.data)) + "</span>" +
+    '<span class="mogg">' + esc(m.oggetto || "(senza oggetto)") + '</span><span class="msnip">' + esc(m.snippet || "") + "</span></button>";
+}
+function lettore() {
+  if (GM.msgCaric) return '<div class="mread"><div class="empty">Apro il messaggio…</div></div>';
+  var m = GM.msg; if (!m) return '<div class="mread"><div class="empty">Scegli un messaggio a sinistra.</div></div>';
+  var c = clienteDelMessaggio(m), gia = D.inter.some(function (i) { return i.gmail_id === m.id; });
+  var mittente = soloEmail(m.inviato ? m.a : m.da);
+  var h = '<div class="mread"><div class="mhead"><h2>' + esc(m.oggetto || "(senza oggetto)") + "</h2>" +
+    '<div class="faint">Da <b>' + esc(m.da) + "</b>" + (m.a ? " · a " + esc(m.a) : "") + (m.cc ? " · cc " + esc(m.cc) : "") + " · " + dtOra(m.data) + "</div>" +
+    '<div class="macts">' +
+    '<button class="btn sm" data-gmail-rispondi="' + esc(m.id) + '">Rispondi</button>' +
+    (c ? (gia ? '<span class="badge b-green">nel diario di ' + esc(c.nome) + "</span>" : '<button class="btn sm ghost" data-gmail-diario="' + esc(m.id) + '">Salva nel diario di ' + esc(c.nome) + "</button>") + lnkCli(c.id, "btn sm ghost") :
+      '<button class="btn sm ghost" data-gmail-lead="' + esc(m.id) + '" title="' + esc(mittente) + '">Crea un cliente da ' + esc(soloNome(m.inviato ? m.a : m.da)) + "</button>") +
+    '<a class="btn sm ghost" target="_blank" rel="noopener" href="https://mail.google.com/mail/u/0/#all/' + esc(m.threadId || m.id) + '">Apri in Gmail</a></div></div>';
+  if (m.allegati && m.allegati.length) h += '<div class="mall">' + m.allegati.map(function (a) { return '<span class="badge">' + esc(a.nome) + ' <span class="faint">' + Math.round((a.dim || 0) / 1024) + " KB</span></span>"; }).join(" ") + ' <span class="faint">· gli allegati li scarichi da Gmail</span></div>';
+  h += '<div class="mbody">' + esc(m.testo || m.snippet || "").replace(/\n{3,}/g, "\n\n") + "</div></div>";
+  return h;
+}
+function vPosta() {
+  var g = gconnMia();
+  var h = crumbs([[gruppoDi("posta") || "Clienti"], ["Posta"]]);
+  h += '<div class="top"><h1>Posta<span class="sub">' + (g ? esc(g.email || "") : "non collegata") + '</span></h1><div class="tools">' +
+    (g ? '<button class="btn sm ghost" data-gmail-ricarica="1">Aggiorna</button><button class="btn sm" data-gmail-scrivi="1">Nuova email</button>' : "") + "</div></div>";
+  if (!g) return h + '<div class="card"><div class="empty" style="padding:24px 8px"><b>La tua posta, qui dentro, con i clienti accanto.</b><p class="faint" style="margin:8px 0 14px">Collega il tuo account Google: leggi e rispondi da qui, ogni email si aggancia al cliente giusto, i preventivi e le lettere d\'incarico partono dal tuo indirizzo, e le riunioni finiscono nel tuo Google Calendar con la Meet già dentro.</p><button class="btn" data-gconn-collega="1">Collega Google</button></div></div>';
+  var chiave = queryPosta();
+  if (GM.chiave !== chiave && !GM.caric) caricaPosta(chiave, chiave);
+  var chip = function (k, et) { return '<button class="chipbtn' + (GM.filtro === k ? " on" : "") + '" data-gmail-filtro="' + k + '">' + et + "</button>"; };
+  h += '<div class="posta"><div class="mlist"><form class="mcerca" data-gmail-cerca="1"><input name="q" placeholder="Cerca nella posta… (come in Gmail)" value="' + esc(GM.cerca) + '"><button class="btn sm ghost" type="submit">Cerca</button></form>' +
+    '<div class="mchips">' + chip("inbox", "In arrivo") + chip("unread", "Non lette") + chip("clienti", "Clienti") + chip("sent", "Inviate") + "</div>";
+  if (GM.errore) h += '<div class="empty neg">' + esc(GM.errore) + "</div>";
+  else if (GM.caric && !GM.lista.length) h += '<div class="empty">Carico la posta…</div>';
+  else if (!GM.lista.length) h += '<div class="empty">Niente qui.</div>';
+  else h += GM.lista.map(function (m) { return rigaMail(m); }).join("") + (GM.page ? '<button class="lnk" style="margin:10px" data-gmail-altro="1">' + (GM.caric ? "Carico…" : "Altre email") + "</button>" : "");
+  h += "</div>" + lettore() + "</div>";
+  return h;
+}
+/* La scheda Email del cliente: solo lo scambio con lui */
+function schedaEmailCliente(c) {
+  var g = gconnMia();
+  if (!g) return '<div class="card"><div class="empty">Per vedere qui le email con ' + esc(c.nome) + ' collega Google dal tuo profilo. <button class="lnk" data-route="profilo|-|email">Vai</button></div></div>';
+  if (!c.email) return '<div class="card"><div class="empty">Questo cliente non ha un indirizzo email in anagrafica. <button class="lnk" data-edit="cli:' + c.id + '">Aggiungilo</button></div></div>';
+  var e = String(c.email).trim(), st = GM.cli[c.id];
+  if (!st) {
+    st = GM.cli[c.id] = { lista: [], caric: true, errore: "" };
+    chiamaGoogle({ azione: "mail_list", q: "{from:" + e + " to:" + e + "}", max: 40 }).then(function (j) { st.lista = j.messaggi || []; st.caric = false; render(); }, function (x) { st.errore = String(x && x.message || x); st.caric = false; render(); });
+  }
+  var h = '<div class="card"><div class="cardhead"><h2>Email con ' + esc(c.nome) + '</h2><div style="display:flex;gap:8px"><button class="btn sm ghost" data-gmail-clivia="' + c.id + '">Aggiorna</button><button class="btn sm" data-gmail-scrivi="1" data-ctx-cli="' + c.id + '">Scrivi a ' + esc(e) + "</button></div></div>";
+  if (st.errore) h += '<div class="empty neg">' + esc(st.errore) + "</div>";
+  else if (st.caric) h += '<div class="empty">Cerco le email con ' + esc(e) + "…</div>";
+  else if (!st.lista.length) h += vuoto("Nessuna email con questo indirizzo.");
+  else h += '<div class="posta incli"><div class="mlist">' + st.lista.map(function (m) { return rigaMail(m); }).join("") + "</div>" + (GM.msg && st.lista.some(function (m) { return m.id === GM.msg.id; }) || GM.msgCaric ? lettore() : '<div class="mread"><div class="empty">Apri un messaggio per leggerlo qui.</div></div>') + "</div>";
+  return h + "</div>";
+}
+/* Profilo: collegare, controllare, scollegare */
+function schedaEmail(p) {
+  var g = gconnMia();
+  if (!g) {
+    return '<div class="card" style="background:var(--cream)"><div class="empty" style="padding:24px 8px"><b>Collega il tuo Google.</b><p class="faint" style="margin:8px 0 14px">Cosa cambia: la posta la leggi e la scrivi dal CRM, agganciata ai clienti; preventivi e lettere d\'incarico partono dal tuo indirizzo; le riunioni vanno in Google Calendar con la Meet; i tuoi impegni di Google compaiono nel calendario del CRM e bloccano il link «Prenota una call». Il CRM non conserva la tua password: Google dà un permesso che puoi revocare quando vuoi, da qui o da myaccount.google.com.</p><button class="btn" data-gconn-collega="1">Collega Google</button></div></div>';
+  }
+  var imp = (D.impg || []).filter(function (e) { return e.pro_id === me.pro_id && giornoImpg(e.inizio) >= today(); });
+  var h = '<div class="card" style="background:' + (g.errore ? "var(--red-soft, #fbeae5)" : "var(--green-soft)") + ';border-color:transparent"><div class="cardhead"><h2>' + esc(g.email || "Account collegato") + "</h2>" +
+    '<div style="display:flex;gap:8px"><button class="btn sm ghost" data-gcal-sync="1">Aggiorna il calendario</button><button class="btn sm ghost" data-go="posta">Apri la posta</button><button class="btn sm ghost" data-gconn-via="1">Scollega</button></div></div>' +
+    (g.errore ? '<p class="neg"><b>Google ha risposto male l\'ultima volta:</b> ' + esc(g.errore) + '. Se continua, scollega e ricollega.</p>' : "") +
+    '<p class="faint">Collegato il ' + dt(g.created_at) + (g.sync_at ? " · calendario aggiornato " + dtOra(g.sync_at) : " · calendario mai aggiornato") + " · " + imp.length + " impegni di Google nei prossimi 60 giorni</p>" +
+    '<p class="faint" style="margin-top:6px">Permessi dati: leggere e scrivere la posta, creare eventi nel calendario. Il permesso vive su Google: se lo togli da lì, qui basta scollegare.</p></div>';
+  if (imp.length) h += '<div class="card"><div class="cardhead"><h2>I prossimi impegni da Google</h2><span class="faint">solo tuoi, nessun altro li vede</span></div><ul class="timeline">' +
+    imp.slice(0, 8).map(function (e) { return "<li><b>" + esc(e.titolo) + '</b><div class="when">' + dt(e.inizio) + (e.tutto_il_giorno ? " · tutto il giorno" : " · " + oraImpg(e.inizio) + "–" + oraImpg(e.fine)) + "</div></li>"; }).join("") + "</ul></div>";
+  return h;
+}
+/* Il composer: una finestra sola per rispondere, scrivere a un cliente, mandare
+   un preventivo o una lettera. Se c'è un cliente, la mail finisce nel suo diario. */
+function apriComposer(o) {
+  var g = gconnMia(); if (!g) { toast("Prima collega Google dal profilo", true); return; }
+  var c = o.cliente_id ? by(D.cli, o.cliente_id) : clienteDaEmail(o.a);
+  modal('<div class="box wide"><h2>' + (o.inReplyTo ? "Rispondi" : "Nuova email") + '</h2><p class="faint" style="margin-bottom:10px">Parte da <b>' + esc(g.email || "") + "</b>" + (o.nota ? " · " + esc(o.nota) : "") + "</p>" +
+    '<form data-gmail-invia="1">' +
+    '<input type="hidden" name="threadId" value="' + esc(o.threadId || "") + '"><input type="hidden" name="inReplyTo" value="' + esc(o.inReplyTo || "") + '"><input type="hidden" name="references" value="' + esc(o.references || "") + '">' +
+    '<input type="hidden" name="cliente_id" value="' + esc(c ? c.id : "") + '"><input type="hidden" name="dopo" value="' + esc(o.dopo || "") + '">' +
+    '<div class="row2"><div class="field"><label>A</label><input name="a" required value="' + esc(o.a || "") + '" placeholder="nome@azienda.it"></div><div class="field"><label>Cc</label><input name="cc" value="' + esc(o.cc || "") + '"></div></div>' +
+    '<div class="field"><label>Oggetto</label><input name="oggetto" required value="' + esc(o.oggetto || "") + '"></div>' +
+    '<div class="field"><label>Testo</label><textarea name="testo" rows="12" class="doc">' + esc(o.testo || "") + "</textarea></div>" +
+    (c ? '<label class="chk"><input type="checkbox" name="diario" checked><span>Segna nel diario di ' + esc(c.nome) + "</span></label>" : "") +
+    '<div class="actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn" type="submit">Invia</button></div></form></div>');
+  setTimeout(function () { var t = el("#modal textarea"); if (t && !o.a) { var a = el("#modal input[name=a]"); if (a) a.focus(); } else if (t) t.focus(); }, 50);
+}
+function testoQuotato(m) {
+  return "\n\n\nIl " + dtOra(m.data) + " " + (m.da || "") + " ha scritto:\n" + String(m.testo || m.snippet || "").split("\n").map(function (r) { return "> " + r; }).join("\n");
+}
+async function segnaNelDiario(m, cid, extra) {
+  var r = await sb.from("interazioni").insert({ cliente_id: cid, tipo: "Email", data: iso(new Date(m.data || Date.now())), pro_id: me.pro_id, gmail_id: m.id,
+    testo: (m.inviato ? "Inviata: " : "Ricevuta: ") + (m.oggetto || "(senza oggetto)") + (extra ? " — " + extra : "") + "\n" + String(m.snippet || m.testo || "").slice(0, 400) });
+  if (r.error) { if (/duplicate|unique/i.test(r.error.message || "")) return true; toast(erroreUmano(r.error), true); return false; }
+  await reload(["inter"]); return true;
+}
+/* Le riunioni del CRM in Google Calendar: invitati = cliente + esterni + colleghi */
+async function mettiInGoogle(rid) {
+  var r = by(D.riu, rid); if (!r) return;
+  var inv = [];
+  var cl = r.cliente_id ? by(D.cli, r.cliente_id) : null; if (cl && cl.email) inv.push(cl.email);
+  (r.esterni || "").split(/[,;\s]+/).forEach(function (x) { if (/@/.test(x)) inv.push(x); });
+  (r.partecipanti || []).forEach(function (pid) { var p = by(D.pros, pid); if (p && p.email) inv.push(p.email); });
+  var j = await chiamaGoogle({ azione: "cal_insert", riunione: { data: r.data, ora: r.ora, fine: r.fine, titolo: r.titolo, ordine_giorno: r.ordine_giorno, luogo: r.luogo, invitati: inv.join(" "), link: r.link, meet: (r.tipo || "Videocall") === "Videocall" ? "si" : "no", gcal_event_id: r.gcal_event_id || null,
+    note_crm: "Dal CRM Giraffa Studio" + (cl ? " · " + cl.nome : "") } });
+  var patch = { gcal_event_id: j.id };
+  if (!r.link && j.link) patch.link = j.link;
+  var u = await sb.from("riunioni").update(patch).eq("id", r.id);
+  if (u.error) { toast(erroreUmano(u.error), true); return; }
+  await reload(["riu"]); sincronizzaCal(true);
+  toast(r.gcal_event_id ? "Aggiornata su Google" : ("In Google Calendar" + (inv.length ? ", inviti mandati a " + inv.length : "") + (patch.link ? " · Meet creata" : "")));
+  render();
+}
+
 /* ---------------- prenota una call ----------------
    Ogni professionista ha un link pubblico (#/a/nome) con le sue finestre della
    settimana. Chi prenota sceglie giorno e ora fra quelli liberi (le riunioni già
@@ -4982,7 +5205,7 @@ function schedaIncarico(k) {
       i.stato === "Annullata" ? '<button class="btn sm ghost" data-inc-nuovo="' + k.id + '">Nuova lettera</button>' :
       '<button class="btn sm ghost" data-inc-link="' + i.id + '" title="' + esc(url) + '">Copia il link per la firma</button>' +
       (cl.telefono ? '<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(cl.telefono).replace(/\D/g, "").replace(/^0/, "39")) + '?text=' + esc(encodeURIComponent("Ciao " + (cl.referente || cl.nome || "") + ", ti mando la lettera d'incarico per «" + k.titolo + "»: la puoi leggere e firmare da qui " + url)) + '" data-inc-inviata="' + i.id + '">WhatsApp</a>' : "") +
-      (cl.email ? '<a class="btn sm ghost" href="mailto:' + esc(cl.email) + "?subject=" + esc(encodeURIComponent("Lettera d'incarico — " + k.titolo)) + "&body=" + esc(encodeURIComponent("Gentile " + (cl.referente || cl.nome || "") + ",\n\nle invio la lettera d'incarico per «" + k.titolo + "». La può leggere e firmare da questo link:\n" + url + "\n\nResto a disposizione.\n" + (me.nome || ""))) + '" data-inc-inviata="' + i.id + '">Email</a>' : "") +
+      (cl.email ? (gconnMia() ? '<button class="btn sm ghost" data-gmail-inc="' + i.id + '">Email</button>' : '<a class="btn sm ghost" href="mailto:' + esc(cl.email) + "?subject=" + esc(encodeURIComponent("Lettera d'incarico — " + k.titolo)) + "&body=" + esc(encodeURIComponent("Gentile " + (cl.referente || cl.nome || "") + ",\n\nle invio la lettera d'incarico per «" + k.titolo + "». La può leggere e firmare da questo link:\n" + url + "\n\nResto a disposizione.\n" + (me.nome || ""))) + '" data-inc-inviata="' + i.id + '">Email</a>') : "") +
       '<button class="btn sm ghost" data-inc-annulla="' + i.id + '">Annulla</button>') +
     '<button class="btn sm" data-stampa="' + esc((i.numero || "Incarico") + " " + (cl.nome || "") + " " + (k.titolo || "")) + '">Stampa / PDF</button></div></div>';
   if (i.stato === "Firmata") h += '<div class="card" style="background:var(--green-soft);border-color:transparent;margin-bottom:14px"><b>Firmata da ' + esc(i.firma_nome) + "</b> il " + dtOra(i.firmata_il) + (i.firma_ip ? ' <span class="faint">· da ' + esc(i.firma_ip) + "</span>" : "") + '<div class="faint" style="margin-top:4px">Il testo è sigillato con la sua impronta: se serve cambiare qualcosa, fai una nuova versione.</div></div>';
@@ -5049,7 +5272,7 @@ function foglioA4(k, o) {
     '<div class="dbright">' +
     '<button class="btn sm ghost" data-mprev-apri="' + k.id + '">Modelli</button>' +
     (nas.length ? '<select class="altre" data-blocco-mostra="' + k.id + '"><option value="">Rimetti un blocco…</option>' + BLOCCHI.filter(function (b) { return nas.indexOf(b[0]) > -1; }).map(function (b) { return '<option value="' + b[0] + '">' + b[1] + "</option>"; }).join("") + "</select>" : "") +
-    (cl.email ? '<a class="btn sm ghost" href="' + esc(mailtoPreventivo(k, cl)) + '">Invia per email</a>' : "") +
+    (cl.email ? (gconnMia() ? '<button class="btn sm ghost" data-gmail-prev="' + k.id + '">Invia per email</button>' : '<a class="btn sm ghost" href="' + esc(mailtoPreventivo(k, cl)) + '">Invia per email</a>') : "") +
     (k.stato === "Bozza" ? '<button class="btn sm ghost" data-del="com:' + k.id + '" title="Elimina questa bozza">Elimina bozza</button>' : '<button class="btn sm ghost" data-route="commessa|' + k.id + '|incarico">Incarico' + (incOf(k.id).some(function (i) { return i.stato === "Firmata"; }) ? " ✓" : "") + "</button>") +
     '<button class="btn sm" data-stampa="' + esc(nomeFile(k)) + '">Stampa / PDF</button></div></div>';
 
@@ -6204,7 +6427,7 @@ function render() {
     return;
   }
   buildNav();
-  var V = { riunioni: vRiunioni, riunione: vRiunione, attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi, professioni: vProfessioni, eventi: vEventi, chat: vChat };
+  var V = { riunioni: vRiunioni, riunione: vRiunione, attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, posta: vPosta, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi, professioni: vProfessioni, eventi: vEventi, chat: vChat };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search") || el("#tcerca") || el("#fcerca");
@@ -6391,6 +6614,57 @@ async function clicApp(e, t, d) {
   if (d.recStop) { await recStop(); return; }
   if (d.recVedi) { RECVEDI = RECVEDI === d.recVedi ? null : d.recVedi; render(); return; }
   if (d.recRiassumi) { var rr7 = by(D.riu, d.recRiassumi); if (!rr7 || !rr7.trascrizione) return; toast("Preparo gli appunti…"); try { await riassumiRiunione(rr7.id, rr7.trascrizione); } catch (e) { toast(String(e && e.message || e), true); } return; }
+  if (d.gconnCollega) { try { await collegaGoogle(); } catch (e) { toast(String(e && e.message || e), true); } return; }
+  if (d.gconnVia) {
+    if (!confirm("Scollegare Google? La posta e il calendario spariscono dal CRM (su Google resta tutto).")) return;
+    try { await chiamaGoogle({ azione: "scollega" }); } catch (e) { toast(String(e && e.message || e), true); return; }
+    GM = { chiave: "", lista: [], page: null, caric: false, errore: "", cerca: "", filtro: "inbox", msg: null, msgCaric: "", nonLetti: 0, cli: {} };
+    await reload(["gconn", "impg"]); toast("Scollegato"); render(); return;
+  }
+  if (d.gcalSync) { toast("Aggiorno il calendario…"); await sincronizzaCal(false); render(); return; }
+  if (d.gcalMetti) { toast("Mando a Google…"); try { await mettiInGoogle(d.gcalMetti); } catch (e) { toast(String(e && e.message || e), true); } return; }
+  if (d.gcalVia) {
+    var rg = by(D.riu, d.gcalVia); if (!rg || !rg.gcal_event_id) return;
+    try { await chiamaGoogle({ azione: "cal_delete", id: rg.gcal_event_id }); } catch (e) { toast(String(e && e.message || e), true); return; }
+    await salvaSubito("riu", rg.id, { gcal_event_id: null }); sincronizzaCal(true); toast("Tolta da Google Calendar"); return;
+  }
+  if (d.gmailApri) { if (view !== "posta" && view !== "cliente") go("posta"); await apriMessaggio(d.gmailApri); return; }
+  if (d.gmailFiltro) { GM.filtro = d.gmailFiltro; GM.msg = null; render(); return; }
+  if (d.gmailRicarica) { GM.chiave = ""; GM.msg = null; GM.cli = {}; render(); return; }
+  if (d.gmailAltro) { if (GM.page && !GM.caric) caricaPosta(GM.chiave, GM.chiave, true); render(); return; }
+  if (d.gmailClivia) { delete GM.cli[d.gmailClivia]; render(); return; }
+  if (d.gmailScrivi) {
+    var cc0 = d.ctxCli ? by(D.cli, d.ctxCli) : null;
+    apriComposer({ a: cc0 ? cc0.email : "", cliente_id: cc0 ? cc0.id : "" }); return;
+  }
+  if (d.gmailRispondi) {
+    var mr = GM.msg; if (!mr || mr.id !== d.gmailRispondi) return;
+    var aR = mr.inviato ? mr.a : mr.da, oggR = /^re:/i.test(mr.oggetto || "") ? mr.oggetto : "Re: " + (mr.oggetto || "");
+    apriComposer({ a: soloEmail(aR), oggetto: oggR, testo: testoQuotato(mr), threadId: mr.threadId, inReplyTo: mr.messageId, references: mr.references, cliente_id: (clienteDelMessaggio(mr) || {}).id || "" }); return;
+  }
+  if (d.gmailDiario) {
+    var md = GM.msg; if (!md || md.id !== d.gmailDiario) return;
+    var cd = clienteDelMessaggio(md); if (!cd) return;
+    if (await segnaNelDiario(md, cd.id)) { toast("Nel diario di " + cd.nome); render(); } return;
+  }
+  if (d.gmailLead) {
+    var ml = GM.msg; if (!ml || ml.id !== d.gmailLead) return;
+    var addr = soloEmail(ml.inviato ? ml.a : ml.da), nomeL = prompt("Nome del cliente", soloNome(ml.inviato ? ml.a : ml.da)); if (!nomeL) return;
+    var ins = await sb.from("clienti").insert({ nome: nomeL.trim(), email: addr, stato: "Lead", owner_id: me.pro_id, referente: soloNome(ml.inviato ? ml.a : ml.da) }).select().single();
+    if (ins.error) { toast(erroreUmano(ins.error), true); return; }
+    await reload(["cli"]); await segnaNelDiario(ml, ins.data.id); toast("Cliente creato: " + nomeL); render(); return;
+  }
+  if (d.gmailPrev) {
+    var kp = by(D.com, d.gmailPrev), clp = kp ? by(D.cli, kp.cliente_id) : null; if (!kp || !clp) return;
+    var mp = testoMailPreventivo(kp, clp), plp = D.port.filter(function (x) { return x.cliente_id === clp.id && x.attivo; })[0];
+    var tp = mp.testo; if (plp && plp.ha_pwd) tp = tp.replace("\n\nResto a disposizione", "\nLo trova anche nella sua area riservata: " + location.origin + location.pathname + "#/p/" + plp.token + "\n\nResto a disposizione");
+    apriComposer({ a: clp.email, oggetto: mp.oggetto, testo: tp, cliente_id: clp.id, dopo: "prev:" + kp.id, nota: "il PDF non si allega da qui: mandalo con «Stampa / PDF» se serve, o fai leggere il preventivo dal portale" }); return;
+  }
+  if (d.gmailInc) {
+    var ig = by(D.inc, d.gmailInc), kg = ig ? by(D.com, ig.commessa_id) : null, cg = kg ? by(D.cli, kg.cliente_id) : null; if (!ig || !kg || !cg) return;
+    var urlG = linkFirma(ig);
+    apriComposer({ a: cg.email, oggetto: "Lettera d'incarico — " + kg.titolo, testo: "Gentile " + (cg.referente || cg.nome || "") + ",\n\nle invio la lettera d'incarico per «" + kg.titolo + "». La può leggere e firmare da questo link:\n" + urlG + "\n\nResto a disposizione.\n" + (me.nome || ""), cliente_id: cg.id, dopo: "inc:" + ig.id }); return;
+  }
   if (d.incNuovo) { await creaIncarico(d.incNuovo); return; }
   if (d.incLink) {
     var il = by(D.inc, d.incLink); if (!il) return;
@@ -7233,6 +7507,23 @@ async function invioModulo(e, f) {
     if (TSEXTRA.indexOf(lid9) === -1) TSEXTRA.push(lid9);
     render(); return;
   }
+  if (f.dataset.gmailCerca) {
+    e.preventDefault(); GM.cerca = f.q.value || ""; GM.msg = null; render(); return;
+  }
+  if (f.dataset.gmailInvia) {
+    e.preventDefault();
+    var bt = f.querySelector("button[type=submit]"); if (bt) { bt.disabled = true; bt.textContent = "Invio…"; }
+    var jm;
+    try {
+      jm = await chiamaGoogle({ azione: "mail_send", a: f.a.value.trim(), cc: f.cc.value.trim(), oggetto: f.oggetto.value.trim(), testo: f.testo.value, threadId: f.threadId.value || null, inReplyTo: f.inReplyTo.value || null, references: f.references.value || null });
+    } catch (x) { toast(String(x && x.message || x), true); if (bt) { bt.disabled = false; bt.textContent = "Invia"; } return; }
+    var cidM = f.cliente_id.value;
+    if (cidM && f.diario && f.diario.checked) await segnaNelDiario({ id: jm.id, inviato: true, a: f.a.value, da: jm.da, oggetto: f.oggetto.value, data: new Date().toISOString(), snippet: f.testo.value.slice(0, 300) }, cidM);
+    var dopo = (f.dopo.value || "").split(":");
+    if (dopo[0] === "prev") { var kd = by(D.com, dopo[1]); if (kd && kd.stato === "Bozza") await salvaSubito("com", kd.id, { stato: "Inviato" }); }
+    if (dopo[0] === "inc") { var idd = by(D.inc, dopo[1]); if (idd && idd.stato === "Bozza") await salvaSubito("inc", idd.id, { stato: "Inviata", inviata_il: new Date().toISOString() }); }
+    closeModal(); toast("Inviata da " + (jm.da || "Gmail")); GM.chiave = ""; if (cidM) delete GM.cli[cidM]; render(); return;
+  }
   if (f.dataset.recMetti) {
     e.preventDefault();
     var rm9 = by(D.riu, f.dataset.recMetti); if (!rm9) return;
@@ -7774,7 +8065,7 @@ async function start() {
   if (!daUrl || isCliente()) { view = isCliente() ? "progetti" : "dash"; current = null; tab = ""; }
   if (!isCliente()) { ROUTING = true; try { location.hash = hashOf(view, current, tab); } catch (e) {} ROUTING = false; }
   show("app"); render();
-  if (!isCliente()) { await timerDimenticato(); avviaAggiornamenti(); }
+  if (!isCliente()) { await timerDimenticato(); avviaAggiornamenti(); sincronizzaCal(true); }
 }
 /* ---- nodo 9: chat, bacheca e badge si aggiornano da soli, senza ricaricare ----
    Ogni mezzo minuto, solo se la finestra è visibile e nessuno sta scrivendo. */
