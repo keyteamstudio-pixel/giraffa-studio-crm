@@ -71,6 +71,7 @@ function go(v, id, t) {
     if (!confirm("Hai modifiche non salvate su questo modulo. Vuoi uscire senza salvare?")) return;
   }
   FDIRTY = false;
+  if (v !== "task") PANEL = null;
   /* cambiare scheda dentro la stessa pagina non è cambiare pagina: niente salto
      in cima e niente voce in più nella cronologia */
   var stessa = v === view && (id || null) === current;
@@ -1548,6 +1549,9 @@ function kanban(list) {
 /* ---------------- attività: viste, filtri, raggruppamenti ---------------- */
 var TF = { stato: "aperte", pro: "", prog: "", prio: "", cerca: "", scadute: false };
 var TGROUP = "progetto", TSORT = "scadenza";
+/* La pagina Attività è una lista sola: chi guardo (io o tutti) e quale scheda è aperta di lato */
+var PANEL = null, TV = { chi: "io" };
+try { TV.chi = localStorage.getItem("gs_task_chi") || "io"; } catch (e) {}
 
 function taskFiltrate() {
   var l = ftask();
@@ -1589,7 +1593,7 @@ function barraTask(vista) {
   var progetti = [["", "Tutti i progetti"]].concat(progVisibili().map(function (p) { return [p.id, p.nome]; }));
   var persone = [["", "Chiunque"], ["io", "Assegnate a me"]].concat(D.pros.map(function (p) { return [p.id, p.nome]; }));
   return '<div class="vbar">' +
-    '<div class="vtabs">' + [["lista", "Lista"], ["bacheca", "Bacheca"], ["calendario", "Calendario"], ["timeline", "Timeline"], ["mie", "Le mie cose"]].map(function (v) {
+    '<div class="vtabs">' + [["oggi", "‹ Elenco"], ["bacheca", "Bacheca"], ["calendario", "Calendario"], ["timeline", "Timeline"]].map(function (v) {
       return '<button data-route="task|-|' + v[0] + '" class="' + (vista === v[0] ? "on" : "") + '">' + v[1] + "</button>";
     }).join("") + "</div>" +
     '<div class="vfilt">' +
@@ -1757,21 +1761,318 @@ function vistaMie(list) {
       }).join("") : vuoto("Niente qui.")) + "</div></div>";
   }).join("") + '</div><p class="faint" style="margin-top:12px">Trascina un\'attività in un\'altra colonna per spostarne la scadenza: oggi, entro la settimana, fra due settimane o nessuna data.</p>';
 }
+/* ---------------- Attività: una lista sola ----------------
+   Oggi (in ritardo, oggi, senza data), Prossimi giorni, Tutte per progetto, Fatte.
+   Si aggiunge scrivendo una riga: la data, la persona (@) e il progetto (#) li
+   capisce dal testo. Data e persona si cambiano dalla riga; il resto in un
+   pannello di lato. Bacheca, calendario e timeline restano sotto «Altre viste». */
+function ordT(a, b) {
+  var P = { Alta: 0, Media: 1, Bassa: 2 }, sa = a.scadenza || "9999", sb9 = b.scadenza || "9999";
+  if (sa !== sb9) return sa < sb9 ? -1 : 1;
+  var pa = P[a.priorita] == null ? 1 : P[a.priorita], pb = P[b.priorita] == null ? 1 : P[b.priorita];
+  if (pa !== pb) return pa - pb;
+  return ((a.ordine || 0) - (b.ordine || 0)) || ((a.created_at || "") < (b.created_at || "") ? -1 : 1);
+}
+var GG = ["dom", "lun", "mar", "mer", "gio", "ven", "sab"], GGL = ["domenica", "lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato"];
+var MM = ["gen", "feb", "mar", "apr", "mag", "giu", "lug", "ago", "set", "ott", "nov", "dic"];
+function giornoPiu(n) { var d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() + n); return iso(d); }
+function etichettaGiorno(k) {
+  if (!k) return "senza data";
+  if (k === today()) return "Oggi";
+  if (k === giornoPiu(1)) return "Domani";
+  var d = new Date(k + "T12:00:00");
+  var fra = Math.round((d - new Date(today() + "T12:00:00")) / 86400000);
+  var base = GG[d.getDay()] + " " + d.getDate() + " " + MM[d.getMonth()];
+  if (fra < 0) return base;
+  if (fra < 7) return GGL[d.getDay()].charAt(0).toUpperCase() + GGL[d.getDay()].slice(1) + " " + d.getDate();
+  return base + (d.getFullYear() !== new Date().getFullYear() ? " " + d.getFullYear() : "");
+}
+function etichettaBreve(k) {
+  if (!k) return "data";
+  if (k === today()) return "oggi";
+  if (k === giornoPiu(1)) return "domani";
+  var d = new Date(k + "T12:00:00");
+  return GG[d.getDay()] + " " + d.getDate() + (d.getMonth() !== new Date().getMonth() ? " " + MM[d.getMonth()] : "");
+}
+/* «bozza sito Lucchi ven @Goffredo !» → titolo, scadenza, persona, progetto, priorità */
+function capisciTask(testo, ctx) {
+  var t = " " + testo + " ", r = { titolo: "", stato: "Da fare", priorita: "Media", assegnato_id: me.pro_id }, come = [];
+  ctx = ctx || "";
+  if (/\s!+\s/.test(t)) { r.priorita = "Alta"; t = t.replace(/\s!+\s/g, " "); come.push("priorità alta"); }
+  var mp = t.match(/\s@(\S+)/);
+  if (mp) {
+    var q = mp[1].toLowerCase();
+    var per = D.pros.filter(function (p) { return (p.nome || "").toLowerCase().indexOf(q) === 0; })[0] ||
+      D.pros.filter(function (p) { return (p.nome || "").toLowerCase().indexOf(q) > -1; })[0];
+    if (per) { r.assegnato_id = per.id; t = t.replace(mp[0], " "); }
+  }
+  var mh = t.match(/\s#(\S+)/);
+  if (mh) {
+    var q2 = mh[1].toLowerCase().replace(/[_-]/g, " ");
+    var pg = progVisibili().filter(function (p) { return (p.nome || "").toLowerCase().indexOf(q2) > -1; })[0];
+    if (pg) { r.progetto_id = pg.id; t = t.replace(mh[0], " "); }
+    else { var cl = D.cli.filter(function (c) { return (c.nome || "").toLowerCase().indexOf(q2) > -1; })[0]; if (cl) { r.cliente_id = cl.id; t = t.replace(mh[0], " "); } }
+  }
+  /* la data: parole, giorni della settimana, «fra 3 giorni», 12/9, 12 set */
+  var oggi = new Date(today() + "T12:00:00");
+  var md = t.match(/\s(\d{1,2})[\/.](\d{1,2})(?:[\/.](\d{2,4}))?\s/);
+  if (md) {
+    var y = md[3] ? (+md[3] < 100 ? 2000 + +md[3] : +md[3]) : oggi.getFullYear();
+    var dd = new Date(y, +md[2] - 1, +md[1], 12);
+    if (!md[3] && dd < oggi) dd.setFullYear(y + 1);
+    if (!isNaN(dd)) { r.scadenza = iso(dd); t = t.replace(md[0], " "); }
+  }
+  if (!r.scadenza) {
+    var mm = t.match(/\s(\d{1,2}) (gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)[a-zà]*\s/i);
+    if (mm) {
+      var d2 = new Date(oggi.getFullYear(), MM.indexOf(mm[2].toLowerCase()), +mm[1], 12);
+      if (d2 < oggi) d2.setFullYear(d2.getFullYear() + 1);
+      r.scadenza = iso(d2); t = t.replace(mm[0], " ");
+    }
+  }
+  if (!r.scadenza) {
+    var mg = t.match(/\s(?:fra|tra) (\d+) (giorni|giorno|settimane|settimana)\s/i);
+    if (mg) { r.scadenza = giornoPiu(+mg[1] * (/sett/i.test(mg[2]) ? 7 : 1)); t = t.replace(mg[0], " "); }
+  }
+  if (!r.scadenza) {
+    var mw = t.match(/\s(oggi|domani|dopodomani|stasera|fine mese|settimana prossima|prossima settimana|lun(?:ed[iì])?|mar(?:ted[iì])?|mer(?:coled[iì])?|gio(?:ved[iì])?|ven(?:erd[iì])?|sab(?:ato)?|dom(?:enica)?)\s/i);
+    if (mw) {
+      var w = mw[1].toLowerCase();
+      if (w === "oggi" || w === "stasera") r.scadenza = today();
+      else if (w === "domani") r.scadenza = giornoPiu(1);
+      else if (w === "dopodomani") r.scadenza = giornoPiu(2);
+      else if (w === "fine mese") { var fm = new Date(oggi.getFullYear(), oggi.getMonth() + 1, 0, 12); r.scadenza = iso(fm); }
+      else if (/settimana/.test(w)) { r.scadenza = giornoPiu(((8 - oggi.getDay()) % 7) || 7); }
+      else {
+        var gi = GG.indexOf(w.slice(0, 3));
+        if (gi > -1) { var diff = (gi - oggi.getDay() + 7) % 7; r.scadenza = giornoPiu(diff); }
+      }
+      if (r.scadenza) t = t.replace(mw[0], " ");
+    }
+  }
+  r.titolo = t.replace(/\s+/g, " ").trim();
+  /* il progetto o il cliente lo riconosco anche senza #, se il nome è nel testo */
+  if (!r.progetto_id && !r.cliente_id && ctx.indexOf("prog:") !== 0) {
+    var low = " " + r.titolo.toLowerCase().replace(/[^\wàèéìòù ]+/g, " ") + " ", best = null;
+    /* basta il nome intero o la sua prima parola (se ha almeno 4 lettere): «Borsari» trova «Borsari Gioielli» */
+    var trova = function (nome) {
+      var n = (nome || "").toLowerCase(), prima = n.split(" ")[0];
+      if (n.length >= 4 && low.indexOf(" " + n + " ") > -1) return n;
+      if (prima.length >= 4 && low.indexOf(" " + prima + " ") > -1) return prima;
+      return null;
+    };
+    progVisibili().forEach(function (p) { var n = trova(p.nome); if (n && (!best || n.length > best.n.length)) best = { n: n, p: p }; });
+    if (best) r.progetto_id = best.p.id;
+    else {
+      var bc = null;
+      D.cli.forEach(function (c) { var n = trova(c.nome); if (n && (!bc || n.length > bc.n.length)) bc = { n: n, c: c }; });
+      if (bc) r.cliente_id = bc.c.id;
+    }
+  }
+  if (ctx.indexOf("prog:") === 0 && !r.progetto_id) r.progetto_id = ctx.slice(5);
+  if (r.progetto_id) { var pg2 = by(D.prog, r.progetto_id); if (pg2) { r.commessa_id = pg2.commessa_id; var k2 = by(D.com, pg2.commessa_id); if (k2 && !r.cliente_id) r.cliente_id = k2.cliente_id; } }
+  if (!r.scadenza && ctx === "oggi") r.scadenza = today();
+  if (!r.scadenza && ctx === "prossimi") r.scadenza = giornoPiu(1);
+  var h = [];
+  h.push(r.scadenza ? etichettaGiorno(r.scadenza) : "senza data");
+  h.push(r.assegnato_id === me.pro_id ? "io" : nameOf(D.pros, r.assegnato_id));
+  if (r.progetto_id) h.push(nameOf(D.prog, r.progetto_id)); else if (r.cliente_id) h.push(nameOf(D.cli, r.cliente_id));
+  if (r.priorita === "Alta") h.push("priorità alta");
+  return { riga: r, hint: r.titolo ? "→ " + h.map(esc).join(" · ") : "" };
+}
+function scriviTask(ctx, segnaposto) {
+  return '<form class="qnew" data-qnew="' + esc(ctx) + '" autocomplete="off"><span class="qplus">+</span>' +
+    '<input id="tnuova" name="t" placeholder="' + esc(segnaposto || "Scrivi un\'attività e premi Invio · es. «bozza sito Lucchi ven @Goffredo»") + '" autocomplete="off">' +
+    '<span class="qhint" id="qhint"></span></form>';
+}
+function taskDiChi(list) {
+  if (TV.chi !== "io") return list;
+  return list.filter(function (t) { return !t.assegnato_id || t.assegnato_id === me.pro_id; });
+}
+function rigaT(t, o) {
+  o = o || {};
+  var fatto = t.stato === "Fatto";
+  var late = t.scadenza && t.scadenza < today() && !fatto;
+  var k = t.commessa_id ? by(D.com, t.commessa_id) : null;
+  var cli = t.cliente_id || (k && k.cliente_id);
+  var pezzi = [];
+  if (cli) pezzi.push(lnkCli(cli, "lnk mini2"));
+  if (!o.noProg) { if (t.progetto_id) pezzi.push(lnkProg(t.progetto_id, "lnk mini2")); else if (k) pezzi.push(lnkCom(k.id, "lnk mini2")); }
+  if (t.padre_id) { var pd = by(D.task, t.padre_id); if (pd) pezzi.push("↳ " + esc(pd.titolo)); }
+  var sub = D.task.filter(function (x) { return x.padre_id === t.id; });
+  var subFatte = sub.filter(function (x) { return x.stato === "Fatto"; }).length;
+  return '<div class="trow' + (fatto ? " fatta" : "") + (PANEL === t.id ? " sel" : "") + '" draggable="true" data-open-task="' + t.id + '">' +
+    '<button class="ck' + (fatto ? " on" : "") + '" data-tck="' + t.id + '" title="' + (fatto ? "Riapri" : "Segna fatta") + '"></button>' +
+    '<button class="ttit" data-open-task="' + t.id + '"><span class="tt1">' + (t.priorita === "Alta" && !fatto ? '<i class="tprio" title="Priorità alta"></i>' : "") + esc(t.titolo) +
+      (sub.length ? '<span class="faint"> · ' + subFatte + "/" + sub.length + "</span>" : "") +
+      (t.stato === "In corso" ? ' <span class="badge b-terra">in corso</span>' : t.stato === "In review" ? ' <span class="badge b-blue">in review</span>' : "") + "</span>" +
+      (pezzi.length ? '<span class="tt2">' + pezzi.join(" · ") + "</span>" : "") + "</button>" +
+    '<span class="tmeta">' +
+      (o.noData ? "" : '<button class="tchip' + (late ? " late" : "") + (t.scadenza ? "" : " vuoto") + '" data-tdata="' + t.id + '" title="Cambia la scadenza">' + (late ? "in ritardo · " : "") + etichettaBreve(t.scadenza) + "</button>") +
+      '<button class="tav" data-tchi="' + t.id + '" title="Chi la fa">' + (t.assegnato_id ? avatar(t.assegnato_id, 22) : '<span class="av vuoto" style="width:22px;height:22px;font-size:11px">?</span>') + "</button>" +
+    "</span></div>";
+}
+function gruppoT(titolo, list, attr, o, cls) {
+  if (!list.length) return "";
+  return '<div class="card tgroup' + (cls ? " " + cls : "") + '"' + (attr || "") + '><div class="cardhead"><h2>' + titolo + '</h2><span class="faint">' + list.length + "</span></div>" +
+    '<div class="tlist">' + list.map(function (t) { return rigaT(t, o); }).join("") + "</div></div>";
+}
+function vistaOggi(mie, tutte) {
+  var ritardo = mie.filter(function (t) { return t.scadenza && t.scadenza < today(); }).sort(ordT);
+  var oggi = mie.filter(function (t) { return t.scadenza === today(); }).sort(ordT);
+  var senza = mie.filter(function (t) { return !t.scadenza; }).sort(ordT);
+  var fatteOggi = tutte.filter(function (t) { return t.stato === "Fatto" && (t.completata_il || "").slice(0, 10) === today() && (TV.chi !== "io" || t.assegnato_id === me.pro_id); });
+  var h = "";
+  if (!ritardo.length && !oggi.length) h += '<div class="card"><div class="empty">' + (senza.length ? "Niente con scadenza oggi. Qui sotto quello che non ha ancora un giorno: trascinane una su «Oggi» o scrivila qui sopra." : "Niente per oggi. Scrivi qui sopra la prima cosa da fare, o guarda i prossimi giorni.") + "</div></div>";
+  h += gruppoT("In ritardo", ritardo);
+  h += '<div class="card tgroup mcol" data-giorno="' + today() + '"><div class="cardhead"><h2>Oggi</h2><span class="faint">' + oggi.length + "</span></div>" +
+    '<div class="tlist">' + (oggi.length ? oggi.map(function (t) { return rigaT(t, { noData: true }); }).join("") : '<div class="tdrop">Trascina qui quello che vuoi fare oggi.</div>') + "</div></div>";
+  h += gruppoT("Senza data", senza, ' data-quando="senza"', null, "mcol");
+  if (fatteOggi.length) h += '<div class="card tgroup fatte"><div class="cardhead"><h2>Fatte oggi</h2><span class="faint">' + fatteOggi.length + "</span></div><div class=\"tlist\">" + fatteOggi.map(function (t) { return rigaT(t, { noData: true }); }).join("") + "</div></div>";
+  return h;
+}
+function vistaProssimi(mie) {
+  var h = "", tot = 0;
+  for (var i = 1; i <= 14; i++) {
+    var g = giornoPiu(i);
+    var items = mie.filter(function (t) { return t.scadenza === g; }).sort(ordT);
+    if (!items.length && i > 1) continue;
+    tot += items.length;
+    h += '<div class="card tgroup mcol" data-giorno="' + g + '"><div class="cardhead"><h2>' + etichettaGiorno(g) + (i === 1 ? ' <span class="sub">' + GG[new Date(g + "T12:00:00").getDay()] + " " + new Date(g + "T12:00:00").getDate() + "</span>" : "") + '</h2><span class="faint">' + items.length + "</span></div>" +
+      '<div class="tlist">' + (items.length ? items.map(function (t) { return rigaT(t, { noData: true }); }).join("") : '<div class="tdrop">Niente per domani. Trascina qui, o scrivi sopra.</div>') + "</div></div>";
+  }
+  var dopo = mie.filter(function (t) { return t.scadenza && t.scadenza > giornoPiu(14); }).sort(ordT);
+  tot += dopo.length;
+  h += gruppoT("Più avanti", dopo);
+  var senza = mie.filter(function (t) { return !t.scadenza; }).sort(ordT);
+  h += gruppoT("Senza data", senza, ' data-quando="senza"', null, "mcol");
+  if (!tot && !senza.length) h = '<div class="card"><div class="empty">Nessuna scadenza nei prossimi giorni.</div></div>' + h;
+  return h;
+}
+function vistaTutte(aperte) {
+  var list = aperte;
+  if (TF.cerca) { var q = TF.cerca.toLowerCase(); list = list.filter(function (t) { return (t.titolo + " " + (t.descrizione || "")).toLowerCase().indexOf(q) > -1; }); }
+  var h = '<div class="tcerca"><input id="tcerca" placeholder="Cerca fra le attività aperte…" value="' + esc(TF.cerca) + '"></div>';
+  if (!list.length) return h + '<div class="card"><div class="empty">' + (TF.cerca ? "Niente con questo testo." : "Nessuna attività aperta.") + "</div></div>";
+  var g = {}, nomi = {};
+  list.forEach(function (t) {
+    var k = t.progetto_id ? "p" + t.progetto_id : t.commessa_id ? "k" + t.commessa_id : t.cliente_id ? "c" + t.cliente_id : "z";
+    (g[k] = g[k] || []).push(t);
+    nomi[k] = t.progetto_id ? nameOf(D.prog, t.progetto_id) : t.commessa_id ? nameOf(D.com, t.commessa_id, "titolo") : t.cliente_id ? nameOf(D.cli, t.cliente_id) : "Senza progetto";
+  });
+  var ordine = Object.keys(g).sort(function (a, b) { if (a === "z") return 1; if (b === "z") return -1; return nomi[a].localeCompare(nomi[b]); });
+  return h + ordine.map(function (k) {
+    var t0 = g[k][0], k0 = t0.commessa_id ? by(D.com, t0.commessa_id) : null, cli0 = t0.cliente_id || (k0 && k0.cliente_id);
+    var sotto = k !== "z" && k.charAt(0) !== "c" && cli0 ? '<span class="sub">' + lnkCli(cli0, "lnk mini2") + "</span>" : "";
+    return '<div class="card tgroup"><div class="cardhead"><h2>' + esc(nomi[k]) + sotto + '</h2><span class="faint">' + g[k].length + "</span></div>" +
+      '<div class="tlist">' + g[k].slice().sort(ordT).map(function (t) { return rigaT(t, { noProg: k.charAt(0) !== "z" && k.charAt(0) !== "c" }); }).join("") + "</div></div>";
+  }).join("");
+}
+function vistaFatte(tutte) {
+  var da = giornoPiu(-30);
+  var list = tutte.filter(function (t) { return t.stato === "Fatto" && (t.completata_il || t.created_at || "").slice(0, 10) >= da && (TV.chi !== "io" || t.assegnato_id === me.pro_id); })
+    .sort(function (a, b) { return (a.completata_il || "") < (b.completata_il || "") ? 1 : -1; });
+  if (!list.length) return '<div class="card"><div class="empty">Niente di fatto negli ultimi 30 giorni.</div></div>';
+  var g = {}, ord = [];
+  list.forEach(function (t) { var k = (t.completata_il || "").slice(0, 10) || "—"; if (!g[k]) { g[k] = []; ord.push(k); } g[k].push(t); });
+  return ord.map(function (k) { return gruppoT(k === "—" ? "Senza data" : etichettaGiorno(k), g[k], "", { noData: true }); }).join("");
+}
+/* Il pannello di lato: le cose che cambiano spesso, senza lasciare la lista */
+function pannelloTask(id) {
+  var t = by(D.task, id); if (!t) return "";
+  var sub = D.task.filter(function (x) { return x.padre_id === t.id; }).sort(ordT);
+  var comm = D.comm.filter(function (c) { return c.task_id === t.id; }).sort(function (a, b) { return (a.created_at || "") < (b.created_at || "") ? -1 : 1; });
+  var fatto = t.stato === "Fatto";
+  var k = t.commessa_id ? by(D.com, t.commessa_id) : null, cli = t.cliente_id || (k && k.cliente_id);
+  return '<aside class="tpanel" id="tpanel">' +
+    '<div class="tphead"><button class="ck' + (fatto ? " on" : "") + '" data-tck="' + t.id + '"></button>' +
+    '<input class="tptit' + (fatto ? " done" : "") + '" data-qset="task|titolo|' + t.id + '" value="' + esc(t.titolo) + '">' +
+    '<button class="tpx" data-tpanel-close="1" title="Chiudi (Esc)">✕</button></div>' +
+    '<div class="tpbody">' +
+    (cli || k ? '<div class="tpstrada">' + [cli ? lnkCli(cli, "lnk mini2") : "", k ? lnkCom(k.id, "lnk mini2") : "", t.progetto_id ? lnkProg(t.progetto_id, "lnk mini2") : ""].filter(Boolean).join(" · ") + "</div>" : "") +
+    '<div class="tpgrid">' +
+      '<div class="qfield"><label>Scadenza</label><input type="date" data-qset="task|scadenza|' + t.id + '" value="' + esc(t.scadenza || "") + '"></div>' +
+      '<div class="qfield"><label>Chi la fa</label><select data-qset="task|assegnato_id|' + t.id + '"><option value="">— nessuno —</option>' + opt(D.pros, t.assegnato_id) + "</select></div>" +
+      '<div class="qfield"><label>Progetto</label><select data-qset="task|progetto_id|' + t.id + '"><option value="">— nessuno —</option>' +
+        progVisibili().map(function (p) { return '<option value="' + p.id + '"' + (t.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + " · " + esc(nameOf(D.com, p.commessa_id, "titolo")) + "</option>"; }).join("") + "</select></div>" +
+      '<div class="qfield"><label>Priorità</label><select data-qset="task|priorita|' + t.id + '">' + sel(["Bassa", "Media", "Alta"], t.priorita || "Media") + "</select></div>" +
+      '<div class="qfield"><label>Stato</label><select data-qset="task|stato|' + t.id + '">' + sel(TASK_STATI, t.stato || "Da fare") + "</select></div>" +
+      '<div class="qfield"><label>Ore stimate</label><input type="number" step="0.5" data-qset="task|stimate|' + t.id + '" value="' + (t.stimate == null ? "" : t.stimate) + '"></div>' +
+    "</div>" +
+    '<div class="qfield"><label>Note <span class="faint" id="tstat"></span></label><textarea id="tdesc" data-tid="' + t.id + '" rows="4" placeholder="Cosa va fatto, riferimenti, cosa serve. Si salva da solo.">' + esc(t.descrizione || "") + "</textarea></div>" +
+    '<div class="tpsez"><h3>Sotto-attività <span class="faint">' + sub.filter(function (x) { return x.stato === "Fatto"; }).length + "/" + sub.length + "</span></h3>" +
+      '<div class="tlist">' + sub.map(function (x) {
+        return '<div class="trow' + (x.stato === "Fatto" ? " fatta" : "") + '"><button class="ck' + (x.stato === "Fatto" ? " on" : "") + '" data-tck="' + x.id + '"></button><button class="ttit" data-open-task="' + x.id + '">' + esc(x.titolo) + "</button>" +
+          '<span class="tmeta">' + (x.scadenza ? '<span class="badge">' + etichettaBreve(x.scadenza) + "</span>" : "") + "</span></div>";
+      }).join("") + "</div>" +
+      '<form class="qadd" data-qadd-sub="' + t.id + '"><button class="ck" type="button" disabled></button><input name="titolo" placeholder="Aggiungi una sotto-attività" autocomplete="off"></form></div>' +
+    '<div class="tpsez"><h3>Commenti <span class="faint">' + comm.length + "</span></h3>" +
+      (comm.length ? '<ul class="timeline">' + comm.map(function (c) { return "<li>" + avatar(c.pro_id, 20) + " <b>" + esc(nameOf(D.pros, c.pro_id)) + "</b> · " + esc(c.testo || "") + '<div class="when">' + dt(c.created_at) + "</div></li>"; }).join("") + "</ul>" : "") +
+      '<form class="qadd" data-comm-task="' + t.id + '"><input name="testo" placeholder="Scrivi un commento…" autocomplete="off"><button class="btn sm" type="submit">Invia</button></form></div>' +
+    '<div class="tpfoot"><button class="lnk" data-route="attivita|' + t.id + '|">Scheda completa</button> · <button class="lnk" data-dupl-task="' + t.id + '">Duplica</button> · <button class="lnk" data-del="task:' + t.id + '">Elimina</button></div>' +
+    "</div></aside>";
+}
 function vTask() {
-  var vista = tab || "lista";
+  var vista = tab || "oggi";
+  if (vista === "lista" || vista === "mie") vista = "tutte";
+  var alt = ["bacheca", "calendario", "timeline"].indexOf(vista) > -1;
   var tutte = ftask();
   var aperte = tutte.filter(function (t) { return t.stato !== "Fatto"; });
-  var late = aperte.filter(function (t) { return t.scadenza && t.scadenza < today(); });
-  var list = taskFiltrate();
-  var h = head("Attività", aperte.length + " aperte · " + late.length + " in ritardo · " + tutte.length + " in tutto",
-    '<button class="btn sm ghost" data-modelli="1">Modelli</button><button class="btn sm" data-new="task">+ Nuova attività</button>');
-  h += barraTask(vista);
-  if (vista === "bacheca") h += vistaBacheca(list);
-  else if (vista === "calendario") h += vistaCalendarioTask(list);
-  else if (vista === "timeline") h += vistaTimeline(list);
-  else if (vista === "mie") h += vistaMie(tutte);
-  else h += vistaLista(list);
+  var mie = taskDiChi(aperte);
+  var ritardo = mie.filter(function (t) { return t.scadenza && t.scadenza < today(); }).length;
+  var oggi = mie.filter(function (t) { return t.scadenza === today(); }).length;
+  var sub = (ritardo ? ritardo + " in ritardo · " : "") + oggi + " per oggi · " + mie.length + " aperte" + (TV.chi === "io" ? "" : " nello studio");
+  var h = head("Attività", sub,
+    '<span class="vtabs mini"><button data-tv="io" class="' + (TV.chi === "io" ? "on" : "") + '">Le mie</button><button data-tv="tutti" class="' + (TV.chi === "tutti" ? "on" : "") + '">Tutti</button></span>' +
+    '<select class="altre" data-tvista="1"><option value="">Altre viste…</option><option value="bacheca">Bacheca</option><option value="calendario">Calendario</option><option value="timeline">Timeline</option><option value="modelli">Modelli di lavoro</option></select>' +
+    '<button class="btn sm ghost" data-new="task">Nuova in dettaglio</button>');
+  if (alt) {
+    var list = taskFiltrate();
+    h += barraTask(vista);
+    if (vista === "bacheca") h += vistaBacheca(list);
+    else if (vista === "calendario") h += vistaCalendarioTask(list);
+    else h += vistaTimeline(list);
+    return h;
+  }
+  var pross = mie.filter(function (t) { return t.scadenza && t.scadenza > today(); }).length;
+  h += '<div class="vbar"><div class="vtabs">' + [["oggi", "Oggi", ritardo + oggi], ["prossimi", "Prossimi giorni", pross], ["tutte", "Tutte", mie.length], ["fatte", "Fatte", null]].map(function (v) {
+    return '<button data-route="task|-|' + v[0] + '" class="' + (vista === v[0] ? "on" : "") + '">' + v[1] + (v[2] ? ' <span class="cnt">' + v[2] + "</span>" : "") + "</button>";
+  }).join("") + "</div></div>";
+  if (vista !== "fatte") h += scriviTask(vista, vista === "oggi" ? "Cosa devi fare oggi? Scrivi e premi Invio · «bozza sito Lucchi ven @Goffredo»" : vista === "prossimi" ? "Scrivi con il giorno · «call Borsari mer», «consegna 12/9»" : "Scrivi un\'attività e premi Invio · «#Sito Lucchi bozza home ven»");
+  h += '<div class="tmain' + (PANEL ? " con-pannello" : "") + '">';
+  if (vista === "oggi") h += vistaOggi(mie, tutte);
+  else if (vista === "prossimi") h += vistaProssimi(mie);
+  else if (vista === "fatte") h += vistaFatte(tutte);
+  else h += vistaTutte(mie);
+  h += "</div>";
+  if (PANEL) h += pannelloTask(PANEL);
   return h;
+}
+/* popover piccolo, ancorato a un bottone: date rapide, persone */
+function apriPop(anc, html) {
+  chiudiPop();
+  var p = document.createElement("div"); p.id = "pop"; p.className = "pop"; p.innerHTML = html;
+  document.body.appendChild(p);
+  var r = anc.getBoundingClientRect(), w = p.offsetWidth, hh = p.offsetHeight;
+  var left = Math.min(r.left, window.innerWidth - w - 8), top = r.bottom + 6;
+  if (top + hh > window.innerHeight - 8) top = Math.max(8, r.top - hh - 6);
+  p.style.left = Math.max(8, left) + "px"; p.style.top = top + "px";
+}
+function chiudiPop() { var p = el("#pop"); if (p) p.remove(); }
+function popData(t) {
+  var lun = giornoPiu(((8 - new Date(today() + "T12:00:00").getDay()) % 7) || 7);
+  return '<div class="popt">Scadenza</div>' +
+    '<button data-tset="' + t.id + '|scadenza|' + today() + '">Oggi</button>' +
+    '<button data-tset="' + t.id + '|scadenza|' + giornoPiu(1) + '">Domani</button>' +
+    '<button data-tset="' + t.id + '|scadenza|' + lun + '">Lunedì prossimo</button>' +
+    '<button data-tset="' + t.id + '|scadenza|' + giornoPiu(7) + '">Fra una settimana</button>' +
+    '<button data-tset="' + t.id + '|scadenza|">Nessuna data</button>' +
+    '<input type="date" data-tsetdate="' + t.id + '" value="' + esc(t.scadenza || "") + '">';
+}
+function popChi(t) {
+  return '<div class="popt">Chi la fa</div>' + D.pros.map(function (p) {
+    return '<button data-tset="' + t.id + '|assegnato_id|' + p.id + '"' + (t.assegnato_id === p.id ? ' class="on"' : "") + ">" + avatar(p.id, 20) + " " + esc(p.nome) + "</button>";
+  }).join("") + '<button data-tset="' + t.id + '|assegnato_id|">Nessuno</button>';
 }
 
 /* Quando chiudi un'attività ricorrente ne nasce subito la prossima */
@@ -3329,8 +3630,9 @@ function vProgetto() {
     }).join("") : vuoto("Nessuna lavorazione: qui dentro spezzi il progetto nei lavori veri (es. Programmazione backend).", '<button class="lnk" data-new="lav" data-ctx-prog="' + p.id + '">Crea la prima</button>');
   }
   if (t === "attivita") {
-    h += '<div class="cardhead"><h2>Tutte le attività del progetto</h2></div>';
-    h += tk.length ? '<div class="checklist">' + tk.filter(function (x) { return !x.padre_id; }).map(function (x) { return riga(x, tk); }).join("") + "</div>" : vuoto("Nessuna attività.");
+    h += '<div class="cardhead"><h2>Attività del progetto</h2></div>';
+    h += scriviTask("prog:" + p.id, "Aggiungi un\'attività a questo progetto · «bozza home ven @Goffredo»");
+    h += tk.length ? '<div class="checklist">' + tk.filter(function (x) { return !x.padre_id; }).map(function (x) { return riga(x, tk); }).join("") + "</div>" : "";
   }
   if (t === "materiali") {
     h += '<div class="cardhead"><h2>Materiali del progetto</h2><div style="display:flex;gap:8px"><button class="btn sm ghost" data-link="' + ctxAll(p.commessa_id, p.id) + '">+ Link</button><button class="btn sm ghost" data-new="mat" data-ctx="' + p.commessa_id + '">+ Materiale</button></div></div>';
@@ -5754,7 +6056,16 @@ async function clicApp(e, t, d) {
   if (d.openCli) { go("cliente", d.openCli); return; }
   if (d.openPro) { go("pro", d.openPro); return; }
   if (d.openProg) { go("progetto", d.openProg); return; }
-  if (d.openTask) { go("attivita", d.openTask); return; }
+  if (d.openTask) { if (view === "task" && !(tab === "bacheca" || tab === "calendario" || tab === "timeline")) { PANEL = PANEL === d.openTask ? null : d.openTask; render(); return; } go("attivita", d.openTask); return; }
+  if (d.tpanelClose) { PANEL = null; render(); return; }
+  if (d.tv) { TV.chi = d.tv; try { localStorage.setItem("gs_task_chi", d.tv); } catch (x) {} render(); return; }
+  if (d.tdata) { var td = by(D.task, d.tdata); if (td) apriPop(t, popData(td)); return; }
+  if (d.tchi) { var tc = by(D.task, d.tchi); if (tc) apriPop(t, popChi(tc)); return; }
+  if (d.tset) {
+    var ts = d.tset.split("|"), pt = {}; pt[ts[1]] = ts[2] || null; chiudiPop();
+    if (await salvaSubito("task", ts[0], pt)) toast(ts[1] === "scadenza" ? (ts[2] ? "Spostata a " + etichettaGiorno(ts[2]).toLowerCase() : "Scadenza tolta") : (ts[2] ? "Assegnata a " + nameOf(D.pros, ts[2]) : "Nessuno la fa"));
+    return;
+  }
   if (d.apprSi) { await apprRispondi(d.apprSi, "Approvata"); return; }
   if (d.apprNo) { await apprRispondi(d.apprNo, "Modifiche richieste"); return; }
   if (d.new) {
@@ -6472,6 +6783,19 @@ async function invioModulo(e, f) {
     if (TSEXTRA.indexOf(lid9) === -1) TSEXTRA.push(lid9);
     render(); return;
   }
+  if (f.dataset.qnew) {
+    e.preventDefault();
+    var inq = f.querySelector("input"), txq = inq.value.trim(); if (!txq) return;
+    var cq = capisciTask(txq, f.dataset.qnew);
+    if (!cq.riga.titolo) return;
+    var rq = await sb.from("task").insert(cq.riga);
+    if (rq.error) { toast(erroreUmano(rq.error), true); return; }
+    inq.value = ""; var hq = el("#qhint"); if (hq) hq.innerHTML = "";
+    await reload(["task"]); render();
+    var i2 = el("#tnuova"); if (i2) i2.focus();
+    toast("Aggiunta" + (cq.riga.scadenza ? " · " + etichettaGiorno(cq.riga.scadenza).toLowerCase() : "") + (cq.riga.assegnato_id !== me.pro_id ? " · " + nameOf(D.pros, cq.riga.assegnato_id) : ""));
+    return;
+  }
   if (f.dataset.qaddSub) {
     e.preventDefault();
     var tsub = f.titolo.value.trim(); if (!tsub) return;
@@ -6556,8 +6880,9 @@ document.addEventListener("input", function (e) {
     var fst = el("#fstat"); if (fst) fst.textContent = "modifiche non salvate";
   }
   if (e.target.id === "palq") renderPal(e.target.value);
+  if (e.target.id === "tnuova") { var hq9 = el("#qhint"); if (hq9) hq9.innerHTML = capisciTask(e.target.value, e.target.form.dataset.qnew).hint; }
   if (e.target.id === "tdesc") {
-    var vald = e.target.value, tid9 = current, std = el("#tstat");
+    var vald = e.target.value, tid9 = e.target.dataset.tid || current, std = el("#tstat");
     if (std) std.textContent = "scrivo…";
     clearTimeout(NOTET);
     NOTET = setTimeout(async function () {
@@ -6697,6 +7022,8 @@ document.addEventListener("change", async function (e) {
   }
   if (e.target.dataset && e.target.dataset.comvista) { COMVISTA = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tf) { TF[e.target.dataset.tf] = e.target.value; render(); return; }
+  if (e.target.dataset && e.target.dataset.tvista) { var tv9 = e.target.value; if (tv9 === "modelli") { e.target.value = ""; apriModelli(); return; } if (tv9) go("task", null, tv9); return; }
+  if (e.target.dataset && e.target.dataset.tsetdate) { var tsd = e.target.dataset.tsetdate, vd = e.target.value || null; chiudiPop(); if (await salvaSubito("task", tsd, { scadenza: vd })) toast(vd ? "Spostata a " + etichettaGiorno(vd).toLowerCase() : "Scadenza tolta"); return; }
   if (e.target.dataset && e.target.dataset.tg) { TGROUP = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tsordina) { TSORT = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.vistaApri) {
@@ -6800,7 +7127,7 @@ document.addEventListener("keydown", function (e) {
     if (e.key === "ArrowUp") { e.preventDefault(); palMove(-1); return; }
     if (e.key === "Enter") { e.preventDefault(); palGo(PALI); return; }
   }
-  if (e.key === "Escape") { closeModal(); return; }
+  if (e.key === "Escape") { if (el("#pop")) { chiudiPop(); return; } if (PANEL && !el(".modal")) { PANEL = null; render(); return; } closeModal(); return; }
   if ((e.metaKey || e.ctrlKey) && (e.key === "k" || e.key === "K")) { e.preventDefault(); openPalette(); return; }
   var tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
@@ -6824,6 +7151,9 @@ document.addEventListener("keydown", function (e) {
   if (!n) return;
   e.preventDefault(); n.focus(); n.select();
 });
+document.addEventListener("mousedown", function (e) {
+  var p = el("#pop"); if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest("[data-tdata],[data-tchi]"))) chiudiPop();
+});
 document.addEventListener("dragstart", function (e) {
   var t = e.target.closest && e.target.closest(".tsk, .trow[draggable]");
   if (!t) return;
@@ -6831,8 +7161,8 @@ document.addEventListener("dragstart", function (e) {
   if (e.dataTransfer) { e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", DRAG); } catch (x) {} }
 });
 document.addEventListener("dragend", function (e) {
-  var t = e.target.closest && e.target.closest(".tsk"); if (t) t.classList.remove("dragging");
-  Array.prototype.forEach.call(document.querySelectorAll(".kcol.over"), function (c) { c.classList.remove("over"); });
+  var t = e.target.closest && e.target.closest(".tsk, .trow"); if (t) t.classList.remove("dragging");
+  Array.prototype.forEach.call(document.querySelectorAll(".kcol.over, .mcol.over"), function (c) { c.classList.remove("over"); });
 });
 document.addEventListener("dragover", function (e) {
   var c = e.target.closest && e.target.closest(".kcol, .mcol");
@@ -6850,8 +7180,9 @@ document.addEventListener("drop", async function (e) {
   if (!col || !DRAG) return;
   e.preventDefault(); col.classList.remove("over");
   var idm = DRAG; DRAG = null;
-  var quando = col.dataset.quando;
-  var nuova = quando === "oggi" ? today()
+  var quando = col.dataset.quando, giorno = col.dataset.giorno;
+  if (giorno === "ritardo") return;
+  var nuova = giorno ? giorno : quando === "oggi" ? today()
     : quando === "settimana" ? iso(new Date(Date.now() + 3 * 86400000))
     : quando === "dopo" ? iso(new Date(Date.now() + 14 * 86400000)) : null;
   var rm9 = await sb.from("task").update({ scadenza: nuova }).eq("id", idm);
