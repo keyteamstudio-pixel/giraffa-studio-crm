@@ -462,6 +462,49 @@ textarea{min-height:86px;resize:vertical;line-height:1.55;padding:10px 12px}
 @media(max-width:1100px){.grid.g4-1{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:640px){.grid.g4-1{grid-template-columns:1fr}}
 .mcol.over{outline:2px dashed var(--terra);outline-offset:3px}
+/* attività: una lista sola */
+.qnew{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-m);padding:6px 14px;margin-bottom:16px;box-shadow:var(--sh-1);position:relative}
+.qnew:focus-within{border-color:var(--terra)}
+.qnew .qplus{width:22px;height:22px;border-radius:7px;border:1.6px dashed var(--line);color:var(--faint);display:grid;place-items:center;font-size:15px;flex:0 0 auto}
+.qnew input{flex:1;border:0;background:none;font:inherit;font-size:15px;min-height:38px;padding:0;outline:0;color:var(--ink)}
+.qnew .qhint{font-size:12px;color:var(--terra-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:45%}
+.qnew .qhint:empty{display:none}
+.tmain{min-width:0}
+.tmain.con-pannello{margin-right:440px}
+.trow{cursor:pointer}
+.trow.sel{background:var(--terra-soft);margin:0 -10px;padding-left:14px;padding-right:14px;border-radius:9px}
+.trow.dragging{opacity:.45}
+.tprio{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--terra);margin-right:7px;vertical-align:1px}
+.tchip{background:var(--cream);border:1px solid transparent;border-radius:999px;font:inherit;font-size:12px;font-weight:500;color:var(--soft);padding:4px 10px;cursor:pointer;white-space:nowrap}
+.tchip:hover{border-color:var(--line);color:var(--ink)}
+.tchip.late{background:#fde8e8;color:#b42318}
+.tchip.vuoto{background:none;border-style:dashed;border-color:var(--line);color:var(--faint)}
+.tav{background:none;border:0;padding:0;cursor:pointer;display:inline-flex;border-radius:99px}
+.tav:hover .av{box-shadow:0 0 0 2px var(--terra)}
+.tdrop{padding:16px 6px;color:var(--faint);font-size:13px;border:1.5px dashed var(--line);border-radius:9px;text-align:center}
+.tgroup.fatte .trow{min-height:44px}
+.tcerca{margin-bottom:14px}.tcerca input{width:100%;max-width:420px}
+.vtabs.mini button{min-height:28px;padding:0 11px;font-size:12px}
+select.altre{font-size:12px;min-height:32px;padding:0 10px;width:auto}
+.tpanel{position:fixed;top:0;right:0;bottom:0;width:420px;background:var(--card);border-left:1px solid var(--line);box-shadow:-12px 0 32px -18px rgba(20,18,15,.25);z-index:30;display:flex;flex-direction:column}
+.tphead{display:flex;align-items:center;gap:10px;padding:16px 16px 12px;border-bottom:1px solid var(--line-soft)}
+.tptit{flex:1;border:0;background:none;font:inherit;font-size:16px;font-weight:600;color:var(--ink);padding:4px 0;min-width:0;outline:0}
+.tptit.done{text-decoration:line-through;color:var(--faint)}
+.tpx{background:none;border:0;font-size:15px;color:var(--faint);cursor:pointer;padding:4px 6px;border-radius:7px}
+.tpx:hover{background:var(--cream);color:var(--ink)}
+.tpbody{padding:14px 16px 24px;overflow:auto;flex:1}
+.tpstrada{font-size:12px;color:var(--soft);margin-bottom:12px}
+.tpgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin-bottom:10px}
+.tpgrid .qfield:nth-child(3){grid-column:1/-1}
+.tpsez{margin-top:18px}.tpsez h3{font-size:13px;margin-bottom:8px}
+.tpsez .trow{min-height:40px;padding:6px 2px}
+.tpfoot{margin-top:22px;font-size:12px;color:var(--faint)}
+.pop{position:fixed;z-index:60;background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh-2);padding:6px;min-width:190px;display:flex;flex-direction:column;gap:2px}
+.pop .popt{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);padding:6px 10px 4px}
+.pop button{background:none;border:0;font:inherit;font-size:13px;text-align:left;padding:7px 10px;border-radius:8px;cursor:pointer;color:var(--ink);display:flex;align-items:center;gap:8px}
+.pop button:hover,.pop button.on{background:var(--cream)}
+.pop input[type=date]{margin:4px 4px 2px;font-size:13px;min-height:34px}
+@media (max-width:900px){.tpanel{width:100%}.tmain.con-pannello{margin-right:0}.qnew .qhint{display:none}}
 
 /* timeline */
 .tlhead{position:relative;height:22px;margin:0 0 8px 190px;font-size:.72rem;color:var(--soft)}
@@ -1325,6 +1368,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=63"></script>
+<script src="app.js?v=64"></script>
 </body>
 </html>
