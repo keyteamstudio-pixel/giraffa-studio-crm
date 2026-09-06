@@ -3078,7 +3078,7 @@ function vSpazi() {
 var SITO_IMG = null;
 function slugFile(n) { return String(n).toLowerCase().replace(/\.(png|jpe?g|svg|webp)$/i, function (m) { return m; }).replace(/[^a-z0-9.\-]+/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, ""); }
 function cardImmaginiSito() {
-  var cart = [["clients", "Chi ci ha scelto", "lucchi.png, cna-veneto.png, gieffe.png, naturasi.png, noleggio-lorini.png, miola.png, acqua-adv.png, borsari.png, carboni-adv.png, buglioni.png, al-calmiere.svg, 4you.png, logo-flame.png, petit-blanche.svg, la-staffa.png, sport-center-verona.png"], ["collab", "Con chi hanno collaborato i professionisti", "un file per marchio, nome libero"], ["partner", "Partner e coworking", "un file per partner, nome libero"], ["people", "Foto delle persone", "nicola.jpg, goffredo.jpg (quadrate, almeno 400 px)"], ["foto", "Foto dello studio", "nomi liberi"]];
+  var cart = [["clients", "Con chi hanno collaborato i nostri professionisti", "lucchi.png, cna-veneto.png, gieffe.png, naturasi.png, noleggio-lorini.png, miola.png, acqua-adv.png, borsari.png, carboni-adv.png, buglioni.png, al-calmiere.svg, 4you.png, logo-flame.png, petit-blanche.svg, la-staffa.png, sport-center-verona.svg — per aggiungerne uno nuovo, dimmelo e lo metto nel sito"], ["partner", "Partner e coworking", "un file per partner, nome libero"], ["people", "Foto delle persone", "nicola.jpg, goffredo.jpg (quadrate, almeno 400 px)"], ["foto", "Foto dello studio", "nomi liberi"]];
   var h = '<div class="card" id="imgsito"><div class="cardhead"><h2>Immagini del sito</h2><span class="faint">giraffastudio.it le legge da qui</span></div>' +
     '<p class="faint" style="margin:-4px 0 14px">PNG o SVG con sfondo trasparente per i loghi, JPG per le foto. Il nome del file conta: il sito cerca quelli scritti accanto a ogni cartella.</p>';
   cart.forEach(function (c) {
@@ -3096,7 +3096,7 @@ var IMG_SITO = "https://uxeuqyzlikkbkpraeoen.supabase.co/storage/v1/object/publi
 async function caricaListaSito() {
   var out = [];
   for (var i = 0; i < 5; i++) {
-    var cart = ["clients", "collab", "partner", "people", "foto"][i];
+    var cart = ["clients", "partner", "people", "foto"][i];
     var r = await sb.storage.from("sito").list(cart, { limit: 200 });
     (r.data || []).forEach(function (f) { if (f.name && f.name !== ".emptyFolderPlaceholder") out.push({ cartella: cart, name: f.name }); });
   }
