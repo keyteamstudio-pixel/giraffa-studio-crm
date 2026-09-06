@@ -25,13 +25,13 @@ var APPVER = (function () {
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
 var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
-  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [] };
+  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
 var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
-  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev" };
+  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi" };
 
 /* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
 var COLONNE = { port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd" };
@@ -58,7 +58,7 @@ function by(arr, id) { for (var i = 0; i < arr.length; i++) if (arr[i].id === id
 function nameOf(arr, id, f) { var o = by(arr, id); return o ? o[f || "nome"] : "—"; }
 function sum(arr, f) { var t = 0; arr.forEach(function (x) { t += (+f(x) || 0); }); return t; }
 function toast(msg, isErr) { var t = document.createElement("div"); t.className = "toast" + (isErr ? " err" : ""); t.textContent = msg; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 3800); }
-function show(id) { ["setup", "login", "app", "splash"].forEach(function (x) { var n = el("#" + x); if (n) n.classList.toggle("hide", x !== id); }); }
+function show(id) { ["setup", "login", "app", "splash", "pub"].forEach(function (x) { var n = el("#" + x); if (n) n.classList.toggle("hide", x !== id); }); }
 function closeModal() { el("#modal").innerHTML = ""; CHATOP = false; }
 
 /* ---------------- percorsi (ogni pagina ha il suo indirizzo) ---------------- */
@@ -1251,7 +1251,7 @@ function vCommessa() {
   var riu = riuOf(k.id);
   var TABS = [["note", "Note"], ["discussione", "Discussione", D.comm.filter(function (x) { return x.commessa_id === k.id; }).length], ["materiali", "Allegati", mt.length],
     ["attivita", "Attività", tk.filter(function (z) { return z.stato !== "Fatto"; }).length], ["riunioni", "Riunioni", riu.length],
-    ["servizi", "Preventivo", righeOf(k.id).length], ["numeri", "Numeri"], ["pagamenti", "Pagamenti", pg.length], ["costi", "Costi", costiOf(k.id).length]];
+    ["servizi", "Preventivo", righeOf(k.id).length], ["incarico", "Incarico", incOf(k.id).filter(function (i) { return i.stato !== "Annullata"; }).length || null], ["numeri", "Numeri"], ["pagamenti", "Pagamenti", pg.length], ["costi", "Costi", costiOf(k.id).length]];
   if (!isPR()) TABS.push(["ore", "Ore", num(oreT, 1)]);
   TABS.push(["approvazioni", "Approvazioni", ap.filter(function (a) { return a.stato === "In attesa"; }).length], ["varianti", "Varianti", vr.length]);
   if (fs.length) TABS.push(["fasi", "Fasi", fs.length]);
@@ -1334,6 +1334,7 @@ function vCommessa() {
   if (t === "servizi") {
     h += foglioA4(k, { dentro: true });
   }
+  if (t === "incarico") h += schedaIncarico(k);
   if (t === "attivita") {
     h += '<div class="cardhead"><h2>Attività</h2><button class="btn sm ghost" data-new="task" data-ctx="' + k.id + '">Apri in dettaglio</button></div>';
     var radici = tk.filter(function (x) { return !x.padre_id; });
@@ -4594,7 +4595,7 @@ function bloccoSezioni(k, dove) {
    testo si riscrive sul posto, le voci si aggiungono in riga, i blocchi si
    tolgono e si rimettono, e da un modello (standard dello studio o tuo) nasce
    tutto in un colpo. */
-var DOCNUOVO = null, CAMBIACLI = null;
+var DOCNUOVO = null, CAMBIACLI = null, INCVEDI = null;
 function opzDoc(k) { var o = k && k.doc_opzioni; if (typeof o === "string") { try { o = JSON.parse(o); } catch (e) { o = {}; } } return o && typeof o === "object" ? o : {}; }
 function nascosto(k, key) { return (opzDoc(k).nascosti || []).indexOf(key) > -1; }
 var BLOCCHI = [["premessa", "Premessa"], ["pagamenti", "Come si paga"], ["opzioni", "Voci opzionali"], ["condizioni", "Condizioni"], ["chiusura", "Chiusura"], ["firme", "Firme"], ["pie", "Nota sulla validità"]];
@@ -4680,6 +4681,143 @@ function apriSalvaModello(kid) {
     '<p class="faint" style="margin-top:8px">Salvo titolo, premessa, sezioni, voci (con prezzi), condizioni, chiusura, validità e IVA. Non salvo il cliente.</p>' +
     '<div class="actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn" type="submit">Salva</button></div></form></div>');
 }
+/* ---------------- lettera d'incarico ----------------
+   Dal preventivo accettato nasce la lettera: una fotografia di parti, oggetto,
+   importi e regole, scritta con articoli che si riscrivono sul posto. Il cliente
+   la firma da un link (#/f/codice): nome, firma col dito o col mouse, ora,
+   indirizzo e impronta del testo. Firmata, non si tocca più: si fa una versione nuova. */
+function incOf(kid) { return D.inc.filter(function (i) { return i.commessa_id === kid; }).sort(function (a, b) { return (a.created_at || "") < (b.created_at || "") ? 1 : -1; }); }
+function testoIncarico(k) {
+  var em = emittente(k), cl = by(D.cli, k.cliente_id) || {}, c = calc(k), pg = pagOf(k), rr = righeOf(k.id);
+  var voci = rr.filter(function (r) { return !r.opzionale; }).map(function (r) { return rigaCalc(r).nome; }).filter(Boolean);
+  var pagam = pg.length ? pg.map(function (p) { return (p.nome || "quota") + ": " + eur(p.importo) + (p.scadenza ? " entro il " + dt(p.scadenza) : ""); }).join("; ") : "come da condizioni del preventivo";
+  var tempi = (k.inizio ? "Inizio delle attività: " + dt(k.inizio) + ". " : "") + (k.scadenza ? "Consegna prevista: " + dt(k.scadenza) + ". " : "") + "Eventuali variazioni ai tempi saranno concordate per iscritto.";
+  var chi = em.studio ? em.nome + " (di seguito «lo Studio»), che coordina i professionisti incaricati, ciascuno operante con la propria partita IVA" : em.nome + (em.piva ? ", P. IVA " + em.piva : "") + " (di seguito «il Professionista»)";
+  return {
+    emittente: { nome: em.nome || "", piva: em.piva || "", indirizzo: em.indirizzo || "", email: em.email || "", tel: em.tel || "", studio: !!em.studio, logo: em.logo || null, firma: em.firma || null, firmatario: em.firmatario || "" },
+    cliente: { nome: k.intestatario || cl.nome || "", referente: cl.referente || "", indirizzo: cl.indirizzo || "", piva: cl.piva || "", email: cl.email || "" },
+    preventivo: { titolo: k.titolo, numero: k.numero || numeroDoc(k), data: dataDoc(k), totale: c.tot, lordo: c.lordo, iva: k.iva == null ? 22 : k.iva },
+    data: today(),
+    intro: "Con la presente " + (k.intestatario || cl.nome || "il Cliente") + " (di seguito «il Cliente») affida a " + chi + " l'incarico descritto di seguito, alle condizioni che seguono.",
+    articoli: [
+      { t: "Oggetto dell'incarico", x: "L'incarico ha per oggetto «" + k.titolo + "», come descritto nel preventivo n. " + (k.numero || numeroDoc(k)) + " del " + dt(dataDoc(k)) + ", che il Cliente dichiara di aver letto e accettato e che forma parte integrante della presente lettera." + (voci.length ? " In sintesi: " + voci.join("; ") + "." : "") },
+      { t: "Corrispettivo e pagamenti", x: "Il corrispettivo è di " + eur(c.tot) + " oltre IVA " + (k.iva == null ? 22 : k.iva) + "% (" + eur(c.lordo) + " IVA inclusa). Pagamenti: " + pagam + ". In caso di ritardo nei pagamenti le attività potranno essere sospese fino alla regolarizzazione." },
+      { t: "Tempi", x: tempi },
+      { t: "Cosa serve dal Cliente", x: "Il Cliente si impegna a fornire tempestivamente materiali, informazioni e accessi necessari, e a indicare un referente per le approvazioni. I ritardi nella consegna di quanto richiesto fanno slittare di pari tempo le scadenze." },
+      { t: "Proprietà intellettuale e diritti d'uso", x: "I diritti d'uso su quanto realizzato passano al Cliente con il saldo del corrispettivo, nei limiti e per gli usi indicati nel preventivo. Bozze, file di lavoro e materiali non scelti restano di chi li ha prodotti, che potrà citare il lavoro nel proprio portfolio salvo diverso accordo scritto." },
+      { t: "Riservatezza e dati personali", x: "Le parti trattano come riservate le informazioni scambiate per l'incarico. I dati personali sono trattati nel rispetto del Regolamento (UE) 2016/679 per le sole finalità dell'incarico." },
+      { t: "Recesso", x: "Ciascuna parte può recedere con comunicazione scritta e preavviso di 15 giorni. In tal caso è dovuto il compenso per il lavoro svolto fino a quel momento e gli acconti versati non sono restituiti." },
+      { t: "Legge applicabile e foro", x: "La presente lettera è regolata dalla legge italiana. Per ogni controversia è competente il Foro di Verona." }
+    ],
+    chiusura: "Letto, confermato e sottoscritto per accettazione."
+  };
+}
+async function creaIncarico(kid) {
+  var k = by(D.com, kid); if (!k) return;
+  var n = incOf(kid).length + 1;
+  var r = await sb.from("incarichi").insert({ commessa_id: kid, cliente_id: k.cliente_id || null, numero: (k.numero || numeroDoc(k)) + "-I" + n, testo: testoIncarico(k), creato_da: me.pro_id, stato: "Bozza" }).select().single();
+  if (r.error) { toast(erroreUmano(r.error), true); return; }
+  await reload(["inc"]); toast("Lettera d'incarico pronta: leggila e riscrivi quello che vuoi"); render();
+}
+function linkFirma(i) { return location.origin + location.pathname + "#/f/" + i.token; }
+function edInc(i, campo, val, vuotoTxt, multi) {
+  if (i.stato === "Firmata" || i.stato === "Annullata") return multi ? '<div class="dtx">' + esc(val || "") + "</div>" : esc(val || "");
+  return '<span class="ed' + (multi ? " edb" : "") + '" contenteditable="true" spellcheck="false" data-inc="' + i.id + "|" + campo + '"' + (multi ? ' data-multi="1"' : "") + ' data-vuoto="' + esc(vuotoTxt || "—") + '">' + esc(val == null ? "" : val) + "</span>";
+}
+/* la lettera sul foglio: la stessa per chi la scrive e per chi la firma */
+function letteraHTML(i, o) {
+  o = o || {};
+  var t = i.testo || {}, em = t.emittente || {}, cl = t.cliente || {}, pv = t.preventivo || {};
+  var firmata = i.stato === "Firmata";
+  var h = '<div class="a4 lettera"><div class="dtop">' +
+    '<div class="dmitt">' + (em.logo ? '<img class="dlogo" src="' + esc(em.logo) + '" alt="">' : '<i class="mark"></i>') + "<div><b>" + esc(em.nome || "—") + "</b>" +
+    (em.indirizzo ? "<span>" + esc(em.indirizzo) + "</span>" : "") + (em.piva ? "<span>P. IVA " + esc(em.piva) + "</span>" : "") + (em.email ? "<span>" + esc(em.email) + "</span>" : "") + "</div></div>" +
+    '<div class="ddoc"><h2>' + edInc(i, "titolo", i.titolo, "Lettera d'incarico") + "</h2><table><tbody>" +
+    "<tr><td>Rif.</td><td>" + esc(i.numero || "") + "</td></tr>" +
+    "<tr><td>Data</td><td>" + dt(t.data || i.created_at) + "</td></tr>" +
+    "<tr><td>Preventivo</td><td>n. " + esc(pv.numero || "") + " del " + dt(pv.data) + "</td></tr>" +
+    "</tbody></table></div></div>";
+  h += '<div class="ddest"><span class="lb">Tra</span><b>' + esc(em.nome || "") + "</b>" + (em.piva ? "<div>P. IVA " + esc(em.piva) + "</div>" : "") + (em.indirizzo ? "<div>" + esc(em.indirizzo) + "</div>" : "") + "</div>" +
+    '<div class="ddest"><span class="lb">e</span><b>' + esc(cl.nome || "") + "</b>" + (cl.referente ? "<div>" + esc(cl.referente) + "</div>" : "") + (cl.indirizzo ? "<div>" + esc(cl.indirizzo) + "</div>" : "") + (cl.piva ? "<div>P. IVA " + esc(cl.piva) + "</div>" : "") + "</div>";
+  h += '<div class="dpre">' + edInc(i, "intro", t.intro, "Premessa", true) + "</div>";
+  (t.articoli || []).forEach(function (a, j) {
+    h += '<div class="dsez dsezt"><div class="dsh"><b>Art. ' + (j + 1) + " — " + edInc(i, "a" + j + ".t", a.t, "Titolo") + "</b>" +
+      (firmata || i.stato === "Annullata" || o.pubblico ? "" : '<span class="noprint dsezc"><button class="lnk mini2" data-incart="' + i.id + "|" + j + '|-1">↑</button><button class="lnk mini2" data-incart="' + i.id + "|" + j + '|1">↓</button><button class="lnk mini2" data-incart="' + i.id + "|" + j + '|via">togli</button></span>') + "</div>" +
+      '<div class="dtx">' + edInc(i, "a" + j + ".x", a.x, "Testo dell'articolo", true) + "</div></div>";
+  });
+  if (!firmata && i.stato !== "Annullata" && !o.pubblico) h += '<div class="noprint dsezadd"><button class="lnk mini2" data-incart="' + i.id + '|new|0">+ aggiungi un articolo</button></div>';
+  h += '<div class="dchiusa">' + edInc(i, "chiusura", t.chiusura, "Chiusura", true) + "</div>";
+  h += '<div class="dfirme"><div><span class="lb">Per ' + esc(em.nome || "") + "</span>" + (em.firma ? '<img class="dfirmaimg" src="' + esc(em.firma) + '" alt="">' : "") + "<i></i>" + (em.firmatario ? '<span class="dnota">' + esc(em.firmatario) + "</span>" : "") + "</div>" +
+    '<div><span class="lb">Per ' + esc(cl.nome || "il Cliente") + "</span>" + (firmata ? '<img class="dfirmaimg" src="' + esc(i.firma_img) + '" alt="firma">' : "") + "<i></i>" + (firmata ? '<span class="dnota">' + esc(i.firma_nome) + " · firmato il " + dtOra(i.firmata_il) + "</span>" : '<span class="dnota faint">firma dal link</span>') + "</div></div>";
+  if (firmata) h += '<p class="dpie">Documento firmato elettronicamente il ' + dtOra(i.firmata_il) + " da " + esc(i.firma_nome) + ". Impronta del testo (SHA-256): " + esc((i.firma_hash || "").slice(0, 32)) + "…</p>";
+  return h + "</div>";
+}
+function dtOra(s) { if (!s) return "—"; var d = new Date(s); return isNaN(d) ? "—" : d.toLocaleDateString("it-IT", { day: "2-digit", month: "long", year: "numeric" }) + " alle " + d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }); }
+function schedaIncarico(k) {
+  var lista = incOf(k.id), i = (INCVEDI && by(D.inc, INCVEDI) && by(D.inc, INCVEDI).commessa_id === k.id ? by(D.inc, INCVEDI) : lista[0]), cl = by(D.cli, k.cliente_id) || {};
+  var h = "";
+  if (!i) {
+    return '<div class="empty" style="padding:24px 8px"><b>Nessuna lettera d\'incarico ancora.</b><p class="faint" style="margin:8px 0 14px">Dal preventivo ' + (k.stato === "Accettato" || k.stato === "Completato" ? "accettato" : "(meglio dopo l\'accettazione)") + ' nasce la lettera: parti, oggetto, corrispettivo, tempi e regole, già scritte. Poi la mandi con un link e il cliente firma dal telefono.</p><button class="btn" data-inc-nuovo="' + k.id + '">Prepara la lettera d\'incarico</button></div>';
+  }
+  var url = linkFirma(i);
+  var st = { Bozza: "b-amber", Inviata: "b-blue", Firmata: "b-green", Annullata: "" }[i.stato] || "";
+  h += '<div class="docbar noprint"><div class="dbleft"><span class="badge ' + st + '">' + esc(i.stato) + (i.stato === "Firmata" ? " il " + dt(i.firmata_il) : i.stato === "Inviata" && i.inviata_il ? " il " + dt(i.inviata_il) : "") + "</span>" +
+    (lista.length > 1 ? '<select data-inc-vedi="1">' + lista.map(function (x, n) { return '<option value="' + x.id + '"' + (x.id === i.id ? " selected" : "") + ">" + esc(x.numero || ("versione " + (lista.length - n))) + " · " + esc(x.stato) + "</option>"; }).join("") + "</select>" : "") +
+    (i.stato === "Firmata" || i.stato === "Annullata" ? "" : '<span class="faint">clicca un testo per riscriverlo</span>') + "</div>" +
+    '<div class="dbright">' +
+    (i.stato === "Firmata" ? '<button class="btn sm ghost" data-inc-nuovo="' + k.id + '">Nuova versione</button>' :
+      i.stato === "Annullata" ? '<button class="btn sm ghost" data-inc-nuovo="' + k.id + '">Nuova lettera</button>' :
+      '<button class="btn sm ghost" data-inc-link="' + i.id + '" title="' + esc(url) + '">Copia il link per la firma</button>' +
+      (cl.telefono ? '<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(cl.telefono).replace(/\D/g, "").replace(/^0/, "39")) + '?text=' + esc(encodeURIComponent("Ciao " + (cl.referente || cl.nome || "") + ", ti mando la lettera d'incarico per «" + k.titolo + "»: la puoi leggere e firmare da qui " + url)) + '" data-inc-inviata="' + i.id + '">WhatsApp</a>' : "") +
+      (cl.email ? '<a class="btn sm ghost" href="mailto:' + esc(cl.email) + "?subject=" + esc(encodeURIComponent("Lettera d'incarico — " + k.titolo)) + "&body=" + esc(encodeURIComponent("Gentile " + (cl.referente || cl.nome || "") + ",\n\nle invio la lettera d'incarico per «" + k.titolo + "». La può leggere e firmare da questo link:\n" + url + "\n\nResto a disposizione.\n" + (me.nome || ""))) + '" data-inc-inviata="' + i.id + '">Email</a>' : "") +
+      '<button class="btn sm ghost" data-inc-annulla="' + i.id + '">Annulla</button>') +
+    '<button class="btn sm" data-stampa="' + esc((i.numero || "Incarico") + " " + (cl.nome || "") + " " + (k.titolo || "")) + '">Stampa / PDF</button></div></div>';
+  if (i.stato === "Firmata") h += '<div class="card" style="background:var(--green-soft);border-color:transparent;margin-bottom:14px"><b>Firmata da ' + esc(i.firma_nome) + "</b> il " + dtOra(i.firmata_il) + (i.firma_ip ? ' <span class="faint">· da ' + esc(i.firma_ip) + "</span>" : "") + '<div class="faint" style="margin-top:4px">Il testo è sigillato con la sua impronta: se serve cambiare qualcosa, fai una nuova versione.</div></div>';
+  return h + letteraHTML(i, {});
+}
+/* la pagina che vede il cliente dal link: la lettera e il riquadro per firmare */
+async function paginaFirma(tok) {
+  var box = el("#pub"); show("pub"); el("#splash").classList.add("hide");
+  box.innerHTML = '<div class="pubwrap"><p class="faint">Carico la lettera…</p></div>';
+  var r = await sb.rpc("incarico_leggi", { tok: tok });
+  if (r.error || !r.data) { box.innerHTML = '<div class="pubwrap"><div class="authcard"><div class="brandmark"><i class="mark"></i></div><h2>Link non valido</h2><p>Questa lettera non esiste o non è più disponibile. Chiedi a chi te l\'ha mandata un nuovo link.</p></div></div>'; return; }
+  var i = r.data;
+  var disegna = function () {
+    var firmata = i.stato === "Firmata";
+    box.innerHTML = '<div class="pubwrap"><div class="pubhead noprint"><div class="brandmark"><i class="mark"></i></div><div><b>' + esc((i.testo && i.testo.emittente && i.testo.emittente.nome) || "Giraffa Studio") + "</b><div class=\"faint\">" + (firmata ? "Lettera firmata. Puoi scaricarla o stamparla." : "Leggi la lettera e, se sei d'accordo, firmala qui sotto.") + "</div></div>" +
+      '<button class="btn sm ghost" data-stampa="' + esc(i.numero || "Lettera d\'incarico") + '">Stampa / PDF</button></div>' +
+      letteraHTML(i, { pubblico: true }) +
+      (firmata ? '<div class="card noprint" style="max-width:820px;margin:16px auto 40px;text-align:center"><b>Grazie, è tutto firmato.</b><div class="faint">Firmato da ' + esc(i.firma_nome) + " il " + dtOra(i.firmata_il) + ". Conserva una copia con «Stampa / PDF».</div></div>" :
+        '<form class="card firmabox noprint" id="firmaform" style="max-width:820px;margin:16px auto 40px"><h2>Firma per accettazione</h2>' +
+        '<div class="field"><label>Nome e cognome di chi firma</label><input name="nome" required minlength="3" autocomplete="name" placeholder="Es. Maria Rossi"></div>' +
+        '<label style="display:block;margin:10px 0 6px;font-size:13px;color:var(--soft)">Firma qui sotto, col dito o col mouse</label>' +
+        '<div class="firmapad"><canvas id="firmacv" width="1200" height="400"></canvas><button type="button" class="lnk mini2" id="firmapulisci">cancella</button></div>' +
+        '<label class="chk" style="margin-top:12px"><input type="checkbox" name="ok" required><span>Ho letto la lettera d\'incarico e il preventivo a cui si riferisce e li accetto.</span></label>' +
+        '<div class="err hide" id="firmaerr"></div>' +
+        '<div class="actions"><button class="btn" type="submit">Firma e conferma</button></div>' +
+        '<p class="faint" style="margin-top:10px">Registriamo nome, ora, indirizzo di rete e un\'impronta del testo, così la firma è verificabile.</p></form>') +
+      '<p class="faint noprint" style="text-align:center;margin-bottom:30px">Giraffa Studio · crm.giraffastudio.it</p></div>';
+    if (firmata) return;
+    var cv = el("#firmacv"), ctx = cv.getContext("2d"), giu = false, tratti = 0, last = null;
+    ctx.lineWidth = 4; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#1b1a18";
+    var pos = function (e) { var r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height }; };
+    cv.addEventListener("pointerdown", function (e) { giu = true; last = pos(e); cv.setPointerCapture(e.pointerId); e.preventDefault(); });
+    cv.addEventListener("pointermove", function (e) { if (!giu) return; var p = pos(e); ctx.beginPath(); ctx.moveTo(last.x, last.y); ctx.lineTo(p.x, p.y); ctx.stroke(); last = p; tratti++; e.preventDefault(); });
+    var su = function () { giu = false; }; cv.addEventListener("pointerup", su); cv.addEventListener("pointercancel", su); cv.addEventListener("pointerleave", su);
+    el("#firmapulisci").addEventListener("click", function () { ctx.clearRect(0, 0, cv.width, cv.height); tratti = 0; });
+    el("#firmaform").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var err = el("#firmaerr"), btn = e.target.querySelector("button[type=submit]"); err.classList.add("hide");
+      if (tratti < 8) { err.textContent = "Disegna la tua firma nel riquadro."; err.classList.remove("hide"); return; }
+      btn.disabled = true; btn.textContent = "Registro la firma…";
+      var img = cv.toDataURL("image/png");
+      var rf = await sb.rpc("incarico_firma", { tok: tok, nome: e.target.nome.value.trim(), img: img });
+      if (rf.error) { err.textContent = (rf.error.message || "").replace(/^[^:]*: /, "") || "Non sono riuscito a registrare la firma."; err.classList.remove("hide"); btn.disabled = false; btn.textContent = "Firma e conferma"; return; }
+      i = rf.data; disegna(); window.scrollTo(0, 0);
+    });
+  };
+  disegna();
+}
 function vDocumento() {
   var k = by(D.com, current);
   if (!k) return '<div class="card">Preventivo non trovato. <button class="lnk" data-go="commesse">Torna all\'elenco</button></div>';
@@ -4699,7 +4837,7 @@ function foglioA4(k, o) {
     '<button class="btn sm ghost" data-mprev-apri="' + k.id + '">Modelli</button>' +
     (nas.length ? '<select class="altre" data-blocco-mostra="' + k.id + '"><option value="">Rimetti un blocco…</option>' + BLOCCHI.filter(function (b) { return nas.indexOf(b[0]) > -1; }).map(function (b) { return '<option value="' + b[0] + '">' + b[1] + "</option>"; }).join("") + "</select>" : "") +
     (cl.email ? '<a class="btn sm ghost" href="' + esc(mailtoPreventivo(k, cl)) + '">Invia per email</a>' : "") +
-    (k.stato === "Bozza" ? '<button class="btn sm ghost" data-del="com:' + k.id + '" title="Elimina questa bozza">Elimina bozza</button>' : "") +
+    (k.stato === "Bozza" ? '<button class="btn sm ghost" data-del="com:' + k.id + '" title="Elimina questa bozza">Elimina bozza</button>' : '<button class="btn sm ghost" data-route="commessa|' + k.id + '|incarico">Incarico' + (incOf(k.id).some(function (i) { return i.stato === "Firmata"; }) ? " ✓" : "") + "</button>") +
     '<button class="btn sm" data-stampa="' + esc(nomeFile(k)) + '">Stampa / PDF</button></div></div>';
 
   if (DOCNUOVO === k.id || (!rr.length && !sezioniDi(k).length && !k.premessa)) {
@@ -6029,6 +6167,23 @@ async function clicApp(e, t, d) {
     if (PLINK) { location.hash = ""; location.reload(); return; }
     await sb.auth.signOut(); location.reload(); return;
   }
+  if (d.incNuovo) { await creaIncarico(d.incNuovo); return; }
+  if (d.incLink) {
+    var il = by(D.inc, d.incLink); if (!il) return;
+    var urlF = linkFirma(il);
+    try { await navigator.clipboard.writeText(urlF); toast("Link copiato: mandalo al cliente"); } catch (x) { prompt("Copia questo link e mandalo al cliente", urlF); }
+    if (il.stato === "Bozza") { await salvaSubito("inc", il.id, { stato: "Inviata", inviata_il: new Date().toISOString() }); }
+    return;
+  }
+  if (d.incInviata) { var ii = by(D.inc, d.incInviata); if (ii && ii.stato === "Bozza") { await salvaSubito("inc", ii.id, { stato: "Inviata", inviata_il: new Date().toISOString() }); } return; }
+  if (d.incAnnulla) { var ia = by(D.inc, d.incAnnulla); if (!ia) return; if (!confirm("Annullare questa lettera? Il link non funzionerà più.")) return; await salvaSubito("inc", ia.id, { stato: "Annullata" }); return; }
+  if (d.incart) {
+    var pa = d.incart.split("|"), ic = by(D.inc, pa[0]); if (!ic || ic.stato === "Firmata") return;
+    var tx = JSON.parse(JSON.stringify(ic.testo || {})); tx.articoli = tx.articoli || [];
+    if (pa[1] === "new") tx.articoli.push({ t: "Nuovo articolo", x: "" });
+    else { var ja = +pa[1]; if (pa[2] === "via") tx.articoli.splice(ja, 1); else { var jb = ja + (+pa[2]); if (jb < 0 || jb >= tx.articoli.length) return; var tmp = tx.articoli[ja]; tx.articoli[ja] = tx.articoli[jb]; tx.articoli[jb] = tmp; } }
+    await salvaSubito("inc", ic.id, { testo: tx }); return;
+  }
   if (d.mprevApri) { apriModelliPrev(d.mprevApri); return; }
   if (d.mprevSalva) { apriSalvaModello(d.mprevSalva); return; }
   if (d.mprevUsa) { var mu = d.mprevUsa.split("|"); await applicaModelloPrev(mu[0], mu[1]); return; }
@@ -7019,6 +7174,19 @@ var EDNUM = ["qty", "prezzo_unit", "costo_unit", "sconto", "importo", "ore_stima
 var EDDATA = ["data", "scadenza", "inizio", "pagato_il"];
 document.addEventListener("focusout", async function (e) {
   var t = e.target;
+  /* la lettera d'incarico: titolo, premessa, articoli, chiusura */
+  if (t && t.dataset && t.dataset.inc) {
+    var pi = t.dataset.inc.split("|"), ii9 = by(D.inc, pi[0]); if (!ii9 || ii9.stato === "Firmata") return;
+    var tI = (t.innerText || "").replace(/ /g, " ").replace(/\s+$/, "");
+    if (!t.dataset.multi) tI = tI.replace(/\s*\n\s*/g, " ").trim();
+    if (t.dataset.prima !== undefined && t.dataset.prima === tI) return;
+    if (pi[1] === "titolo") { if (await salvaSubito("inc", ii9.id, { titolo: tI || "Lettera d'incarico" })) toast("Salvato"); return; }
+    var tx9 = JSON.parse(JSON.stringify(ii9.testo || {})); tx9.articoli = tx9.articoli || [];
+    var ma = /^a(\d+)\.(t|x)$/.exec(pi[1]);
+    if (ma) { if (!tx9.articoli[+ma[1]]) return; tx9.articoli[+ma[1]][ma[2]] = tI; } else tx9[pi[1]] = tI;
+    if (await salvaSubito("inc", ii9.id, { testo: tx9 })) toast("Salvato");
+    return;
+  }
   /* le sezioni stanno tutte in un campo solo: lo riscrivo intero */
   if (t && t.dataset && t.dataset.sez) {
     var ps = t.dataset.sez.split("|"), ks = by(D.com, ps[0]); if (!ks) return;
@@ -7054,7 +7222,7 @@ document.addEventListener("focusout", async function (e) {
 });
 document.addEventListener("focusin", function (e) {
   var t = e.target;
-  if (t && t.dataset && (t.dataset.ed || t.dataset.sez)) t.dataset.prima = (t.innerText || "").replace(/ /g, " ").trim();
+  if (t && t.dataset && (t.dataset.ed || t.dataset.sez || t.dataset.inc)) t.dataset.prima = (t.innerText || "").replace(/ /g, " ").trim();
 });
 document.addEventListener("keydown", function (e) {
   var t = e.target;
@@ -7111,6 +7279,7 @@ document.addEventListener("change", async function (e) {
   }
   if (e.target.dataset && e.target.dataset.comvista) { COMVISTA = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tf) { TF[e.target.dataset.tf] = e.target.value; render(); return; }
+  if (e.target.dataset && e.target.dataset.incVedi) { INCVEDI = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.bloccoMostra) {
     var kbm = by(D.com, e.target.dataset.bloccoMostra), keym = e.target.value; if (!kbm || !keym) return;
     var obm = opzDoc(kbm); await salvaSubito("com", kbm.id, { doc_opzioni: Object.assign({}, obm, { nascosti: (obm.nascosti || []).filter(function (x) { return x !== keym; }) }) }); return;
@@ -7247,6 +7416,10 @@ document.addEventListener("keydown", function (e) {
 document.addEventListener("mousedown", function (e) {
   var p = el("#pop"); if (p && !p.contains(e.target) && !(e.target.closest && e.target.closest("[data-tdata],[data-tchi]"))) chiudiPop();
 });
+document.addEventListener("click", async function (e) {
+  var a = e.target.closest && e.target.closest("a[data-inc-inviata]"); if (!a) return;
+  var ii8 = by(D.inc, a.dataset.incInviata); if (ii8 && ii8.stato === "Bozza") await salvaSubito("inc", ii8.id, { stato: "Inviata", inviata_il: new Date().toISOString() });
+});
 document.addEventListener("dragstart", function (e) {
   var t = e.target.closest && e.target.closest(".tsk, .trow[draggable]");
   if (!t) return;
@@ -7333,6 +7506,8 @@ async function portaleDaLink(tok) {
 async function start() {
   var pm = /^#\/p\/([a-z0-9]+)/i.exec(location.hash || "");
   if (pm) { await portaleDaLink(pm[1]); return; }
+  var pf = /^#\/f\/([a-z0-9]+)/i.exec(location.hash || "");
+  if (pf) { await paginaFirma(pf[1]); return; }
   var s = await sb.auth.getSession();
   if (!s.data.session) { show("login"); return; }
   user = s.data.session.user;
