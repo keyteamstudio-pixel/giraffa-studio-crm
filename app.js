@@ -25,16 +25,16 @@ var APPVER = (function () {
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
 var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
-  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [], pcfg: [], gconn: [], impg: [] };
+  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [], pcfg: [], gconn: [], impg: [], mconn: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
 var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
-  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi", pcfg: "prenota_cfg", gconn: "google_conn", impg: "impegni_google" };
+  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi", pcfg: "prenota_cfg", gconn: "google_conn", impg: "impegni_google", mconn: "mail_conn" };
 
 /* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
-var COLONNE = { port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd", gconn: "pro_id,email,scopes,created_at,updated_at,sync_at,errore" };
+var COLONNE = { port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd", gconn: "pro_id,email,scopes,created_at,updated_at,sync_at,errore", mconn: "pro_id,email,utente,imap_host,imap_port,smtp_host,smtp_port,cartella_inviati,created_at,updated_at,errore" };
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
 var EXP = {}, VISTA = "tabella", FSTATO = "", FSAL = "", DRAG = null;
@@ -3136,7 +3136,7 @@ function vPro() {
     kpi(String(tk.filter(function (t) { return t.stato !== "Fatto"; }).length), "Attività aperte", "sui lavori che vedi") + "</div>";
   var t = tab || "scheda";
   var TP = [["scheda", "Scheda"], ["servizi", "Servizi", srv.length], ["lavori", "Lavori", com.length]];
-  if (mio) TP.push(["ore", "Ore", num(sum(ore, function (o) { return o.ore; }), 1)], ["prenota", "Prenota una call", pcfgMia() && pcfgMia().attivo ? "on" : null], ["email", "Email e calendario", gconnMia() ? "on" : null]);
+  if (mio) TP.push(["ore", "Ore", num(sum(ore, function (o) { return o.ore; }), 1)], ["prenota", "Prenota una call", pcfgMia() && pcfgMia().attivo ? "on" : null], ["email", "Email e calendario", postaConn() ? "on" : null]);
   h += schede(TP, t, view === "profilo" ? "profilo" : "pro", view === "profilo" ? "" : p.id);
   if (t === "prenota" && mio) h += schedaPrenota(p);
   if (t === "email" && mio) h += schedaEmail(p);
@@ -4708,6 +4708,55 @@ function apriSalvaModello(kid) {
 var GM = { chiave: "", lista: [], page: null, caric: false, errore: "", cerca: "", filtro: "inbox", msg: null, msgCaric: "", nonLetti: 0, cli: {} };
 var DOMINI_GENERICI = /^(gmail|googlemail|hotmail|outlook|live|yahoo|libero|virgilio|icloud|me|tin|alice|tiscali|pec|legalmail|fastwebnet|email)\./i;
 function gconnMia() { return (D.gconn || []).filter(function (g) { return g.pro_id === me.pro_id; })[0] || null; }
+function mconnMia() { return (D.mconn || []).filter(function (g) { return g.pro_id === me.pro_id; })[0] || null; }
+/* La casella collegata, qualunque sia: Google (con calendario) o una casella IMAP/SMTP */
+function postaConn() {
+  var g = gconnMia(); if (g) return { tipo: "google", email: g.email, errore: g.errore };
+  var m = mconnMia(); if (m) return { tipo: "imap", email: m.email, errore: m.errore };
+  return null;
+}
+async function chiamaImap(dati) {
+  var s = await sb.auth.getSession(); var ses = s && s.data ? s.data.session : null;
+  if (!ses) throw new Error("la sessione è scaduta, rientra e riprova");
+  var r = await fetch(String(cfg.SUPABASE_URL || "").replace(/\/+$/, "") + "/functions/v1/posta-imap", {
+    method: "POST", headers: { "Content-Type": "application/json", apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + ses.access_token }, body: JSON.stringify(dati)
+  });
+  var j = null; try { j = await r.json(); } catch (e) { }
+  if (r.status === 409) { await reload(["mconn"]); throw new Error("la casella non è collegata: vai nel profilo, scheda «Email e calendario»"); }
+  if (!r.ok) throw new Error((j && j.errore) || "il server ha risposto " + r.status);
+  return j || {};
+}
+/* Una chiamata sola per la posta: va dove è collegata la casella */
+function chiamaPosta(dati) { var c = postaConn(); return c && c.tipo === "imap" ? chiamaImap(dati) : chiamaGoogle(dati); }
+/* La lista: Google vuole una query alla Gmail, l'IMAP vuole cartella + parole + indirizzi.
+   Qui li preparo tutti e due, ognuno legge il suo. */
+function richiestaLista(filtro, cerca, indirizzi, max, pageToken) {
+  var q, ind = indirizzi || [];
+  if (ind.length) q = "{" + ind.map(function (e) { return "from:" + e + " to:" + e; }).join(" ") + "}";
+  else q = filtro === "sent" ? "in:sent" : filtro === "unread" ? "is:unread in:inbox" : "in:inbox";
+  if (cerca) q += " " + cerca;
+  return { azione: "mail_list", q: q.trim(), cartella: filtro === "sent" ? "sent" : "inbox", nonLette: filtro === "unread", cerca: cerca || "", indirizzi: ind, max: max || 30, pageToken: pageToken || null };
+}
+var CASELLE = [
+  ["ovh", "OVH", "ssl0.ovh.net", "ssl0.ovh.net"],
+  ["aruba", "Aruba", "imaps.aruba.it", "smtps.aruba.it"],
+  ["arubapec", "Aruba PEC", "imaps.pec.aruba.it", "smtps.pec.aruba.it"],
+  ["register", "Register.it", "imap.register.it", "smtp.register.it"],
+  ["libero", "Libero", "imapmail.libero.it", "smtp.libero.it"],
+  ["outlook", "Outlook.com / Hotmail", "outlook.office365.com", "smtp-mail.outlook.com"],
+  ["altro", "Altro (metto io i server)", "", ""]
+];
+function apriFormCasella() {
+  modal('<div class="box"><h2>Collega una casella email</h2><p class="faint" style="margin-bottom:10px">Funziona con qualsiasi casella che parla IMAP e SMTP (OVH, Aruba, Register, PEC, hosting vari). La password viene cifrata nel database e usata solo dal server per leggere e inviare: nel browser non passa mai. Se il tuo provider ha le «password per app», usa quella.</p>' +
+    '<form data-imap-collega="1">' +
+    '<div class="field"><label>Provider</label><select name="preset" data-imap-preset="1">' + CASELLE.map(function (c) { return '<option value="' + c[0] + '">' + esc(c[1]) + "</option>"; }).join("") + "</select></div>" +
+    '<div class="row2"><div class="field"><label>Indirizzo email</label><input name="email" type="email" required placeholder="nome@azienda.it" autocomplete="off"></div><div class="field"><label>Password</label><input name="password" type="password" required autocomplete="new-password"></div></div>' +
+    '<div class="field"><label>Utente (se diverso dall\'email)</label><input name="utente" placeholder="di solito è l\'email stessa" autocomplete="off"></div>' +
+    '<div class="row2"><div class="field"><label>Server in entrata (IMAP)</label><input name="imap_host" required value="ssl0.ovh.net"></div><div class="field"><label>Porta IMAP</label><input name="imap_port" value="993" readonly></div></div>' +
+    '<div class="row2"><div class="field"><label>Server in uscita (SMTP)</label><input name="smtp_host" required value="ssl0.ovh.net"></div><div class="field"><label>Porta SMTP</label><select name="smtp_port"><option value="465">465 (TLS)</option><option value="587">587 (STARTTLS)</option></select></div></div>' +
+    '<p class="faint" style="font-size:12px">Microsoft 365 / Exchange aziendale non accetta più le password su IMAP: per quelle serve un collegamento a parte, dimmelo.</p>' +
+    '<div class="actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn" type="submit">Prova e collega</button></div></form></div>');
+}
 async function chiamaGoogle(dati) {
   var s = await sb.auth.getSession(); var ses = s && s.data ? s.data.session : null;
   if (!ses) throw new Error("la sessione è scaduta, rientra e riprova");
@@ -4758,24 +4807,17 @@ function dataMail(ts) {
   var d = new Date(ts); if (isNaN(d)) return "";
   return iso(d) === today() ? d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" }) : d.toLocaleDateString("it-IT", { day: "2-digit", month: "short" });
 }
-function queryPosta() {
-  var f = GM.filtro, q = GM.cerca.trim();
-  var base = f === "sent" ? "in:sent" : f === "unread" ? "is:unread in:inbox" : f === "clienti" ? clientiQuery() : "in:inbox";
-  return (base + " " + q).trim();
-}
-function clientiQuery() {
-  var em = D.cli.map(function (c) { return c.email && String(c.email).trim(); }).filter(Boolean).slice(0, 40);
-  if (!em.length) return "in:inbox";
-  return "{" + em.map(function (e) { return "from:" + e + " to:" + e; }).join(" ") + "}";
-}
+function queryPosta() { return GM.filtro + "|" + GM.cerca.trim(); }
+function emailClienti() { return D.cli.map(function (c) { return c.email && String(c.email).trim(); }).filter(Boolean).slice(0, 40); }
 /* Carica la lista una volta per chiave (filtro + ricerca); se cambia, ricarica */
 function caricaPosta(chiave, q, altro) {
   if (GM.caric) return;
   GM.caric = true; GM.errore = ""; GM.chiave = chiave;
-  chiamaGoogle({ azione: "mail_list", q: q, max: 30, pageToken: altro ? GM.page : null }).then(function (j) {
+  var ind = GM.filtro === "clienti" ? emailClienti() : [];
+  chiamaPosta(richiestaLista(GM.filtro, GM.cerca.trim(), ind, 30, altro ? GM.page : null)).then(function (j) {
     GM.lista = altro ? GM.lista.concat(j.messaggi || []) : (j.messaggi || []);
     GM.page = j.pageToken || null;
-    if (chiave === "inbox") GM.nonLetti = GM.lista.filter(function (m) { return m.nonLetto; }).length;
+    if (chiave === "inbox|") GM.nonLetti = GM.lista.filter(function (m) { return m.nonLetto; }).length;
     GM.caric = false; render();
   }, function (e) { GM.errore = String(e && e.message || e); GM.caric = false; GM.lista = altro ? GM.lista : []; render(); });
 }
@@ -4783,7 +4825,7 @@ async function apriMessaggio(id) {
   if (GM.msg && GM.msg.id === id) return;
   GM.msgCaric = id; GM.msg = null; render();
   try {
-    var m = await chiamaGoogle({ azione: "mail_get", id: id });
+    var m = await chiamaPosta({ azione: "mail_get", id: id });
     GM.msg = m;
     GM.lista.forEach(function (x) { if (x.id === id && x.nonLetto) { x.nonLetto = false; GM.nonLetti = Math.max(0, GM.nonLetti - 1); } });
     var inCli = Object.keys(GM.cli); inCli.forEach(function (k) { (GM.cli[k].lista || []).forEach(function (x) { if (x.id === id) x.nonLetto = false; }); });
@@ -4807,17 +4849,17 @@ function lettore() {
     '<button class="btn sm" data-gmail-rispondi="' + esc(m.id) + '">Rispondi</button>' +
     (c ? (gia ? '<span class="badge b-green">nel diario di ' + esc(c.nome) + "</span>" : '<button class="btn sm ghost" data-gmail-diario="' + esc(m.id) + '">Salva nel diario di ' + esc(c.nome) + "</button>") + lnkCli(c.id, "btn sm ghost") :
       '<button class="btn sm ghost" data-gmail-lead="' + esc(m.id) + '" title="' + esc(mittente) + '">Crea un cliente da ' + esc(soloNome(m.inviato ? m.a : m.da)) + "</button>") +
-    '<a class="btn sm ghost" target="_blank" rel="noopener" href="https://mail.google.com/mail/u/0/#all/' + esc(m.threadId || m.id) + '">Apri in Gmail</a></div></div>';
+    (postaConn() && postaConn().tipo === "google" ? '<a class="btn sm ghost" target="_blank" rel="noopener" href="https://mail.google.com/mail/u/0/#all/' + esc(m.threadId || m.id) + '">Apri in Gmail</a>' : "") + "</div></div>";
   if (m.allegati && m.allegati.length) h += '<div class="mall">' + m.allegati.map(function (a) { return '<span class="badge">' + esc(a.nome) + ' <span class="faint">' + Math.round((a.dim || 0) / 1024) + " KB</span></span>"; }).join(" ") + ' <span class="faint">· gli allegati li scarichi da Gmail</span></div>';
   h += '<div class="mbody">' + esc(m.testo || m.snippet || "").replace(/\n{3,}/g, "\n\n") + "</div></div>";
   return h;
 }
 function vPosta() {
-  var g = gconnMia();
+  var g = postaConn();
   var h = crumbs([[gruppoDi("posta") || "Clienti"], ["Posta"]]);
   h += '<div class="top"><h1>Posta<span class="sub">' + (g ? esc(g.email || "") : "non collegata") + '</span></h1><div class="tools">' +
     (g ? '<button class="btn sm ghost" data-gmail-ricarica="1">Aggiorna</button><button class="btn sm" data-gmail-scrivi="1">Nuova email</button>' : "") + "</div></div>";
-  if (!g) return h + '<div class="card"><div class="empty" style="padding:24px 8px"><b>La tua posta, qui dentro, con i clienti accanto.</b><p class="faint" style="margin:8px 0 14px">Collega il tuo account Google: leggi e rispondi da qui, ogni email si aggancia al cliente giusto, i preventivi e le lettere d\'incarico partono dal tuo indirizzo, e le riunioni finiscono nel tuo Google Calendar con la Meet già dentro.</p><button class="btn" data-gconn-collega="1">Collega Google</button></div></div>';
+  if (!g) return h + '<div class="card"><div class="empty" style="padding:24px 8px"><b>La tua posta, qui dentro, con i clienti accanto.</b><p class="faint" style="margin:8px 0 14px">Collega la tua casella: leggi e rispondi da qui, ogni email si aggancia al cliente giusto, i preventivi e le lettere d\'incarico partono dal tuo indirizzo. Con Google anche le riunioni finiscono nel tuo calendario con la Meet già dentro.</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn" data-gconn-collega="1">Collega Google</button><button class="btn ghost" data-imap-form="1">Collega un\'altra casella</button></div></div></div>';
   var chiave = queryPosta();
   if (GM.chiave !== chiave && !GM.caric) caricaPosta(chiave, chiave);
   var chip = function (k, et) { return '<button class="chipbtn' + (GM.filtro === k ? " on" : "") + '" data-gmail-filtro="' + k + '">' + et + "</button>"; };
@@ -4832,13 +4874,13 @@ function vPosta() {
 }
 /* La scheda Email del cliente: solo lo scambio con lui */
 function schedaEmailCliente(c) {
-  var g = gconnMia();
-  if (!g) return '<div class="card"><div class="empty">Per vedere qui le email con ' + esc(c.nome) + ' collega Google dal tuo profilo. <button class="lnk" data-route="profilo|-|email">Vai</button></div></div>';
+  var g = postaConn();
+  if (!g) return '<div class="card"><div class="empty">Per vedere qui le email con ' + esc(c.nome) + ' collega la tua casella dal profilo. <button class="lnk" data-route="profilo|-|email">Vai</button></div></div>';
   if (!c.email) return '<div class="card"><div class="empty">Questo cliente non ha un indirizzo email in anagrafica. <button class="lnk" data-edit="cli:' + c.id + '">Aggiungilo</button></div></div>';
   var e = String(c.email).trim(), st = GM.cli[c.id];
   if (!st) {
     st = GM.cli[c.id] = { lista: [], caric: true, errore: "" };
-    chiamaGoogle({ azione: "mail_list", q: "{from:" + e + " to:" + e + "}", max: 40 }).then(function (j) { st.lista = j.messaggi || []; st.caric = false; render(); }, function (x) { st.errore = String(x && x.message || x); st.caric = false; render(); });
+    chiamaPosta(richiestaLista("inbox", "", [e], 40, null)).then(function (j) { st.lista = j.messaggi || []; st.caric = false; render(); }, function (x) { st.errore = String(x && x.message || x); st.caric = false; render(); });
   }
   var h = '<div class="card"><div class="cardhead"><h2>Email con ' + esc(c.nome) + '</h2><div style="display:flex;gap:8px"><button class="btn sm ghost" data-gmail-clivia="' + c.id + '">Aggiorna</button><button class="btn sm" data-gmail-scrivi="1" data-ctx-cli="' + c.id + '">Scrivi a ' + esc(e) + "</button></div></div>";
   if (st.errore) h += '<div class="empty neg">' + esc(st.errore) + "</div>";
@@ -4849,9 +4891,16 @@ function schedaEmailCliente(c) {
 }
 /* Profilo: collegare, controllare, scollegare */
 function schedaEmail(p) {
-  var g = gconnMia();
+  var g = gconnMia(), m = mconnMia();
+  if (!g && m) {
+    return '<div class="card" style="background:' + (m.errore ? "var(--red-soft, #fbeae5)" : "var(--green-soft)") + ';border-color:transparent"><div class="cardhead"><h2>' + esc(m.email) + '</h2>' +
+      '<div style="display:flex;gap:8px"><button class="btn sm ghost" data-go="posta">Apri la posta</button><button class="btn sm ghost" data-imap-form="1">Cambia password o server</button><button class="btn sm ghost" data-imap-via="1">Scollega</button></div></div>' +
+      (m.errore ? '<p class="neg"><b>L\'ultima volta la casella ha risposto male:</b> ' + esc(m.errore) + "</p>" : "") +
+      '<p class="faint">Casella IMAP/SMTP collegata il ' + dt(m.created_at) + " · in entrata " + esc(m.imap_host) + ":" + m.imap_port + " · in uscita " + esc(m.smtp_host) + ":" + m.smtp_port + (m.cartella_inviati ? " · le email inviate finiscono in «" + esc(m.cartella_inviati) + "»" : "") + "</p>" +
+      '<p class="faint" style="margin-top:6px">La password è cifrata nel database e la usa solo il server. Se la cambi sul provider, aggiornala qui. Il calendario non si sincronizza con una casella IMAP: per quello serve Google, oppure il link ICS del CRM nel tuo calendario.</p></div>';
+  }
   if (!g) {
-    return '<div class="card" style="background:var(--cream)"><div class="empty" style="padding:24px 8px"><b>Collega il tuo Google.</b><p class="faint" style="margin:8px 0 14px">Cosa cambia: la posta la leggi e la scrivi dal CRM, agganciata ai clienti; preventivi e lettere d\'incarico partono dal tuo indirizzo; le riunioni vanno in Google Calendar con la Meet; i tuoi impegni di Google compaiono nel calendario del CRM e bloccano il link «Prenota una call». Il CRM non conserva la tua password: Google dà un permesso che puoi revocare quando vuoi, da qui o da myaccount.google.com.</p><button class="btn" data-gconn-collega="1">Collega Google</button></div></div>';
+    return '<div class="card" style="background:var(--cream)"><div class="empty" style="padding:24px 8px"><b>Collega la tua casella email.</b><p class="faint" style="margin:8px 0 14px">Cosa cambia: la posta la leggi e la scrivi dal CRM, agganciata ai clienti; preventivi e lettere d\'incarico partono dal tuo indirizzo. <b>Con Google</b> in più le riunioni vanno in Google Calendar con la Meet, i tuoi impegni compaiono nel calendario del CRM e bloccano il link «Prenota una call»; il CRM non conserva la password, Google dà un permesso revocabile. <b>Con un\'altra casella</b> (OVH, Aruba, PEC, hosting) hai la posta, non il calendario; la password resta cifrata nel database.</p><div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button class="btn" data-gconn-collega="1">Collega Google</button><button class="btn ghost" data-imap-form="1">Collega un\'altra casella</button></div></div></div>';
   }
   var imp = (D.impg || []).filter(function (e) { return e.pro_id === me.pro_id && giornoImpg(e.inizio) >= today(); });
   var h = '<div class="card" style="background:' + (g.errore ? "var(--red-soft, #fbeae5)" : "var(--green-soft)") + ';border-color:transparent"><div class="cardhead"><h2>' + esc(g.email || "Account collegato") + "</h2>" +
@@ -4866,7 +4915,7 @@ function schedaEmail(p) {
 /* Il composer: una finestra sola per rispondere, scrivere a un cliente, mandare
    un preventivo o una lettera. Se c'è un cliente, la mail finisce nel suo diario. */
 function apriComposer(o) {
-  var g = gconnMia(); if (!g) { toast("Prima collega Google dal profilo", true); return; }
+  var g = postaConn(); if (!g) { toast("Prima collega la tua casella dal profilo", true); return; }
   var c = o.cliente_id ? by(D.cli, o.cliente_id) : clienteDaEmail(o.a);
   modal('<div class="box wide"><h2>' + (o.inReplyTo ? "Rispondi" : "Nuova email") + '</h2><p class="faint" style="margin-bottom:10px">Parte da <b>' + esc(g.email || "") + "</b>" + (o.nota ? " · " + esc(o.nota) : "") + "</p>" +
     '<form data-gmail-invia="1">' +
@@ -5205,7 +5254,7 @@ function schedaIncarico(k) {
       i.stato === "Annullata" ? '<button class="btn sm ghost" data-inc-nuovo="' + k.id + '">Nuova lettera</button>' :
       '<button class="btn sm ghost" data-inc-link="' + i.id + '" title="' + esc(url) + '">Copia il link per la firma</button>' +
       (cl.telefono ? '<a class="btn sm ghost" target="_blank" rel="noopener" href="https://wa.me/' + esc(String(cl.telefono).replace(/\D/g, "").replace(/^0/, "39")) + '?text=' + esc(encodeURIComponent("Ciao " + (cl.referente || cl.nome || "") + ", ti mando la lettera d'incarico per «" + k.titolo + "»: la puoi leggere e firmare da qui " + url)) + '" data-inc-inviata="' + i.id + '">WhatsApp</a>' : "") +
-      (cl.email ? (gconnMia() ? '<button class="btn sm ghost" data-gmail-inc="' + i.id + '">Email</button>' : '<a class="btn sm ghost" href="mailto:' + esc(cl.email) + "?subject=" + esc(encodeURIComponent("Lettera d'incarico — " + k.titolo)) + "&body=" + esc(encodeURIComponent("Gentile " + (cl.referente || cl.nome || "") + ",\n\nle invio la lettera d'incarico per «" + k.titolo + "». La può leggere e firmare da questo link:\n" + url + "\n\nResto a disposizione.\n" + (me.nome || ""))) + '" data-inc-inviata="' + i.id + '">Email</a>') : "") +
+      (cl.email ? (postaConn() ? '<button class="btn sm ghost" data-gmail-inc="' + i.id + '">Email</button>' : '<a class="btn sm ghost" href="mailto:' + esc(cl.email) + "?subject=" + esc(encodeURIComponent("Lettera d'incarico — " + k.titolo)) + "&body=" + esc(encodeURIComponent("Gentile " + (cl.referente || cl.nome || "") + ",\n\nle invio la lettera d'incarico per «" + k.titolo + "». La può leggere e firmare da questo link:\n" + url + "\n\nResto a disposizione.\n" + (me.nome || ""))) + '" data-inc-inviata="' + i.id + '">Email</a>') : "") +
       '<button class="btn sm ghost" data-inc-annulla="' + i.id + '">Annulla</button>') +
     '<button class="btn sm" data-stampa="' + esc((i.numero || "Incarico") + " " + (cl.nome || "") + " " + (k.titolo || "")) + '">Stampa / PDF</button></div></div>';
   if (i.stato === "Firmata") h += '<div class="card" style="background:var(--green-soft);border-color:transparent;margin-bottom:14px"><b>Firmata da ' + esc(i.firma_nome) + "</b> il " + dtOra(i.firmata_il) + (i.firma_ip ? ' <span class="faint">· da ' + esc(i.firma_ip) + "</span>" : "") + '<div class="faint" style="margin-top:4px">Il testo è sigillato con la sua impronta: se serve cambiare qualcosa, fai una nuova versione.</div></div>';
@@ -5272,7 +5321,7 @@ function foglioA4(k, o) {
     '<div class="dbright">' +
     '<button class="btn sm ghost" data-mprev-apri="' + k.id + '">Modelli</button>' +
     (nas.length ? '<select class="altre" data-blocco-mostra="' + k.id + '"><option value="">Rimetti un blocco…</option>' + BLOCCHI.filter(function (b) { return nas.indexOf(b[0]) > -1; }).map(function (b) { return '<option value="' + b[0] + '">' + b[1] + "</option>"; }).join("") + "</select>" : "") +
-    (cl.email ? (gconnMia() ? '<button class="btn sm ghost" data-gmail-prev="' + k.id + '">Invia per email</button>' : '<a class="btn sm ghost" href="' + esc(mailtoPreventivo(k, cl)) + '">Invia per email</a>') : "") +
+    (cl.email ? (postaConn() ? '<button class="btn sm ghost" data-gmail-prev="' + k.id + '">Invia per email</button>' : '<a class="btn sm ghost" href="' + esc(mailtoPreventivo(k, cl)) + '">Invia per email</a>') : "") +
     (k.stato === "Bozza" ? '<button class="btn sm ghost" data-del="com:' + k.id + '" title="Elimina questa bozza">Elimina bozza</button>' : '<button class="btn sm ghost" data-route="commessa|' + k.id + '|incarico">Incarico' + (incOf(k.id).some(function (i) { return i.stato === "Firmata"; }) ? " ✓" : "") + "</button>") +
     '<button class="btn sm" data-stampa="' + esc(nomeFile(k)) + '">Stampa / PDF</button></div></div>';
 
@@ -6615,6 +6664,13 @@ async function clicApp(e, t, d) {
   if (d.recVedi) { RECVEDI = RECVEDI === d.recVedi ? null : d.recVedi; render(); return; }
   if (d.recRiassumi) { var rr7 = by(D.riu, d.recRiassumi); if (!rr7 || !rr7.trascrizione) return; toast("Preparo gli appunti…"); try { await riassumiRiunione(rr7.id, rr7.trascrizione); } catch (e) { toast(String(e && e.message || e), true); } return; }
   if (d.gconnCollega) { try { await collegaGoogle(); } catch (e) { toast(String(e && e.message || e), true); } return; }
+  if (d.imapForm) { apriFormCasella(); var mc0 = mconnMia(); if (mc0) { var fm0 = el("#modal form"); if (fm0) { fm0.preset.value = "altro"; fm0.email.value = mc0.email; fm0.utente.value = mc0.utente !== mc0.email ? mc0.utente : ""; fm0.imap_host.value = mc0.imap_host; fm0.smtp_host.value = mc0.smtp_host; fm0.smtp_port.value = String(mc0.smtp_port); } } return; }
+  if (d.imapVia) {
+    if (!confirm("Scollegare la casella? La password viene cancellata dal database.")) return;
+    try { await chiamaImap({ azione: "scollega" }); } catch (e) { toast(String(e && e.message || e), true); return; }
+    GM = { chiave: "", lista: [], page: null, caric: false, errore: "", cerca: "", filtro: "inbox", msg: null, msgCaric: "", nonLetti: 0, cli: {} };
+    await reload(["mconn"]); toast("Casella scollegata"); render(); return;
+  }
   if (d.gconnVia) {
     if (!confirm("Scollegare Google? La posta e il calendario spariscono dal CRM (su Google resta tutto).")) return;
     try { await chiamaGoogle({ azione: "scollega" }); } catch (e) { toast(String(e && e.message || e), true); return; }
@@ -7507,6 +7563,15 @@ async function invioModulo(e, f) {
     if (TSEXTRA.indexOf(lid9) === -1) TSEXTRA.push(lid9);
     render(); return;
   }
+  if (f.dataset.imapCollega) {
+    e.preventDefault();
+    var bi = f.querySelector("button[type=submit]"); if (bi) { bi.disabled = true; bi.textContent = "Provo la casella…"; }
+    try {
+      var ji = await chiamaImap({ azione: "collega", email: f.email.value.trim(), password: f.password.value, utente: f.utente.value.trim(), imap_host: f.imap_host.value.trim(), imap_port: 993, smtp_host: f.smtp_host.value.trim(), smtp_port: +f.smtp_port.value });
+    } catch (x) { toast(String(x && x.message || x), true); if (bi) { bi.disabled = false; bi.textContent = "Prova e collega"; } return; }
+    f.password.value = "";
+    await reload(["mconn"]); closeModal(); GM.chiave = ""; toast("Casella collegata: " + (ji.email || "")); render(); return;
+  }
   if (f.dataset.gmailCerca) {
     e.preventDefault(); GM.cerca = f.q.value || ""; GM.msg = null; render(); return;
   }
@@ -7515,7 +7580,7 @@ async function invioModulo(e, f) {
     var bt = f.querySelector("button[type=submit]"); if (bt) { bt.disabled = true; bt.textContent = "Invio…"; }
     var jm;
     try {
-      jm = await chiamaGoogle({ azione: "mail_send", a: f.a.value.trim(), cc: f.cc.value.trim(), oggetto: f.oggetto.value.trim(), testo: f.testo.value, threadId: f.threadId.value || null, inReplyTo: f.inReplyTo.value || null, references: f.references.value || null });
+      jm = await chiamaPosta({ azione: "mail_send", a: f.a.value.trim(), cc: f.cc.value.trim(), oggetto: f.oggetto.value.trim(), testo: f.testo.value, threadId: f.threadId.value || null, inReplyTo: f.inReplyTo.value || null, references: f.references.value || null });
     } catch (x) { toast(String(x && x.message || x), true); if (bt) { bt.disabled = false; bt.textContent = "Invia"; } return; }
     var cidM = f.cliente_id.value;
     if (cidM && f.diario && f.diario.checked) await segnaNelDiario({ id: jm.id, inviato: true, a: f.a.value, da: jm.da, oggetto: f.oggetto.value, data: new Date().toISOString(), snippet: f.testo.value.slice(0, 300) }, cidM);
@@ -7804,6 +7869,11 @@ document.addEventListener("change", async function (e) {
   if (e.target.dataset && e.target.dataset.comvista) { COMVISTA = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tf) { TF[e.target.dataset.tf] = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.incVedi) { INCVEDI = e.target.value; render(); return; }
+  if (e.target.dataset && e.target.dataset.imapPreset) {
+    var cs = CASELLE.filter(function (c) { return c[0] === e.target.value; })[0], fp = e.target.form;
+    if (cs && fp) { if (cs[2]) fp.imap_host.value = cs[2]; if (cs[3]) fp.smtp_host.value = cs[3]; fp.smtp_port.value = cs[0] === "outlook" || cs[0] === "libero" ? "587" : "465"; if (cs[0] === "altro") { fp.imap_host.value = ""; fp.smtp_host.value = ""; } }
+    return;
+  }
   if (e.target.dataset && e.target.dataset.pcfg) {
     var cp = e.target.dataset.pcfg, vp = e.target.type === "checkbox" ? e.target.checked : e.target.value;
     if (cp === "slug") { vp = slugDa(vp); e.target.value = vp; if (!vp) { toast("L'indirizzo non può essere vuoto", true); return; } }
