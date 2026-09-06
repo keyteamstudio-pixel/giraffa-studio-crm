@@ -25,13 +25,13 @@ var APPVER = (function () {
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
 var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
-  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [] };
+  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
 var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
-  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito" };
+  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev" };
 
 /* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
 var COLONNE = { port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd" };
@@ -1332,67 +1332,7 @@ function vCommessa() {
     }).join("") + "</tbody></table>" + gantt(k) : vuoto("Nessuna fase: dividi il lavoro in passaggi così il cliente vede l'avanzamento.", '<button class="lnk" data-new="fasi" data-ctx="' + k.id + '">Aggiungi la prima fase</button>');
   }
   if (t === "servizi") {
-    var pg = progOf(k.id), rr = righeOf(k.id);
-    h += '<div class="cardhead"><h2>Preventivo</h2><div style="display:flex;gap:8px"><button class="btn sm ghost" data-new="prog" data-ctx="' + k.id + '">+ Progetto</button><button class="btn sm ghost" data-riga="' + k.id + '">+ Riga</button></div></div>';
-    if (!rr.length) h += vuoto("Il preventivo è vuoto: crea i progetti (sito, foto, social…) e aggiungi le righe.", '<button class="lnk" data-riga="' + k.id + '">Aggiungi la prima riga</button>');
-    var gruppi = pg.map(function (p) { return { p: p, r: rr.filter(function (x) { return x.progetto_id === p.id && !x.opzionale; }) }; });
-    var senza = rr.filter(function (x) { return !x.progetto_id && !x.opzionale; });
-    if (senza.length) gruppi.push({ p: { id: null, nome: "Altre voci" }, r: senza });
-    gruppi.forEach(function (g) {
-      if (!g.r.length && !g.p.id) return;
-      var sub = sum(g.r, function (x) { return rigaCalc(x).prezzo; });
-      var subc = sum(g.r, function (x) { return rigaCalc(x).costo; });
-      h += '<div class="pgroup"><div class="pghead"><div><b>' + esc(g.p.nome) + "</b>" + (g.p.pro_id ? " " + avatar(g.p.pro_id, 22) : "") + (g.p.stato ? ' <span class="badge">' + esc(g.p.stato) + "</span>" : "") + "</div><div>" +
-        (vediCosti() ? '<span class="faint">costo ' + eur(subc) + "</span> · " : "") + "<b>" + eur(sub) + "</b>" +
-        (g.p.id ? ' <button class="lnk mini2" data-edit="prog:' + g.p.id + '">modifica</button>' : "") + "</div></div>";
-      h += g.r.length ? '<table><thead><tr><th>Voce</th><th>Chi</th><th class="num">Q.tà</th><th class="num">Prezzo un.</th>' + (vediCosti() ? '<th class="num">Compenso</th>' : "") + '<th class="num">Totale</th><th></th></tr></thead><tbody>' +
-        g.r.map(function (r) {
-          var rc = rigaCalc(r);
-          var oreR = sum(ore.filter(function (o) { return o.pro_id === rc.pro; }), function (o) { return o.ore; });
-          return "<tr><td><b>" + esc(rc.nome) + "</b>" + (r.tipo && r.tipo !== "Servizio" ? ' <span class="badge b-amber">' + esc(r.tipo) + "</span>" : "") +
-            (r.descrizione ? '<div class="faint">' + esc(r.descrizione) + "</div>" : "") +
-            (r.ricorrente ? '<div class="faint">' + esc(r.periodo || "Mensile") + " × " + (r.cicli || 1) + "</div>" : "") +
-            (r.ore_stimate ? '<div class="faint">' + num(r.ore_stimate, 0) + " h stimate · " + num(oreR, 1) + " fatte</div>" : "") + "</td>" +
-            "<td>" + (rc.pro ? avatar(rc.pro, 24) : '<span class="faint">—</span>') + "</td>" +
-            '<td class="num">' + num(rc.q, rc.q % 1 ? 1 : 0) + '<div class="faint">' + esc(rc.unita || "") + "</div></td>" +
-            '<td class="num">' + eur(rc.pu) + (r.sconto ? '<div class="faint">−' + r.sconto + "%</div>" : "") + "</td>" +
-            (vediCosti() ? '<td class="num">' + eur(rc.costo) + "</td>" : "") +
-            '<td class="num"><b>' + eur(rc.prezzo) + "</b></td>" +
-            '<td class="num"><button class="lnk" data-riga-edit="' + r.id + '">Modifica</button></td></tr>';
-        }).join("") + "</tbody></table>" : '<div class="empty" style="padding:12px 2px">Nessuna voce in questo progetto. <button class="lnk" data-riga="' + k.id + '">Aggiungine una</button></div>';
-      h += "</div>";
-    });
-    var opzR = rr.filter(function (x) { return x.opzionale; });
-    if (opzR.length) {
-      h += '<div class="pgroup opz"><div class="pghead"><div><b>Opzioni</b> <span class="faint">non incluse nel totale</span></div><div><b>' + eur(c.opz) + "</b></div></div><table><tbody>" +
-        opzR.map(function (r) {
-          var rc = rigaCalc(r);
-          return "<tr><td><b>" + esc(rc.nome) + "</b>" + (r.descrizione ? '<div class="faint">' + esc(r.descrizione) + "</div>" : "") + '</td><td class="num">' + num(rc.q, 0) + " " + esc(rc.unita) + '</td><td class="num"><b>' + eur(rc.prezzo) + '</b></td><td class="num"><button class="lnk" data-riga-edit="' + r.id + '">Modifica</button></td></tr>';
-        }).join("") + "</tbody></table></div>";
-    }
-    if (rr.length) {
-      var perPro = {};
-      rr.filter(function (x) { return !x.opzionale && x.tipo !== "Sconto"; }).forEach(function (x) {
-        var cc = rigaCalc(x), pid = cc.pro || k.owner_id;
-        perPro[pid] = (perPro[pid] || 0) + cc.prezzo;
-      });
-      var pids = Object.keys(perPro);
-      if (pids.length > 1) {
-        h += '<div class="card" style="margin-top:14px;background:var(--cream)"><div class="cardhead"><h2>Chi fattura cosa</h2><span class="faint">ognuno emette la sua fattura al cliente</span></div>' +
-          '<table><tbody>' + pids.sort(function (a, b) { return perPro[b] - perPro[a]; }).map(function (pid) {
-            return "<tr><td>" + avatar(pid, 20) + " " + esc(nameOf(D.pros, pid)) + '</td><td class="num">' + eur(perPro[pid]) + "</td></tr>";
-          }).join("") + "</tbody></table></div>";
-      }
-      h += '<div class="totali"><table><tbody>' +
-        row2("Imponibile", eur(c.imp + c.sconto)) +
-        (c.sconto ? row2("Sconto commerciale (" + (k.sconto || 0) + "%)", "−" + eur(c.sconto)) : "") +
-        row2("<b>Totale imponibile</b>", "<b>" + eur(c.tot) + "</b>") +
-        row2("IVA " + (k.iva == null ? 22 : k.iva) + "%", eur(c.iva)) +
-        row2("<b>Totale con IVA</b>", "<b>" + eur(c.lordo) + "</b>") +
-        (c.mrr ? row2("Di cui ricorrente", eur(c.mrr) + " al mese") : "") +
-        (c.spese ? row2("Di cui spese e trasferte", eur(c.spese)) : "") +
-        "</tbody></table></div>";
-    }
+    h += foglioA4(k, { dentro: true });
   }
   if (t === "attivita") {
     h += '<div class="cardhead"><h2>Attività</h2><button class="btn sm ghost" data-new="task" data-ctx="' + k.id + '">Apri in dettaglio</button></div>';
@@ -4649,22 +4589,125 @@ function bloccoSezioni(k, dove) {
     (dove === "dopo" ? "dopo i prezzi" : "prima dei prezzi") + "</button></div>";
   return h;
 }
+/* ---------------- il preventivo è il foglio ----------------
+   Si crea, si scrive, si importa e si gestisce sempre qui: un A4 dove ogni
+   testo si riscrive sul posto, le voci si aggiungono in riga, i blocchi si
+   tolgono e si rimettono, e da un modello (standard dello studio o tuo) nasce
+   tutto in un colpo. */
+var DOCNUOVO = null, CAMBIACLI = null;
+function opzDoc(k) { var o = k && k.doc_opzioni; if (typeof o === "string") { try { o = JSON.parse(o); } catch (e) { o = {}; } } return o && typeof o === "object" ? o : {}; }
+function nascosto(k, key) { return (opzDoc(k).nascosti || []).indexOf(key) > -1; }
+var BLOCCHI = [["premessa", "Premessa"], ["pagamenti", "Come si paga"], ["opzioni", "Voci opzionali"], ["condizioni", "Condizioni"], ["chiusura", "Chiusura"], ["firme", "Firme"], ["pie", "Nota sulla validità"]];
+function bloccoVia(kid, key) { return '<button class="lnk mini2 noprint dvia" data-blocco="' + kid + "|" + key + '|via" title="Togli questo blocco dal foglio">togli</button>'; }
+function modelliPrev() {
+  return D.mprev.slice().sort(function (a, b) {
+    var ra = a.standard ? 0 : a.pro_id === me.pro_id ? 1 : 2, rb = b.standard ? 0 : b.pro_id === me.pro_id ? 1 : 2;
+    return ra - rb || (a.nome || "").localeCompare(b.nome || "");
+  });
+}
+async function nuovoPreventivo(ctx) {
+  ctx = ctx || {};
+  var r = await sb.from("commesse").insert({ titolo: "Nuovo preventivo", cliente_id: ctx.cliente_id || null, owner_id: me.pro_id, stato: "Bozza",
+    ambito: ctx.ambito || "auto", data: today(), validita: 30, iva: 22, sezioni: [], tipo_prezzo: "Fisso" }).select().single();
+  if (r.error) { toast(erroreUmano(r.error), true); return; }
+  await reload(["com"]);
+  DOCNUOVO = r.data.id;
+  go("commessa", r.data.id, "servizi");
+}
+/* applicare un modello: sezioni e voci si aggiungono, i testi fissi solo se sono vuoti */
+async function applicaModelloPrev(kid, mid) {
+  var k = by(D.com, kid), m = by(D.mprev, mid); if (!k || !m) return;
+  var c = m.contenuto || {}; if (typeof c === "string") { try { c = JSON.parse(c); } catch (e) { c = {}; } }
+  var patch = {};
+  if (c.titolo && (!k.titolo || k.titolo === "Nuovo preventivo")) patch.titolo = c.titolo;
+  ["premessa", "condizioni", "chiusura"].forEach(function (f) { if (c[f] && !k[f]) patch[f] = c[f]; });
+  if (c.validita != null && k.validita == null) patch.validita = c.validita;
+  if (c.iva != null && k.iva == null) patch.iva = c.iva;
+  if (c.sezioni && c.sezioni.length) {
+    var gia = sezioniDi(k).map(function (x) { return (x.t || "").toLowerCase(); });
+    var nuove = c.sezioni.filter(function (x) { return gia.indexOf((x.t || "").toLowerCase()) < 0; }).map(function (x) { return { t: x.t || "", d: x.d === "dopo" ? "dopo" : "prima", x: x.x || "", v: (x.v || []).slice() }; });
+    if (nuove.length) patch.sezioni = sezioniDi(k).concat(nuove);
+  }
+  if (c.nascosti && c.nascosti.length) { var o = opzDoc(k); patch.doc_opzioni = Object.assign({}, o, { nascosti: (o.nascosti || []).concat(c.nascosti.filter(function (x) { return (o.nascosti || []).indexOf(x) < 0; })) }); }
+  if (Object.keys(patch).length) { var r1 = await sb.from("commesse").update(patch).eq("id", kid); if (r1.error) { toast(erroreUmano(r1.error), true); return; } }
+  if (c.voci && c.voci.length) {
+    var n0 = righeOf(kid).length;
+    var righe = c.voci.map(function (v, i) {
+      return { commessa_id: kid, nome: v.nome || "Voce", descrizione: v.descrizione || null, qty: v.qty || 1, unita: v.unita || null,
+        prezzo_unit: v.prezzo_unit || 0, costo_unit: v.costo_unit || null, opzionale: !!v.opzionale, ricorrente: !!v.ricorrente,
+        periodo: v.periodo || null, cicli: v.cicli || null, assegnato_id: me.pro_id, ordine: n0 + i + 1, tipo: "Servizio" };
+    });
+    var r2 = await sb.from("righe").insert(righe); if (r2.error) { toast(erroreUmano(r2.error), true); return; }
+  }
+  DOCNUOVO = null; closeModal();
+  await reload(["com", "righe"]); toast("Modello «" + m.nome + "» applicato"); render();
+}
+function contenutoDaFoglio(k) {
+  return { titolo: k.titolo, premessa: k.premessa || "", condizioni: k.condizioni || "", chiusura: k.chiusura || "", validita: k.validita, iva: k.iva,
+    sezioni: sezioniDi(k), nascosti: opzDoc(k).nascosti || [],
+    voci: righeOf(k.id).slice().sort(function (a, b) { return (a.ordine || 0) - (b.ordine || 0); }).map(function (r) {
+      var rc = rigaCalc(r);
+      return { nome: rc.nome, descrizione: r.descrizione || "", qty: rc.q, unita: rc.unita, prezzo_unit: rc.pu, costo_unit: r.costo_unit, opzionale: !!r.opzionale, ricorrente: !!r.ricorrente, periodo: r.periodo, cicli: r.cicli };
+    }) };
+}
+function apriModelliPrev(kid) {
+  var k = by(D.com, kid); if (!k) return;
+  var lista = modelliPrev();
+  var gruppo = function (tit, arr) {
+    if (!arr.length) return "";
+    return '<p class="faint" style="margin:12px 0 4px;font-weight:600">' + tit + "</p>" + arr.map(function (m) {
+      var c = m.contenuto || {};
+      return '<div class="mprow"><div><b>' + esc(m.nome) + "</b>" + (m.descrizione ? '<div class="faint">' + esc(m.descrizione) + "</div>" : "") +
+        '<div class="faint">' + ((c.sezioni || []).length) + " sezioni · " + ((c.voci || []).length) + " voci" + (m.pro_id && m.pro_id !== me.pro_id ? " · di " + esc(nameOf(D.pros, m.pro_id)) : "") + "</div></div>" +
+        '<div class="mpact"><button class="btn sm" data-mprev-usa="' + kid + "|" + m.id + '">Applica</button>' +
+        (m.pro_id === me.pro_id || (puo("studio") && !m.pro_id) ? '<button class="lnk mini2" data-del="mprev:' + m.id + '">elimina</button>' : "") + "</div></div>";
+    }).join("");
+  };
+  modal('<div class="box wide"><h2>Modelli di preventivo</h2>' +
+    '<p class="faint" style="margin-bottom:6px">Un modello porta sul foglio sezioni, voci e testi: poi riscrivi quello che vuoi. Sezioni e voci si aggiungono a quelle che ci sono già; premessa, condizioni e chiusura solo se sono vuote.</p>' +
+    gruppo("Standard dello studio", lista.filter(function (m) { return m.standard; })) +
+    gruppo("I miei", lista.filter(function (m) { return !m.standard && m.pro_id === me.pro_id; })) +
+    gruppo("Condivisi dai colleghi", lista.filter(function (m) { return !m.standard && m.pro_id !== me.pro_id; })) +
+    '<div class="actions"><button type="button" class="btn ghost" data-close>Chiudi</button><button class="btn" data-mprev-salva="' + kid + '">Salva questo foglio come modello</button></div></div>');
+}
+function apriSalvaModello(kid) {
+  var k = by(D.com, kid); if (!k) return;
+  modal('<div class="box"><h2>Salva come modello</h2><form data-mprev-form="' + kid + '">' +
+    fld("nome", "Nome del modello", "text", k.titolo === "Nuovo preventivo" ? "" : k.titolo, true) +
+    fld("descrizione", "Per cosa lo userai", "text", "") +
+    '<label class="chk"><input type="checkbox" name="condiviso" value="si"><span>Condiviso con lo studio</span></label>' +
+    (puo("studio") ? '<label class="chk"><input type="checkbox" name="standard" value="si"><span>Modello standard dello studio (lo vedono tutti fra i primi)</span></label>' : "") +
+    '<p class="faint" style="margin-top:8px">Salvo titolo, premessa, sezioni, voci (con prezzi), condizioni, chiusura, validità e IVA. Non salvo il cliente.</p>' +
+    '<div class="actions"><button type="button" class="btn ghost" data-close>Annulla</button><button class="btn" type="submit">Salva</button></div></form></div>');
+}
 function vDocumento() {
   var k = by(D.com, current);
   if (!k) return '<div class="card">Preventivo non trovato. <button class="lnk" data-go="commesse">Torna all\'elenco</button></div>';
+  return crumbs([[gruppoDi("commesse") || "Clienti"], ["Preventivi", "commesse"], [k.titolo, "commessa", k.id, "servizi"], ["Documento"]]) + foglioA4(k, {});
+}
+function foglioA4(k, o) {
+  o = o || {};
   var amb = ambitoCom(k), em = emittente(k), cl = by(D.cli, k.cliente_id) || {};
   var c = calc(k), rr = righeOf(k.id), pgt = progOf(k.id), pg = pagOf(k.id);
-
-  var h = crumbs([[gruppoDi("commesse") || "Clienti"], ["Preventivi", "commesse"], [k.titolo, "commessa", k.id, "servizi"], ["Documento"]]);
-  h += '<div class="docbar noprint">' +
+  var nas = opzDoc(k).nascosti || [];
+  var h = '<div class="docbar noprint">' +
     '<div class="dbleft"><span class="badge ' + (amb === "studio" ? "b-blue" : "b-amber") + '">' + ambitoEt(amb) + "</span>" +
     '<select data-qset="com|ambito|' + k.id + '" title="Chi emette questo preventivo">' +
     opzioni([["auto", "Deciso dalle righe"], ["personale", "Sempre personale"], ["studio", "Sempre dello studio"]], k.ambito || "auto") + "</select>" +
     '<span class="faint">clicca qualsiasi testo per riscriverlo</span></div>' +
-    '<div class="dbright"><button class="btn sm ghost" data-route="commessa|' + k.id + '|servizi">Torna al preventivo</button>' +
-    '<button class="btn sm ghost" data-sezpreset="' + k.id + '">Sezioni del mio mestiere</button>' +
+    '<div class="dbright">' +
+    '<button class="btn sm ghost" data-mprev-apri="' + k.id + '">Modelli</button>' +
+    (nas.length ? '<select class="altre" data-blocco-mostra="' + k.id + '"><option value="">Rimetti un blocco…</option>' + BLOCCHI.filter(function (b) { return nas.indexOf(b[0]) > -1; }).map(function (b) { return '<option value="' + b[0] + '">' + b[1] + "</option>"; }).join("") + "</select>" : "") +
     (cl.email ? '<a class="btn sm ghost" href="' + esc(mailtoPreventivo(k, cl)) + '">Invia per email</a>' : "") +
+    (k.stato === "Bozza" ? '<button class="btn sm ghost" data-del="com:' + k.id + '" title="Elimina questa bozza">Elimina bozza</button>' : "") +
     '<button class="btn sm" data-stampa="' + esc(nomeFile(k)) + '">Stampa / PDF</button></div></div>';
+
+  if (DOCNUOVO === k.id || (!rr.length && !sezioniDi(k).length && !k.premessa)) {
+    var mm = modelliPrev();
+    h += '<div class="card dmodelli noprint"><div class="cardhead"><h2>Da dove parti?</h2><span class="faint">un modello mette sezioni e voci sul foglio, poi riscrivi tutto come vuoi</span></div><div class="chips">' +
+      mm.map(function (m) { return '<button class="chipbtn" data-mprev-usa="' + k.id + "|" + m.id + '" title="' + esc(m.descrizione || "") + '">' + (m.standard ? "" : m.pro_id === me.pro_id ? "★ " : "⇅ ") + esc(m.nome) + "</button>"; }).join("") +
+      '<button class="chipbtn" data-mprev-bianco="' + k.id + '">Foglio bianco</button></div></div>';
+  }
 
   h += '<div class="a4"><div class="dtop">' +
     '<div class="dmitt">' + (em.logo ? '<img class="dlogo" src="' + esc(em.logo) + '" alt="">' : '<i class="mark"></i>') + "<div><b>" + esc(em.nome || "—") + "</b>" +
@@ -4681,14 +4724,18 @@ function vDocumento() {
     "<tr><td>Validità</td><td>" + ed("com", k.id, "validita", k.validita == null ? 30 : k.validita, "30", "n") + " giorni</td></tr>" +
     "</tbody></table></div></div>";
 
-  h += '<div class="ddest"><span class="lb">Spettabile</span><b>' + ed("com", k.id, "intestatario", k.intestatario || cl.nome, "Intestazione (es. Spett.le La Staffa Srl)") + "</b>" +
+  h += '<div class="ddest"><span class="lb">Spettabile' + (cl.id ? ' <button class="lnk mini2 noprint" data-cambiacli="' + k.id + '">cambia cliente</button>' : "") + "</span>";
+  if (!cl.id || CAMBIACLI === k.id) {
+    h += '<div class="noprint dcli"><select data-qset="com|cliente_id|' + k.id + '"><option value="">— scegli il cliente —</option>' + opt(fcli().length ? fcli() : D.cli, k.cliente_id) + '<option value="__nuovo">＋ nuovo cliente…</option></select>' + (cl.id ? ' <button class="lnk mini2" data-cambiacli="0">annulla</button>' : "") + "</div>";
+  }
+  h += "<b>" + ed("com", k.id, "intestatario", k.intestatario || cl.nome, cl.id ? "Intestazione (es. Spett.le La Staffa Srl)" : "Intestazione, se diversa dal nome del cliente") + "</b>" +
     (cl.id ? "<div>" + ed("cli", cl.id, "referente", cl.referente, "alla cortese attenzione di…") + "</div>" +
       "<div>" + ed("cli", cl.id, "indirizzo", cl.indirizzo, "indirizzo") + "</div>" +
       "<div>" + ed("cli", cl.id, "piva", cl.piva, "partita IVA") + " · " + ed("cli", cl.id, "email", cl.email, "email") + "</div>" : "") +
     "</div>";
 
   h += '<h1 class="dtit">' + ed("com", k.id, "titolo", k.titolo, "Titolo del preventivo") + "</h1>";
-  h += '<div class="dpre">' + edBlocco("com", k.id, "premessa", k.premessa, "Due righe di premessa: cosa ci siamo detti, cosa proponiamo, perché.") + "</div>";
+  if (!nascosto(k, "premessa")) h += '<div class="dpre">' + edBlocco("com", k.id, "premessa", k.premessa, "Due righe di premessa: cosa ci siamo detti, cosa proponiamo, perché.") + bloccoVia(k.id, "premessa") + "</div>";
   h += bloccoSezioni(k, "prima");
 
   var gruppi = pgt.map(function (p) { return { p: p, r: rr.filter(function (x) { return x.progetto_id === p.id && !x.opzionale; }) }; });
@@ -4707,31 +4754,32 @@ function vDocumento() {
           '<td class="num">' + ed("righe", r.id, "qty", rc.q, "1", "n") + " " + esc(rc.unita || "") + "</td>" +
           '<td class="num">' + ed("righe", r.id, "prezzo_unit", rc.pu, "0", "n") + " €" + (r.sconto ? '<div class="dnota">−' + r.sconto + "%</div>" : "") + "</td>" +
           '<td class="num"><b>' + eur(rc.prezzo) + "</b></td>" +
-          '<td class="num noprint"><button class="lnk mini2" data-del="righe:' + r.id + '">togli</button></td></tr>';
+          '<td class="num noprint"><button class="lnk mini2" data-riga-edit="' + r.id + '" title="Chi la fa, compenso, opzionale, ricorrenza">dettagli</button> <button class="lnk mini2" data-del="righe:' + r.id + '">togli</button></td></tr>';
       }).join("") + "</tbody></table>" +
-      '<div class="noprint" style="margin:6px 0 0"><button class="lnk mini2" data-riga="' + k.id + '">+ aggiungi una voce</button></div></div>';
+      '<div class="noprint" style="margin:6px 0 0"><button class="lnk mini2" data-rigainline="' + k.id + "|" + (g.p.id || "") + '">+ aggiungi una voce</button></div></div>';
   });
+  h += '<div class="noprint dsezadd"><button class="lnk mini2" data-new="prog" data-ctx="' + k.id + '">+ aggiungi un gruppo di voci (un progetto: sito, foto, social…)</button></div>';
 
   h += '<table class="dtot"><tbody>' +
     row2("Imponibile", eur(c.imp + c.sconto)) +
-    (c.sconto ? row2("Sconto " + (k.sconto || 0) + "%", "−" + eur(c.sconto)) : "") +
+    row2("Sconto " + ed("com", k.id, "sconto", k.sconto || 0, "0", "n") + "%", c.sconto ? "−" + eur(c.sconto) : '<span class="noprint faint">nessuno</span>') +
     row2("<b>Totale imponibile</b>", "<b>" + eur(c.tot) + "</b>") +
-    row2("IVA " + (k.iva == null ? 22 : k.iva) + "%", eur(c.iva)) +
+    row2("IVA " + ed("com", k.id, "iva", k.iva == null ? 22 : k.iva, "22", "n") + "%", eur(c.iva)) +
     row2('<b class="big">Totale</b>', '<b class="big">' + eur(c.lordo) + "</b>") +
     (c.mrr ? row2("di cui ricorrente", eur(c.mrr) + " al mese") : "") +
     "</tbody></table>";
 
   var opzR = rr.filter(function (x) { return x.opzionale; });
-  if (opzR.length) {
-    h += '<div class="dsez"><div class="dsh"><b>Se le vorrete attivare</b><span class="faint">non incluse nel totale</span></div>' +
+  if (opzR.length && !nascosto(k, "opzioni")) {
+    h += '<div class="dsez"><div class="dsh"><b>Se le vorrete attivare</b><span class="faint">non incluse nel totale</span>' + bloccoVia(k.id, "opzioni") + "</div>" +
       '<table class="dtab"><tbody>' + opzR.map(function (r) {
         var rc = rigaCalc(r);
         return "<tr><td>" + ed("righe", r.id, "nome", rc.nome) + '<div class="dnota">' + ed("righe", r.id, "descrizione", r.descrizione, "") + '</div></td><td class="num">' + eur(rc.prezzo) + "</td></tr>";
       }).join("") + "</tbody></table></div>";
   }
 
-  if (pg.length) {
-    h += '<div class="dsez"><div class="dsh"><b>Come si paga</b></div><table class="dtab"><tbody>' +
+  if (pg.length && !nascosto(k, "pagamenti")) {
+    h += '<div class="dsez"><div class="dsh"><b>Come si paga</b>' + bloccoVia(k.id, "pagamenti") + '</div><table class="dtab"><tbody>' +
       pg.map(function (p) {
         return "<tr><td>" + ed("pag", p.id, "nome", p.nome, "descrizione") + "</td><td>" + (p.scadenza ? dt(p.scadenza) : "") + '</td><td class="num">' + eur(p.importo) + "</td></tr>";
       }).join("") + "</tbody></table>" +
@@ -4740,20 +4788,20 @@ function vDocumento() {
 
   h += bloccoSezioni(k, "dopo");
 
-  h += '<div class="dsez"><div class="dsh"><b>Condizioni</b></div>' +
+  if (!nascosto(k, "condizioni")) h += '<div class="dsez"><div class="dsh"><b>Condizioni</b>' + bloccoVia(k.id, "condizioni") + "</div>" +
     edBlocco("com", k.id, "condizioni", k.condizioni || em.condizioni || "", "Tempi, modalità, cosa serve da parte vostra, cosa non è compreso.") + "</div>";
-  h += '<div class="dchiusa">' + edBlocco("com", k.id, "chiusura", k.chiusura, "Una riga di chiusura: restiamo a disposizione, buon lavoro, a presto.") + "</div>";
+  if (!nascosto(k, "chiusura")) h += '<div class="dchiusa">' + edBlocco("com", k.id, "chiusura", k.chiusura, "Una riga di chiusura: restiamo a disposizione, buon lavoro, a presto.") + bloccoVia(k.id, "chiusura") + "</div>";
 
-  h += '<div class="dfirme"><div><span class="lb">Per ' + esc(em.nome || "noi") + "</span>" +
+  if (!nascosto(k, "firme")) h += '<div class="dfirme"><div><span class="lb">Per ' + esc(em.nome || "noi") + "</span>" +
     (em.firma ? '<img class="dfirmaimg" src="' + esc(em.firma) + '" alt="">' : "") + "<i></i>" +
     (em.firmatario && em.studio ? '<span class="dnota">' + esc(em.firmatario) + "</span>" : "") + "</div>" +
-    '<div><span class="lb">Per accettazione</span><i></i></div></div>';
+    '<div><span class="lb">Per accettazione</span><i></i>' + bloccoVia(k.id, "firme") + "</div></div>";
   if (!em.logo || !em.firma) h += '<p class="dnota noprint">' + (!em.logo ? (em.studio ? "Lo studio non ha ancora un logo caricato: si mette dalle Impostazioni. " : "Non hai ancora caricato il tuo logo. ") : "") +
     (!em.firma ? "Senza la tua firma il foglio esce con la riga vuota: la carichi dal tuo profilo." : "") + "</p>";
   var gg = k.validita == null ? 30 : +k.validita;
   var scade = new Date(dataDoc(k)); scade.setDate(scade.getDate() + gg);
-  h += '<p class="dpie">Preventivo valido ' + gg + " giorni dalla data di emissione, quindi fino al " + dt(iso(scade)) + "." +
-    (amb === "studio" ? " Ogni professionista opera con la propria partita IVA sotto il coordinamento di " + esc(em.nome || "Giraffa Studio") + "." : "") + "</p>";
+  if (!nascosto(k, "pie")) h += '<p class="dpie">Preventivo valido ' + gg + " giorni dalla data di emissione, quindi fino al " + dt(iso(scade)) + "." +
+    (amb === "studio" ? " Ogni professionista opera con la propria partita IVA sotto il coordinamento di " + esc(em.nome || "Giraffa Studio") + "." : "") + bloccoVia(k.id, "pie") + "</p>";
   h += "</div>";
   return h;
 }
@@ -5787,6 +5835,7 @@ function palMove(d) {
 function palGo(i) {
   var x = PALR[i]; if (!x) return;
   closeModal();
+  if (x.act === "com") { nuovoPreventivo({}); return; }
   if (x.act) { openForm(x.act); return; }
   go.apply(null, x.go);
 }
@@ -5980,6 +6029,26 @@ async function clicApp(e, t, d) {
     if (PLINK) { location.hash = ""; location.reload(); return; }
     await sb.auth.signOut(); location.reload(); return;
   }
+  if (d.mprevApri) { apriModelliPrev(d.mprevApri); return; }
+  if (d.mprevSalva) { apriSalvaModello(d.mprevSalva); return; }
+  if (d.mprevUsa) { var mu = d.mprevUsa.split("|"); await applicaModelloPrev(mu[0], mu[1]); return; }
+  if (d.mprevBianco) { DOCNUOVO = null; render(); return; }
+  if (d.cambiacli) { CAMBIACLI = d.cambiacli === "0" ? null : d.cambiacli; render(); return; }
+  if (d.blocco) {
+    var bz = d.blocco.split("|"), kb = by(D.com, bz[0]); if (!kb) return;
+    var ob = opzDoc(kb), nb = (ob.nascosti || []).filter(function (x) { return x !== bz[1]; });
+    if (bz[2] === "via") nb.push(bz[1]);
+    if (await salvaSubito("com", bz[0], { doc_opzioni: Object.assign({}, ob, { nascosti: nb }) })) toast(bz[2] === "via" ? "Blocco tolto dal foglio: lo rimetti da «Rimetti un blocco»" : "Blocco rimesso");
+    return;
+  }
+  if (d.rigainline) {
+    var ri = d.rigainline.split("|"), kr = by(D.com, ri[0]); if (!kr) return;
+    var rri = await sb.from("righe").insert({ commessa_id: kr.id, progetto_id: ri[1] || null, nome: "Nuova voce", qty: 1, prezzo_unit: 0, assegnato_id: me.pro_id, ordine: righeOf(kr.id).length + 1, tipo: "Servizio" }).select().single();
+    if (rri.error) { toast(erroreUmano(rri.error), true); return; }
+    await reload(["righe"]); render();
+    var nv = document.querySelector('[data-ed="righe|nome|' + rri.data.id + '"]'); if (nv) { nv.focus(); try { document.execCommand("selectAll", false, null); } catch (x) {} }
+    return;
+  }
   if (d.sezpreset) {
     var kp = by(D.com, d.sezpreset); if (!kp) return;
     var gia9 = sezioniDi(kp).map(function (x) { return (x.t || "").toLowerCase(); });
@@ -6069,6 +6138,7 @@ async function clicApp(e, t, d) {
   }
   if (d.apprSi) { await apprRispondi(d.apprSi, "Approvata"); return; }
   if (d.apprNo) { await apprRispondi(d.apprNo, "Modifiche richieste"); return; }
+  if (d.new === "com") { await nuovoPreventivo({ cliente_id: d.ctxCli || null, ambito: d.ctxAmb || "auto" }); return; }
   if (d.new) {
     var ctx = {};
     if (d.ctx) ctx.commessa_id = d.ctx;
@@ -6784,6 +6854,16 @@ async function invioModulo(e, f) {
     if (TSEXTRA.indexOf(lid9) === -1) TSEXTRA.push(lid9);
     render(); return;
   }
+  if (f.dataset.mprevForm) {
+    e.preventDefault();
+    var km = by(D.com, f.dataset.mprevForm); if (!km) return;
+    var nomeM = (f.nome.value || "").trim(); if (!nomeM) return;
+    var std = f.standard && f.standard.checked && puo("studio");
+    var rm = await sb.from("modelli_prev").insert({ pro_id: std ? null : me.pro_id, nome: nomeM, descrizione: (f.descrizione.value || "").trim() || null,
+      condiviso: std || (f.condiviso && f.condiviso.checked), standard: !!std, contenuto: contenutoDaFoglio(km) });
+    if (rm.error) { toast(erroreUmano(rm.error), true); return; }
+    await reload(["mprev"]); closeModal(); toast("Modello «" + nomeM + "» salvato"); return;
+  }
   if (f.dataset.qnew) {
     e.preventDefault();
     var inq = f.querySelector("input"), txq = inq.value.trim(); if (!txq) return;
@@ -7010,6 +7090,14 @@ document.addEventListener("change", async function (e) {
        data del passaggio, si congela il numero quando parte, e all'accettazione
        nascono progetti e attività. */
     if (tbk === "com" && campo === "stato") { await cambiaStato(rid, val); return; }
+    /* dal foglio: un cliente nuovo si crea al volo, con il nome e basta */
+    if (tbk === "com" && campo === "cliente_id" && val === "__nuovo") {
+      var nomeNc = prompt("Come si chiama il cliente?"); if (!nomeNc) { render(); return; }
+      var rnc = await sb.from("clienti").insert({ nome: nomeNc.trim(), stato: "Lead", owner_id: me.pro_id }).select().single();
+      if (rnc.error) { toast(erroreUmano(rnc.error), true); return; }
+      await reload(["cli"]); val = rnc.data.id; patch = { cliente_id: val };
+    }
+    if (tbk === "com" && campo === "cliente_id") CAMBIACLI = null;
     if (await salvaSubito(tbk, rid, patch)) toast("Salvato");
     if (tbk === "set") SET = D.set[0] || SET;
     if (tbk === "task" && campo === "stato") await dopoAttivita(rid);
@@ -7023,6 +7111,10 @@ document.addEventListener("change", async function (e) {
   }
   if (e.target.dataset && e.target.dataset.comvista) { COMVISTA = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tf) { TF[e.target.dataset.tf] = e.target.value; render(); return; }
+  if (e.target.dataset && e.target.dataset.bloccoMostra) {
+    var kbm = by(D.com, e.target.dataset.bloccoMostra), keym = e.target.value; if (!kbm || !keym) return;
+    var obm = opzDoc(kbm); await salvaSubito("com", kbm.id, { doc_opzioni: Object.assign({}, obm, { nascosti: (obm.nascosti || []).filter(function (x) { return x !== keym; }) }) }); return;
+  }
   if (e.target.dataset && e.target.dataset.tvista) { var tv9 = e.target.value; if (tv9 === "modelli") { e.target.value = ""; apriModelli(); return; } if (tv9) go("task", null, tv9); return; }
   if (e.target.dataset && e.target.dataset.tsetdate) { var tsd = e.target.dataset.tsetdate, vd = e.target.value || null; chiudiPop(); if (await salvaSubito("task", tsd, { scadenza: vd })) toast(vd ? "Spostata a " + etichettaGiorno(vd).toLowerCase() : "Scadenza tolta"); return; }
   if (e.target.dataset && e.target.dataset.tg) { TGROUP = e.target.value; render(); return; }
