@@ -397,10 +397,13 @@ function avanzProg(p) {
 function progVisibili() {
   return D.prog.filter(function (p) { return by(D.com, p.commessa_id); }).sort(function (a, b) { return (a.ordine || 0) - (b.ordine || 0); });
 }
+/* Il prezzo appartiene alla riga, non al listino: quando la riga nasce il
+   database ci copia dentro il prezzo di quel momento, e da lì non si muove
+   più. Cambiare il listino non tocca i numeri di un lavoro già fatto. */
 function rigaCalc(r) {
   var s = r.serv_id ? by(D.serv, r.serv_id) : null;
-  var pu = r.prezzo_unit != null ? +r.prezzo_unit : (s ? +s.prezzo || 0 : 0);
-  var cu = r.costo_unit != null ? +r.costo_unit : (s ? +s.costo || 0 : 0);
+  var pu = +r.prezzo_unit || 0;
+  var cu = +r.costo_unit || 0;
   var q = +r.qty || 1, cic = r.ricorrente ? Math.max(1, +r.cicli || 1) : 1;
   var sc = (+r.sconto || 0) / 100;
   var prezzo = Math.round(pu * q * cic * (1 - sc));
@@ -447,6 +450,7 @@ function erroreUmano(e) {
   if (/Email not confirmed/i.test(m)) return "L'email non è ancora confermata: guarda la posta.";
   if (/JWT|expired|token/i.test(m)) return "La sessione è scaduta: ricarica la pagina e rientra.";
   if (/row-level security|permission denied|42501/i.test(m) || c === "42501") return "Non hai i permessi per questa modifica.";
+  if (/progetti_uno_per_nome/.test(m)) return "In questo lavoro c'è già un progetto con lo stesso nome: dagliene uno diverso.";
   if (c === "23505" || /duplicate key/i.test(m)) return "Esiste già una voce uguale.";
   if (c === "23503" || /foreign key/i.test(m)) return "C'è qualcosa di collegato a questa voce: toglilo prima.";
   if (c === "23502" || /not-null|null value/i.test(m)) return "Manca un campo obbligatorio.";
@@ -7275,6 +7279,17 @@ async function avviaLavoro(kid) {
 async function cambiaStato(kid, val, quando) {
   var k = by(D.com, kid) || {};
   if (!k.id || k.stato === val) return;
+  /* Chiudere il lavoro non chiude il conto: se restano soldi fuori lo dico,
+     senza impedire niente. Il credito deve restare visibile. */
+  if (val === "Completato") {
+    var fuori = pagOf(kid).filter(function (p) { return p.stato !== "Incassato"; });
+    if (fuori.length) {
+      var quanto = sum(fuori, function (p) { return p.importo; });
+      if (!confirm("Chiudo il lavoro, ma restano " + eur(quanto) + " da incassare su " +
+                   fuori.length + (fuori.length === 1 ? " scadenza" : " scadenze") +
+                   ".\nLe scadenze restano aperte in Amministrazione. Procedo?")) return;
+    }
+  }
   var patch = { stato: val };
   if (STATO_DATA[val] && (quando || !k[STATO_DATA[val]])) patch[STATO_DATA[val]] = quando || today();
   if (val !== "Bozza" && !k.numero) patch.numero = numeroDoc(k);
