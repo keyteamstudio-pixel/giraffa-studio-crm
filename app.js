@@ -3553,16 +3553,16 @@ function vProgetto() {
   h += '<div class="top"><h1>' + esc(p.nome) + '<span class="sub">' + (k ? lnkCli(k.cliente_id) : "—") + (k ? " · " + lnkCom(k.id) : "") + '</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-visprog="' + p.id + '">' + (p.visibile_cliente ? "Nascondi al cliente" : "Mostra al cliente") + "</button>" +
     '<button class="btn sm ghost" data-edit="prog:' + p.id + '">Modifica</button>' +
-    '<button class="btn sm" data-new="lav" data-ctx-prog="' + p.id + '">+ Lavorazione</button></div></div>';
+    '<button class="btn sm" data-route="progetto|' + p.id + '|attivita">+ Attività</button></div></div>';
 
   h += '<div class="grid g4">' +
-    kpi(av + " %", "Avanzamento", lv.filter(function (l) { return l.stato === "Completata"; }).length + " lavorazioni su " + lv.length) +
+    kpi(av + " %", "Avanzamento", tk.filter(function (x) { return x.stato === "Fatto"; }).length + " attività fatte su " + tk.length) +
     kpi(eur(costiTot(costiProg(p.id).filter(function (x) { return !x.ribaltato; }))), "Costi a carico tuo", costiProg(p.id).length + (costiProg(p.id).length === 1 ? " costo registrato" : " costi registrati") + (oreT ? " · " + num(oreT, 1) + " h lavorate" : "")) +
     kpi(eur(valoreProg(p.id)), "Valore a preventivo", righeProg(p.id).length + " voci") +
     kpi(String(tk.filter(function (x) { return x.stato !== "Fatto"; }).length), "Attività aperte", p.visibile_cliente ? "visibile al cliente" : "non condiviso") + "</div>";
 
   h += '<div class="grid g32" style="margin-top:18px"><div><div class="card">' +
-    schede([["lavorazioni", "Lavorazioni", lv.length], ["attivita", "Attività", tk.filter(function (x) { return x.stato !== "Fatto"; }).length], ["costi", "Costi", costiProg(p.id).length], ["materiali", "Materiali", mt.length], ["ore", "Ore", num(oreT, 1)], ["note", "Note"]], t, "progetto", p.id);
+    schede([["attivita", "Attività", tk.filter(function (x) { return x.stato !== "Fatto"; }).length], ["costi", "Costi", costiProg(p.id).length], ["materiali", "Materiali", mt.length], ["ore", "Ore", num(oreT, 1)], ["note", "Note"]], t, "progetto", p.id);
 
   if (t === "costi") {
     var cp = costiProg(p.id);
@@ -3570,31 +3570,34 @@ function vProgetto() {
     h += tabellaCosti(cp, { progetto: true, attr: 'data-ctx-prog="' + p.id + '"' });
   }
 
-  if (t === "lavorazioni") {
-    h += '<div class="cardhead"><h2>Lavorazioni</h2><button class="btn sm ghost" data-new="lav" data-ctx-prog="' + p.id + '">+ Lavorazione</button></div>';
-    h += lv.length ? lv.map(function (l) {
-      var lo = sum(oreOfLav(l.id), function (o) { return o.ore; });
-      var lt = taskOfLav(l.id), aperte = lt.filter(function (x) { return x.stato !== "Fatto"; });
-      var perc = l.ore_stimate ? Math.min(100, Math.round(lo / l.ore_stimate * 100)) : 0;
-      var attiva = tm && tm.lavorazione_id === l.id;
-      return '<div class="lav"><div class="lavtop"><div><b>' + esc(l.nome) + '</b> <span class="badge ' + (l.stato === "Completata" ? "b-green" : l.stato === "In corso" ? "b-terra" : "") + '">' + esc(l.stato) + "</span>" +
-        (l.descrizione ? '<div class="faint">' + esc(l.descrizione) + "</div>" : "") + "</div><div>" + (l.pro_id ? avatar(l.pro_id, 26) : "") + "</div></div>" +
-        '<div class="lavbar"><span class="faint">' + num(lo, 1) + " h" + (l.ore_stimate ? " / " + num(l.ore_stimate, 0) + " h" : "") + "</span>" + prog(perc) + "</div>" +
-        '<div class="lavact"><span class="faint">' + aperte.length + " attività aperte su " + lt.length + "</span><span>" +
-        (attiva ? '<button class="btn sm stop" data-tstop="1">■ Ferma <span id="timerlbl">' + durata(tm.iniziato) + "</span></button>"
-          : '<button class="btn sm ghost" data-tstart-lav="' + l.id + '">▶ Timer</button>') +
-        '<button class="btn sm ghost" data-new="ore" data-ctx-lav="' + l.id + '">+ Ore</button>' +
-        '<button class="btn sm ghost" data-open-lav="' + l.id + '">Apri</button>' +
-        '<button class="btn sm ghost" data-edit="lav:' + l.id + '">Modifica</button></span></div>' +
-        (aperte.length ? '<div class="checklist" style="margin-top:10px">' + aperte.slice(0, 4).map(function (x) { return riga(x, lt); }).join("") + "</div>" : "") +
-        '<form class="qadd" data-qadd-lav="' + l.id + '"><button class="ck" type="button" disabled></button><input name="titolo" placeholder="Aggiungi un\'attività a questa lavorazione" autocomplete="off"></form>' +
-        "</div>";
-    }).join("") : vuoto("Nessuna lavorazione: qui dentro spezzi il progetto nei lavori veri (es. Programmazione backend).", '<button class="lnk" data-new="lav" data-ctx-prog="' + p.id + '">Crea la prima</button>');
-  }
   if (t === "attivita") {
-    h += '<div class="cardhead"><h2>Attività del progetto</h2></div>';
+    /* Un solo tipo di cosa da fare, come nei gestionali seri: l'attività. Si
+       raggruppa in sezioni (Riprese, Montaggio, Consegna…) e si spezza in
+       sotto-attività. La sezione è solo un titolo: non ha stato né scadenze,
+       così non diventa una seconda lista da tenere aggiornata. */
+    var radici = tk.filter(function (x) { return !x.padre_id; });
+    var perSez = {}, ordSez = [];
+    radici.forEach(function (x) {
+      var sz = (x.sezione || "").trim();
+      if (!(sz in perSez)) { perSez[sz] = []; ordSez.push(sz); }
+      perSez[sz].push(x);
+    });
+    ordSez.sort(function (a, b) { return a === "" ? 1 : b === "" ? -1 : a.localeCompare(b); });
+    h += '<div class="cardhead"><h2>Attività del progetto</h2>' +
+      (ordSez.length > 1 || (ordSez.length === 1 && ordSez[0]) ? '<span class="faint">' + ordSez.filter(Boolean).length + " sezioni</span>" : "") + "</div>";
     h += scriviTask("prog:" + p.id, "Aggiungi un\'attività a questo progetto · «bozza home ven @Goffredo»");
-    h += tk.length ? '<div class="checklist">' + tk.filter(function (x) { return !x.padre_id; }).map(function (x) { return riga(x, tk); }).join("") + "</div>" : "";
+    if (!tk.length) h += vuoto("Ancora niente da fare qui. Scrivi la prima riga qui sopra: puoi metterci una persona con @, una data e un ! per l'urgenza.");
+    else if (ordSez.length === 1 && !ordSez[0]) {
+      h += '<div class="checklist">' + radici.map(function (x) { return riga(x, tk); }).join("") + "</div>";
+    } else {
+      h += ordSez.map(function (sz) {
+        var dentro = perSez[sz], fatte = dentro.filter(function (x) { return x.stato === "Fatto"; }).length;
+        return '<div class="sezgr"><div class="sezt">' + esc(sz || "Senza sezione") +
+          '<span class="faint">' + fatte + " su " + dentro.length + "</span></div>" +
+          '<div class="checklist">' + dentro.map(function (x) { return riga(x, tk); }).join("") + "</div></div>";
+      }).join("");
+      h += '<p class="faint" style="margin-top:12px;font-size:12.5px">Le sezioni si mettono dalla scheda di ogni attività. Servono solo a tenere in ordine: non hanno uno stato loro.</p>';
+    }
   }
   if (t === "materiali") {
     h += '<div class="cardhead"><h2>Materiali del progetto</h2><div style="display:flex;gap:8px"><button class="btn sm ghost" data-link="' + ctxAll(p.commessa_id, p.id) + '">+ Link</button><button class="btn sm ghost" data-new="mat" data-ctx="' + p.commessa_id + '">+ Materiale</button></div></div>';
@@ -6104,8 +6107,6 @@ var FORMS = {
     }).join("")) + selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) + "</div>" +
       '<div class="row2">' + selField("task_id", "Attività (se vuoi)", '<option value="">— nessuna —</option>' + aperte.map(function (t) {
         return '<option value="' + t.id + '"' + (r.task_id === t.id ? " selected" : "") + ">" + esc(t.titolo) + "</option>";
-      }).join("")) + selField("lavorazione_id", "Lavorazione (se vuoi)", '<option value="">— nessuna —</option>' + D.lav.filter(function (l) { return !r.progetto_id || l.progetto_id === r.progetto_id; }).map(function (l) {
-        return '<option value="' + l.id + '"' + (r.lavorazione_id === l.id ? " selected" : "") + ">" + esc(nameOf(D.prog, l.progetto_id)) + " · " + esc(l.nome) + "</option>";
       }).join("")) + "</div>" +
       selField("pro_id", "Chi", opt(PROS_PRO(), r.pro_id || me.pro_id)) +
       '<div class="row2">' + fld("data", "Data", "date", r.data || today()) + fld("ore", "Ore", "number", r.ore) + "</div>" +
