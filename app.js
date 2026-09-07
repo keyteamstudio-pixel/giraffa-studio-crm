@@ -394,9 +394,19 @@ function avanzProg(p) {
   var c2 = lv.filter(function (l) { return l.stato === "In corso"; }).length;
   return Math.round((f2 + c2 * 0.5) / lv.length * 100);
 }
-function progVisibili() {
-  return D.prog.filter(function (p) { return by(D.com, p.commessa_id); }).sort(function (a, b) { return (a.ordine || 0) - (b.ordine || 0); });
+/* Un progetto sta su tre gambe possibili: un preventivo, un cliente, o nessuno
+   dei due (lavoro dello studio). Il cliente si legge da lì, in quest'ordine. */
+function cliDiProg(p) {
+  if (!p) return "";
+  var k = p.commessa_id ? by(D.com, p.commessa_id) : null;
+  return (k && k.cliente_id) || p.cliente_id || "";
 }
+function progVisibili() {
+  return D.prog.slice().sort(function (a, b) { return (a.ordine || 0) - (b.ordine || 0); });
+}
+/* Tutto il lavoro di un cliente: quello nato dai suoi preventivi e quello
+   attaccato a lui direttamente. */
+function progOfCliente(cid) { return D.prog.filter(function (p) { return cliDiProg(p) === cid; }); }
 /* Il prezzo appartiene alla riga, non al listino: quando la riga nasce il
    database ci copia dentro il prezzo di quel momento, e da lì non si muove
    più. Cambiare il listino non tocca i numeri di un lavoro già fatto. */
@@ -2857,6 +2867,7 @@ function vCliente() {
     '<button class="btn sm ghost" data-anadi="' + c.id + '">Analisi online</button>' +
     '<button class="btn sm ghost" data-edit="cli:' + c.id + '">Modifica</button>' +
     '<button class="btn sm ghost" data-new="inter" data-ctx-cli="' + c.id + '">+ Nota</button>' +
+    '<button class="btn sm ghost" data-new="prog" data-ctx-cli="' + c.id + '">+ Progetto</button>' +
     '<button class="btn sm" data-new="com" data-ctx-cli="' + c.id + '">+ Preventivo</button></div></div>';
 
   h += '<div class="grid g4">' +
@@ -2865,7 +2876,7 @@ function vCliente() {
     kpi(String(inter.length), "Interazioni", inter[0] ? "ultima " + dt(inter[0].data) : "—") +
     kpi(pl ? (pl.attivo ? "Attivo" : "Sospeso") : accesso ? "Con account" : "No", "Accesso al portale", pl ? (pl.ha_pwd ? "link con password" : "manca la password") : accesso ? esc(accesso.email || "") : "nessun accesso") + "</div>";
 
-  var prg = D.prog.filter(function (p) { return com.some(function (k) { return k.id === p.commessa_id; }); });
+  var prg = progOfCliente(c.id);
   var t = tab || "anagrafica";
   h += schede([
     ["anagrafica", "Anagrafica"],
@@ -3429,11 +3440,11 @@ function vProgetti() {
   var vista = tab || "percliente";
   var f = FS.prog;
   var list = progVisibili().filter(function (p) {
-    var k = by(D.com, p.commessa_id);
+    var cidP = cliDiProg(p);
     if (f.stato && (p.stato || "") !== f.stato) return false;
-    if (f.cli && (!k || k.cliente_id !== f.cli)) return false;
+    if (f.cli && cidP !== f.cli) return false;
     if (f.pro && p.pro_id !== (f.pro === "io" ? me.pro_id : f.pro)) return false;
-    if (f.cerca && (p.nome + " " + nameOf(D.com, p.commessa_id, "titolo")).toLowerCase().indexOf(f.cerca.toLowerCase()) === -1) return false;
+    if (f.cerca && (p.nome + " " + (p.commessa_id ? nameOf(D.com, p.commessa_id, "titolo") : "") + " " + (cidP ? nameOf(D.cli, cidP) : "")).toLowerCase().indexOf(f.cerca.toLowerCase()) === -1) return false;
     return true;
   });
   var h = head("Progetti", list.length + " progetti in cui sei dentro",
@@ -3467,8 +3478,7 @@ function vProgetti() {
   if (vista === "percliente") {
     var perCli = {};
     list.forEach(function (p) {
-      var k = by(D.com, p.commessa_id);
-      var cid = k ? k.cliente_id : "";
+      var cid = cliDiProg(p);
       (perCli[cid] = perCli[cid] || []).push(p);
     });
     var chiavi = Object.keys(perCli).sort(function (a, b) { return nameOf(D.cli, a).localeCompare(nameOf(D.cli, b)); });
@@ -3490,8 +3500,8 @@ function vProgetti() {
   if (vista === "elenco") {
     return h + '<div class="card"><div class="plist">' +
       list.slice().sort(function (a, b) { return (a.fine || "9999") < (b.fine || "9999") ? -1 : 1; }).map(function (p) {
-        var k = by(D.com, p.commessa_id);
-        return rigaProg(p).replace('<span class="pnome">', '<span class="pnome">' + esc(k ? nameOf(D.cli, k.cliente_id) + " · " : ""));
+        var cidE = cliDiProg(p);
+        return rigaProg(p).replace('<span class="pnome">', '<span class="pnome">' + esc(cidE ? nameOf(D.cli, cidE) + " · " : ""));
       }).join("") + "</div></div>";
   }
   if (vista === "bacheca") {
@@ -3499,9 +3509,9 @@ function vProgetti() {
     return h + '<div class="card"><div class="kanban">' + stati.map(function (s) {
       var items = list.filter(function (p) { return (p.stato || "Da iniziare") === s; });
       return '<div class="kcol"><h3>' + s + "<span>" + items.length + "</span></h3>" + items.map(function (p) {
-        var k = by(D.com, p.commessa_id);
+        var cidB = cliDiProg(p);
         return '<div class="tsk" data-open-prog="' + p.id + '"><div class="tsktop">' + esc(p.nome) + (p.pro_id ? avatar(p.pro_id, 22) : "") + "</div>" +
-          '<div class="meta"><span class="faint">' + esc(k ? nameOf(D.cli, k.cliente_id) : "") + "</span><span>" + (p.fine ? dshort(p.fine) : "") + "</span></div>" +
+          '<div class="meta"><span class="faint">' + esc(cidB ? nameOf(D.cli, cidB) : "lavoro dello studio") + "</span><span>" + (p.fine ? dshort(p.fine) : "") + "</span></div>" +
           prog(avanzProg(p)) + "</div>";
       }).join("") + "</div>";
     }).join("") + "</div></div>";
@@ -6054,7 +6064,9 @@ var FORMS = {
   }},
   prog: { t: "Progetto", tb: "prog", f: function (r) {
     return fld("nome", "Nome del progetto (Sito, Foto, Social…)", "text", r.nome, true) +
-      selField("commessa_id", "Preventivo di riferimento", opt(D.com, r.commessa_id, "titolo")) +
+      '<div class="row2">' + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) +
+      selField("commessa_id", "Preventivo, se nasce da uno", opt(D.com, r.commessa_id, "titolo")) + "</div>" +
+      '<p class="faint" style="margin:-6px 0 12px;font-size:12.5px">Un progetto può stare su un preventivo, su un cliente, o su nessuno dei due: in quel caso è lavoro dello studio. Se scegli un preventivo, il cliente lo prende da lì.</p>' +
       '<div class="row2">' + selField("pro_id", "Chi lo segue", opt(PROS_PRO(), r.pro_id || me.pro_id)) + selField("stato", "Stato", sel(["Da iniziare", "In corso", "In attesa cliente", "Completato"], r.stato || "Da iniziare")) + "</div>" +
       '<div class="row2">' + fld("inizio", "Inizio", "date", r.inizio) + fld("fine", "Consegna", "date", r.fine) + "</div>" +
       '<div class="row2">' + fld("ordine", "Ordine", "number", r.ordine == null ? 1 : r.ordine) + selField("visibile_cliente", "Visibile al cliente", sel(["si", "no"], r.visibile_cliente === false ? "no" : "si")) + "</div>" +
