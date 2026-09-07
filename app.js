@@ -2109,7 +2109,7 @@ async function applicaModello(mid) {
     }
   }
   await reload(["lav", "task"]);
-  closeModal(); toast("Modello applicato a " + p.nome); go("progetto", p.id, "lavorazioni");
+  closeModal(); toast("Modello applicato a " + p.nome); go("progetto", p.id, "attivita");
 }
 
 /* ---------------- scheda dell'attività ---------------- */
@@ -3465,7 +3465,7 @@ function vProgetti() {
     var tk = tkTutte.filter(function (t) { return t.stato !== "Fatto"; });
     var late = p.fine && p.fine < today() && p.stato !== "Completato";
     var pal = p.stato === "Completato" ? "b-green" : p.stato === "In corso" ? "b-terra" : p.stato === "In attesa cliente" ? "b-amber" : p.stato === "Sospeso" ? "b-red" : "";
-    return '<div class="prow" data-route="progetto|' + p.id + '|lavorazioni">' +
+    return '<div class="prow" data-route="progetto|' + p.id + '|attivita">' +
       '<span class="pdot ' + pal + '"></span>' +
       '<span class="pnome">' + esc(p.nome) + "</span>" +
       '<span class="pstato badge ' + pal + '">' + esc(p.stato || "—") + "</span>" +
@@ -3524,7 +3524,7 @@ function vProgetti() {
     var tk = taskOfProg(p.id).filter(function (t) { return t.stato !== "Fatto"; });
     var av = avanzProg(p);
     var late = p.fine && p.fine < today() && p.stato !== "Completato";
-    h += '<div class="card pcard" data-route="progetto|' + p.id + '|lavorazioni">' +
+    h += '<div class="card pcard" data-route="progetto|' + p.id + '|attivita">' +
       '<div class="pctop"><div><h2>' + esc(k ? nameOf(D.cli, k.cliente_id) : "Senza cliente") + '</h2>' +
       '<div class="pcsub">' + esc(p.nome) + (k ? " · " + esc(k.titolo) : "") + "</div></div>" +
       '<span class="badge ' + (p.stato === "Completato" ? "b-green" : p.stato === "In corso" ? "b-terra" : p.stato === "In attesa cliente" ? "b-amber" : "") + '">' + esc(p.stato || "—") + "</span></div>" +
@@ -3546,7 +3546,7 @@ function vProgetto() {
   var k = by(D.com, p.commessa_id);
   var lv = lavOf(p.id), tk = taskOfProg(p.id), ore = oreOfProg(p.id), mt = matOfProg(p.id);
   var oreT = sum(ore, function (o) { return o.ore; }), stim = sum(lv, function (l) { return l.ore_stimate; });
-  var av = avanzProg(p), t = tab || "lavorazioni";
+  var av = avanzProg(p), t = tab || "attivita";
   var tm = timerMio();
 
   var h = crumbs([["Lavoro"], ["Progetti", "progetti"], [p.nome]]);
@@ -3650,7 +3650,7 @@ function vLavorazione() {
   var ore = sum(lo, function (o) { return o.ore; });
   var perc = l.ore_stimate ? Math.min(100, Math.round(ore / l.ore_stimate * 100)) : 0;
   var tm = timerMio(), attiva = tm && tm.lavorazione_id === l.id;
-  var h = crumbs(p ? [["Lavoro"], ["Progetti", "progetti"], [p.nome, "progetto", p.id, "lavorazioni"], [l.nome]] : [["Lavoro"], ["Progetti", "progetti"], [l.nome]]);
+  var h = crumbs(p ? [["Lavoro"], ["Progetti", "progetti"], [p.nome, "progetto", p.id, "attivita"], [l.nome]] : [["Lavoro"], ["Progetti", "progetti"], [l.nome]]);
   h += '<div class="top"><h1>' + esc(l.nome) + '<span class="sub">' + (p ? '<button class="lnk" data-open-prog="' + p.id + '">' + esc(p.nome) + "</button> · " : "") + esc(k ? nameOf(D.cli, k.cliente_id) : "") + '</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-edit="lav:' + l.id + '">Modifica</button>' +
     (attiva ? '<button class="btn sm stop" data-tstop="1">■ Ferma <span id="timerlbl">' + durata(tm.iniziato) + "</span></button>" : '<button class="btn sm" data-tstart-lav="' + l.id + '">▶ Avvia timer</button>') +
@@ -6205,7 +6205,7 @@ var FSEZ = {
   task: ["task", "Attività"], ore: ["ore", "Le tue ore"], inter: ["clienti", "Clienti"], modelli: ["task", "Attività"],
   mat: ["commesse", "Preventivi"], ev: ["commesse", "Preventivi"], pren: ["spazi", "Coworking & spazi"], riu: ["riunioni", "Riunioni"]
 };
-var FDETT = { com: ["commessa", "note"], cli: ["cliente", ""], prog: ["progetto", "lavorazioni"], lav: ["lavorazione", ""], pros: ["pro", ""], task: ["attivita", ""], riu: ["riunione", ""] };
+var FDETT = { com: ["commessa", "note"], cli: ["cliente", ""], prog: ["progetto", "attivita"], lav: ["lavorazione", ""], pros: ["pro", ""], task: ["attivita", ""], riu: ["riunione", ""] };
 
 function openForm(entity, id, ctx) {
   var F = FORMS[entity]; if (!F) return;
@@ -6609,7 +6609,7 @@ async function clicApp(e, t, d) {
   if (d.route) { var rq = d.route.split("|"); go(rq[0], rq[1] || null, rq[2] || ""); return; }
   if (d.annulla) { tornaIndietro(); return; }
   if (d.openCom) { go("commessa", d.openCom, "servizi"); return; }
-  if (d.openProg) { go("progetto", d.openProg, "lavorazioni"); return; }
+  if (d.openProg) { go("progetto", d.openProg, "attivita"); return; }
   if (d.openLav) { go("lavorazione", d.openLav); return; }
   if (d.cal !== undefined) { CAL = d.cal === "0" ? 0 : CAL + (+d.cal); render(); return; }
   if (d.navg) { navToggle(d.navg); buildNav(); return; }
