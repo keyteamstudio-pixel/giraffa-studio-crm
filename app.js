@@ -6507,22 +6507,17 @@ function impagina() {
     corrente.className = "foglio";
     culla.appendChild(corrente);
     fogli.push(corrente);
-    if (!tetto) {
-      var st = getComputedStyle(corrente);
-      tetto = corrente.clientHeight - parseFloat(st.paddingTop) - parseFloat(st.paddingBottom);
-    }
+    /* il tetto è l'altezza del foglio vuoto: se dopo aver messo qualcosa il
+       foglio è cresciuto, vuol dire che quel qualcosa non ci stava. Misurare
+       così tiene dentro margini e spaziature, che sommando i singoli blocchi
+       resterebbero fuori dal conto. */
+    if (!tetto) tetto = corrente.getBoundingClientRect().height;
     return corrente;
   }
-  /* quanto contenuto c'è dentro il foglio adesso */
-  function occupato(f) {
-    var h = 0;
-    Array.prototype.forEach.call(f.children, function (c) { h += c.getBoundingClientRect().height; });
-    return h;
-  }
-  /* prova a metterlo: se sfora lo riporta indietro e dice di no */
+  /* prova a metterlo: se il foglio cresce lo riporta indietro e dice di no */
   function ciSta(nodo) {
     corrente.appendChild(nodo);
-    if (occupato(corrente) <= tetto) return true;
+    if (corrente.getBoundingClientRect().height <= tetto + 0.5) return true;
     corrente.removeChild(nodo);
     return false;
   }
@@ -6550,7 +6545,7 @@ function impagina() {
     var vivo = blocco, vivoCorpo = corpo;
     for (var i = 0; i < righe.length; i++) {
       vivoCorpo.appendChild(righe[i]);
-      if (occupato(corrente) > tetto) {
+      if (corrente.getBoundingClientRect().height > tetto + 0.5) {
         vivoCorpo.removeChild(righe[i]);
         /* apro la continuazione su un foglio nuovo, con la stessa intestazione */
         var seguito = vivo.cloneNode(false);
