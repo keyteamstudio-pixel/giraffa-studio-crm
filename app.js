@@ -6481,6 +6481,101 @@ function palGo(i) {
 }
 
 /* ---------------- render ---------------- */
+/* ---------------- il foglio diventa fogli ----------------
+   Finché il preventivo sta in una pagina non cambia niente. Quando cresce, lo
+   taglio in fogli A4 veri: così mentre scrivi vedi dove cade la fine pagina e
+   puoi spostare le cose, invece di scoprirlo alla stampa. La tabella delle voci
+   si spezza riga per riga, tutto il resto passa intero: un blocco condizioni o
+   le firme non si tagliano mai a metà. */
+function impagina() {
+  var a4 = el(".a4"); if (!a4 || a4.dataset.impaginato) return;
+  var blocchi = Array.prototype.slice.call(a4.children);
+  if (!blocchi.length) return;
+
+  /* quanto ci sta in un foglio: lo chiedo al foglio stesso, non a un numero fisso */
+  var prova = document.createElement("div");
+  prova.className = "foglio";
+  prova.style.visibility = "hidden";
+  a4.parentNode.insertBefore(prova, a4);
+  var stile = getComputedStyle(prova);
+  var utile = prova.clientHeight - parseFloat(stile.paddingTop) - parseFloat(stile.paddingBottom);
+  a4.parentNode.removeChild(prova);
+  if (!(utile > 100)) return;                     /* stampa o schermo strano: lascio com'è */
+
+  var fogli = [], corrente = null, pieno = 0;
+  function nuovoFoglio() {
+    corrente = document.createElement("div");
+    corrente.className = "foglio";
+    fogli.push(corrente); pieno = 0;
+    return corrente;
+  }
+  function metti(nodo, altezza) {
+    if (!corrente || (pieno > 0 && pieno + altezza > utile)) nuovoFoglio();
+    corrente.appendChild(nodo); pieno += altezza;
+  }
+  /* una tabella troppo lunga si spezza per righe, ripetendo l'intestazione */
+  function spezzaTabella(tab, alt) {
+    var righe = Array.prototype.slice.call(tab.querySelectorAll("tbody > tr"));
+    var testa = tab.querySelector("thead");
+    if (righe.length < 2) { metti(tab, alt); return; }
+    var altRighe = righe.map(function (r) { return r.getBoundingClientRect().height; });
+    var altTesta = testa ? testa.getBoundingClientRect().height : 0;
+    var pezzo = null, corpo = null, usato = 0;
+    function apriPezzo() {
+      pezzo = tab.cloneNode(false);
+      if (testa) pezzo.appendChild(testa.cloneNode(true));
+      corpo = document.createElement("tbody");
+      pezzo.appendChild(corpo);
+      usato = altTesta;
+      if (!corrente || pieno + altTesta + 40 > utile) nuovoFoglio();
+      corrente.appendChild(pezzo);
+    }
+    apriPezzo();
+    for (var i = 0; i < righe.length; i++) {
+      if (usato > altTesta && pieno + usato + altRighe[i] > utile) { pieno += usato; apriPezzo(); }
+      corpo.appendChild(righe[i]); usato += altRighe[i];
+    }
+    pieno += usato;
+    if (tab.parentNode) tab.parentNode.removeChild(tab);
+  }
+
+  var misure = blocchi.map(function (b) { return b.getBoundingClientRect().height; });
+  a4.dataset.impaginato = "1";
+  for (var i = 0; i < blocchi.length; i++) {
+    var b = blocchi[i], alt = misure[i];
+    if (alt > utile && b.tagName === "TABLE") spezzaTabella(b, alt);
+    else metti(b, alt);
+  }
+
+  a4.innerHTML = "";
+  fogli.forEach(function (f, n) {
+    var eti = document.createElement("div");
+    eti.className = "fnum noprint";
+    eti.textContent = "Pagina " + (n + 1) + " di " + fogli.length;
+    f.appendChild(eti);
+    a4.appendChild(f);
+  });
+  a4.classList.add("impaginato");
+
+  /* l'ultima pagina quasi vuota è il difetto che si scopre sempre troppo tardi */
+  var avviso = el(".fmagra"); if (avviso) avviso.remove();
+  if (fogli.length > 1) {
+    var ultimo = fogli[fogli.length - 1];
+    var riempito = 0;
+    Array.prototype.forEach.call(ultimo.children, function (c) {
+      if (!c.classList.contains("fnum")) riempito += c.getBoundingClientRect().height;
+    });
+    if (riempito < utile * 0.3) {
+      var d = document.createElement("div");
+      d.className = "fmagra noprint";
+      d.innerHTML = "L'ultima pagina è quasi vuota: nel PDF verrà un foglio con poco sopra. " +
+        "Accorcia una descrizione o togli un blocco e rientra in " + (fogli.length - 1) +
+        (fogli.length - 1 === 1 ? " pagina." : " pagine.");
+      a4.parentNode.insertBefore(d, a4);
+    }
+  }
+}
+
 function render() {
   if (isCliente()) {
     buildNavCliente();
@@ -6499,6 +6594,8 @@ function render() {
   var s = el("#search") || el("#tcerca") || el("#fcerca");
   if (s && window.innerWidth > 760 && !("ontouchstart" in window)) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
   if (view === "chat") { var cms = el(".chatms"); if (cms) cms.scrollTop = cms.scrollHeight; segnaLetto(); }
+  /* dopo che il browser ha disegnato: solo allora le altezze sono vere */
+  if (el(".a4")) requestAnimationFrame(function () { try { impagina(); } catch (e) {} });
   countUp();
 }
 
