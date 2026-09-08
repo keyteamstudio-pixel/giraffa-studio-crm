@@ -24,13 +24,13 @@ var APPVER = (function () {
 })();
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
-var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], lav: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
+var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
   prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [], pcfg: [], gconn: [], impg: [], mconn: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", lav: "lavorazioni", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
   prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi", pcfg: "prenota_cfg", gconn: "google_conn", impg: "impegni_google", mconn: "mail_conn" };
 
 /* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
@@ -98,9 +98,7 @@ window.addEventListener("hashchange", function () {
 });
 /* Non esiste più una regia che vede tutto: solo responsabilità sulle aree comuni */
 function puo(p) { return !!(me.perm && me.perm[p]); }
-function isAdmin() { return puo("accessi"); }
 function isPR() { return false; }
-function isPro() { return me.ruolo === "professionista"; }
 function isCliente() { return me.ruolo === "cliente"; }
 function vediCosti() { return !isPR(); }
 
@@ -144,7 +142,6 @@ function evOf(k) { return D.ev.filter(function (e) { return e.commessa_id === k;
 function lnkCli(id, cls) { return id ? '<button class="' + (cls || "lnk") + '" data-open-cli="' + id + '">' + esc(nameOf(D.cli, id)) + "</button>" : ""; }
 function lnkCom(id, cls) { return id ? '<button class="' + (cls || "lnk") + '" data-open-com="' + id + '">' + esc(nameOf(D.com, id, "titolo")) + "</button>" : ""; }
 function lnkProg(id, cls) { return id ? '<button class="' + (cls || "lnk") + '" data-open-prog="' + id + '">' + esc(nameOf(D.prog, id)) + "</button>" : ""; }
-function lnkPro(id, cls) { return id ? '<button class="' + (cls || "lnk") + '" data-open-pro="' + id + '">' + esc(nameOf(D.pros, id)) + "</button>" : ""; }
 /* Quello che il lavoro costa a chi lo fa: strumenti, abbonamenti, fornitori,
    budget pubblicitario. Un canone vale per tutti i suoi mesi. */
 function costiOf(k) { return D.costi.filter(function (c) { return c.commessa_id === k; }); }
@@ -369,11 +366,8 @@ function prossimo(k) {
 }
 
 function progOf(k) { return D.prog.filter(function (p) { return p.commessa_id === k; }).sort(function (a, b) { return (a.ordine || 0) - (b.ordine || 0); }); }
-function lavOf(pid) { return D.lav.filter(function (l) { return l.progetto_id === pid; }).sort(function (a, b) { return (a.ordine || 0) - (b.ordine || 0); }); }
-function taskOfLav(lid) { return D.task.filter(function (t) { return t.lavorazione_id === lid; }); }
-function oreOfLav(lid) { return D.ore.filter(function (o) { return o.lavorazione_id === lid; }); }
-function taskOfProg(pid) { var ids = lavOf(pid).map(function (l) { return l.id; }); return D.task.filter(function (t) { return t.progetto_id === pid || ids.indexOf(t.lavorazione_id) > -1; }); }
-function oreOfProg(pid) { var ids = lavOf(pid).map(function (l) { return l.id; }); return D.ore.filter(function (o) { return o.progetto_id === pid || ids.indexOf(o.lavorazione_id) > -1; }); }
+function taskOfProg(pid) { return D.task.filter(function (t) { return t.progetto_id === pid; }); }
+function oreOfProg(pid) { return D.ore.filter(function (o) { return o.progetto_id === pid; }); }
 function matOfProg(pid) { return D.mat.filter(function (m) { return m.progetto_id === pid; }); }
 function righeProg(pid) { return D.righe.filter(function (r) { return r.progetto_id === pid; }); }
 function valoreProg(pid) { return sum(righeProg(pid).filter(function (r) { return !r.opzionale; }), function (r) { return rigaCalc(r).prezzo; }); }
@@ -388,11 +382,8 @@ function avanzProg(p) {
     var incorso = tk.filter(function (t) { return t.stato === "In corso"; }).length;
     return Math.round((fatte + incorso * 0.5) / tk.length * 100);
   }
-  var lv = lavOf(p.id);
-  if (!lv.length) return p.avanzamento || 0;
-  var f2 = lv.filter(function (l) { return l.stato === "Completata"; }).length;
-  var c2 = lv.filter(function (l) { return l.stato === "In corso"; }).length;
-  return Math.round((f2 + c2 * 0.5) / lv.length * 100);
+  /* senza attività resta la percentuale scritta a mano nella scheda del progetto */
+  return p.avanzamento || 0;
 }
 /* Un progetto sta su tre gambe possibili: un preventivo, un cliente, o nessuno
    dei due (lavoro dello studio). Il cliente si legge da lì, in quest'ordine. */
@@ -668,7 +659,7 @@ function buildNav() {
   var vv = view;
   if (vv === "nuovo" || vv === "mod") { var fs = FSEZ[current]; vv = fs ? fs[0] : "dash"; }
   if (vv === "riga") vv = "commesse";
-  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse", documento: "commesse", importa: "commesse", professioni: "profilo", riunioni: "calendario", riunione: "calendario", carico: "task" }[vv] || vv;
+  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", attivita: "task", riga: "commesse", documento: "commesse", importa: "commesse", professioni: "profilo", riunioni: "calendario", riunione: "calendario", carico: "task" }[vv] || vv;
   h += '<button class="cerca" data-pal="1" title="Cerca ovunque (⌘K)"><span>Cerca o esegui un\'azione…</span><kbd>⌘K</kbd></button>';
   h += '<button class="cerca chiedi" data-chiedi="1" title="Fai una domanda sui tuoi dati"><span>Chiedi…</span></button>';
   var ap = navAperti(), qui = gruppoDi(cur), gr = null, gsub = "", buf = "";
@@ -748,11 +739,6 @@ function gruppoDi(v) {
   if (v === "professioni") return "Profilo";
   return "";
 }
-function etichettaDi(v) {
-  var n = navFor().concat(navMio());
-  for (var i = 0; i < n.length; i++) if (n[i].k === v) return n[i].t;
-  return "";
-}
 /* ---- barra unica di viste e filtri, uguale in tutte le sezioni ---- */
 var FS = {
   com: { stato: "", salute: "", cli: "", cerca: "" },
@@ -768,7 +754,6 @@ function opzioni(list, val) {
 }
 function fsel(amb, campo, list) { return '<select data-f="' + amb + "|" + campo + '">' + opzioni(list, FS[amb][campo]) + "</select>"; }
 function fcerca(amb, ph) { return '<input id="fcerca" data-f="' + amb + '|cerca" placeholder="' + esc(ph || "Cerca…") + '" value="' + esc(FS[amb].cerca) + '">'; }
-function fchip(attr, on, label) { return '<button class="chipbtn' + (on ? " on" : "") + '" ' + attr + ">" + esc(label) + "</button>"; }
 /* tabs: [chiave, etichetta] · rotta: vista da usare nel percorso */
 function barraViste(tabs, attiva, rotta, filtri) {
   return '<div class="vbar">' +
@@ -878,9 +863,6 @@ function propScartate() {
 function propScarta(id) {
   var s = propScartate(); s[id] = 1;
   try { localStorage.setItem("gs_prop", JSON.stringify(s)); } catch (e) { }
-}
-function propRipristina() {
-  PROPNO = {}; try { localStorage.removeItem("gs_prop"); } catch (e) { }
 }
 /* dove: "dash" per tutte, oppure l'id di una commessa per quelle sue */
 function proposte(dove) {
@@ -1488,7 +1470,7 @@ function vRiunione() {
   var nate = D.task.filter(function (t) { return t.origine_id === r.id; });
   if (nate.length) h += '<div class="checklist" style="margin-top:10px">' + nate.map(function (x) { return riga(x, nate); }).join("") + "</div>";
   h += "</div></div>";
-  var ctx = ctxAll(r.commessa_id, r.progetto_id, "", "", r.id), mt = matOfRiu(r.id);
+  var ctx = ctxAll(r.commessa_id, r.progetto_id, "", r.id), mt = matOfRiu(r.id);
   h += '<div class="card"><div class="cardhead"><h2>Allegati</h2><div style="display:flex;gap:8px"><button class="btn sm ghost" data-link="' + esc(ctx) + '">+ Link</button></div></div>' + zonaAllegati(ctx) + tabellaAllegati(mt, {}) + "</div>";
   return h;
 }
@@ -1602,47 +1584,6 @@ function stradaTask(t) {
   if (t.sezione && TGROUP === "progetto" && t.sezione !== nameOf(D.prog, t.progetto_id)) pezzi.push(esc(t.sezione));
   return pezzi.filter(Boolean).join(" · ");
 }
-function rigaTaskLista(t) {
-  var fatto = t.stato === "Fatto";
-  var late = t.scadenza && t.scadenza < today() && !fatto;
-  var sub = D.task.filter(function (x) { return x.padre_id === t.id; });
-  var subFatte = sub.filter(function (x) { return x.stato === "Fatto"; }).length;
-  var bloccata = D.dip.filter(function (d) { return d.task_id === t.id; }).some(function (d) { var b = by(D.task, d.blocca_id); return b && b.stato !== "Fatto"; });
-  var strada = stradaTask(t);
-  return '<div class="trow' + (fatto ? " fatta" : "") + '">' +
-    '<button class="ck' + (fatto ? " on" : "") + '" data-tck="' + t.id + '" title="Segna fatta"></button>' +
-    '<button class="ttit" data-open-task="' + t.id + '"><span class="tt1">' + esc(t.titolo) +
-      (sub.length ? '<span class="faint"> · ' + subFatte + "/" + sub.length + " sotto-attività</span>" : "") +
-      (bloccata ? ' <span class="badge b-amber">bloccata</span>' : "") + "</span>" +
-      "</button>" + (strada ? '<span class="tt2">' + strada + "</span>" : "") +
-    '<span class="tmeta">' +
-      (t.stato === "In corso" ? '<span class="badge b-terra">in corso</span>' : t.stato === "In review" ? '<span class="badge b-blue">in review</span>' : "") +
-      (t.priorita && t.priorita !== "Media" ? '<span class="badge ' + (PRIO_COL[t.priorita] || "") + '">' + esc(t.priorita) + "</span>" : "") +
-      (t.scadenza ? '<span class="badge ' + (late ? "b-red" : "") + '" title="Scadenza">' + (late ? "in ritardo · " : "entro ") + dshort(t.scadenza) + "</span>" : "") +
-      (t.assegnato_id ? avatar(t.assegnato_id, 22) : '<span class="av vuoto">?</span>') +
-    "</span></div>";
-}
-function vistaLista(list) {
-  if (!list.length) return '<div class="card">' + vuoto("Nessuna attività con questi filtri.", '<button class="lnk" data-tf-reset="1">Azzera i filtri</button>') + "</div>";
-  if (TGROUP === "nessuno") return '<div class="card tlist">' + list.map(rigaTaskLista).join("") + "</div>";
-  var g = {};
-  list.forEach(function (t) { var k = chiaveGruppo(t); (g[k] = g[k] || []).push(t); });
-  var ordine = Object.keys(g).sort();
-  if (TGROUP === "scadenza") { var pref = ["In ritardo", "Oggi", "Questa settimana", "Più avanti", "Senza data"]; ordine = pref.filter(function (x) { return g[x]; }); }
-  if (TGROUP === "stato") ordine = TASK_STATI.filter(function (x) { return g[x]; });
-  if (TGROUP === "priorita") ordine = ["Alta", "Media", "Bassa"].filter(function (x) { return g[x]; });
-  return ordine.map(function (k) {
-    var aperte = g[k].filter(function (t) { return t.stato !== "Fatto"; }).length;
-    var sotto = "";
-    if (TGROUP === "progetto") {
-      var t0 = g[k][0], k0 = t0.commessa_id ? by(D.com, t0.commessa_id) : null;
-      var cli0 = t0.cliente_id || (k0 && k0.cliente_id);
-      sotto = [cli0 ? lnkCli(cli0, "lnk mini2") : "", k0 && k0.titolo !== k ? lnkCom(k0.id, "lnk mini2") : ""].filter(Boolean).join(" · ");
-    }
-    return '<div class="card tgroup"><div class="cardhead"><h2>' + esc(k) + (sotto ? '<span class="sub">' + sotto + "</span>" : "") + '</h2><span class="faint">' + aperte + " aperte su " + g[k].length + "</span></div>" +
-      '<div class="tlist">' + g[k].map(rigaTaskLista).join("") + "</div></div>";
-  }).join("");
-}
 function vistaBacheca(list) {
   var col = [], titolo = {};
   if (TGROUP === "stato" || TGROUP === "nessuno") { col = TASK_STATI; }
@@ -1717,25 +1658,6 @@ function vistaTimeline(list) {
   }).join("");
   return '<div class="card"><div class="cardhead"><h2>Timeline</h2><span class="faint">da ' + dshort(iso(da)) + " a " + dshort(iso(a)) + "</span></div>" +
     '<div class="tlhead">' + mesi.join("") + "</div>" + righe + "</div>";
-}
-function vistaMie(list) {
-  var mie = list.filter(function (t) { return t.assegnato_id === me.pro_id && t.stato !== "Fatto"; });
-  var sett = iso(new Date(Date.now() + 7 * 86400000));
-  var gruppi = [
-    ["oggi", "Oggi e in ritardo", mie.filter(function (t) { return t.scadenza && t.scadenza <= today(); })],
-    ["settimana", "Questa settimana", mie.filter(function (t) { return t.scadenza && t.scadenza > today() && t.scadenza <= sett; })],
-    ["dopo", "Più avanti", mie.filter(function (t) { return t.scadenza && t.scadenza > sett; })],
-    ["senza", "Senza data", mie.filter(function (t) { return !t.scadenza; })]
-  ];
-  return '<div class="grid g4-1">' + gruppi.map(function (g) {
-    return '<div class="card mcol" data-quando="' + g[0] + '"><div class="cardhead"><h2>' + g[1] + '</h2><span class="faint">' + g[2].length + "</span></div>" +
-      '<div class="tlist">' + (g[2].length ? g[2].map(function (t) {
-        return '<div class="trow" draggable="true" data-open-task="' + t.id + '">' +
-          '<button class="ck" data-tck="' + t.id + '"></button>' +
-          '<button class="ttit" data-open-task="' + t.id + '">' + esc(t.titolo) + "</button>" +
-          '<span class="tmeta"><span class="faint">' + (t.progetto_id ? esc(nameOf(D.prog, t.progetto_id)) : t.commessa_id ? esc(nameOf(D.com, t.commessa_id, "titolo")) : "") + "</span></span></div>";
-      }).join("") : vuoto("Niente qui.")) + "</div></div>";
-  }).join("") + '</div><p class="faint" style="margin-top:12px">Trascina un\'attività in un\'altra colonna per spostarne la scadenza: oggi, entro la settimana, fra due settimane o nessuna data.</p>';
 }
 /* ---------------- Attività: una lista sola ----------------
    Oggi (in ritardo, oggi, senza data), Prossimi giorni, Tutte per progetto, Fatte.
@@ -1919,57 +1841,6 @@ function vistaDaFare(mie, tutte) {
   if (fatteOggi.length) h += '<div class="card tgroup fatte"><div class="cardhead"><h2>Fatte oggi</h2><span class="faint">' + fatteOggi.length + '</span></div><div class="tlist">' + fatteOggi.map(function (t) { return rigaT(t, { noData: true }); }).join("") + "</div></div>";
   return h;
 }
-function vistaOggi(mie, tutte) {
-  var ritardo = mie.filter(function (t) { return t.scadenza && t.scadenza < today(); }).sort(ordT);
-  var oggi = mie.filter(function (t) { return t.scadenza === today(); }).sort(ordT);
-  var senza = mie.filter(function (t) { return !t.scadenza; }).sort(ordT);
-  var fatteOggi = tutte.filter(function (t) { return t.stato === "Fatto" && (t.completata_il || "").slice(0, 10) === today() && (TV.chi !== "io" || t.assegnato_id === me.pro_id); });
-  var h = "";
-  if (!ritardo.length && !oggi.length) h += '<div class="card"><div class="empty">' + (senza.length ? "Niente con scadenza oggi. Qui sotto quello che non ha ancora un giorno: trascinane una su «Oggi» o scrivila qui sopra." : "Niente per oggi. Scrivi qui sopra la prima cosa da fare, o guarda i prossimi giorni.") + "</div></div>";
-  h += gruppoT("In ritardo", ritardo);
-  h += '<div class="card tgroup mcol" data-giorno="' + today() + '"><div class="cardhead"><h2>Oggi</h2><span class="faint">' + oggi.length + "</span></div>" +
-    '<div class="tlist">' + (oggi.length ? oggi.map(function (t) { return rigaT(t, { noData: true }); }).join("") : '<div class="tdrop">Trascina qui quello che vuoi fare oggi.</div>') + "</div></div>";
-  h += gruppoT("Senza data", senza, ' data-quando="senza"', null, "mcol");
-  if (fatteOggi.length) h += '<div class="card tgroup fatte"><div class="cardhead"><h2>Fatte oggi</h2><span class="faint">' + fatteOggi.length + "</span></div><div class=\"tlist\">" + fatteOggi.map(function (t) { return rigaT(t, { noData: true }); }).join("") + "</div></div>";
-  return h;
-}
-function vistaProssimi(mie) {
-  var h = "", tot = 0;
-  for (var i = 1; i <= 14; i++) {
-    var g = giornoPiu(i);
-    var items = mie.filter(function (t) { return t.scadenza === g; }).sort(ordT);
-    if (!items.length && i > 1) continue;
-    tot += items.length;
-    h += '<div class="card tgroup mcol" data-giorno="' + g + '"><div class="cardhead"><h2>' + etichettaGiorno(g) + (i === 1 ? ' <span class="sub">' + GG[new Date(g + "T12:00:00").getDay()] + " " + new Date(g + "T12:00:00").getDate() + "</span>" : "") + '</h2><span class="faint">' + items.length + "</span></div>" +
-      '<div class="tlist">' + (items.length ? items.map(function (t) { return rigaT(t, { noData: true }); }).join("") : '<div class="tdrop">Niente per domani. Trascina qui, o scrivi sopra.</div>') + "</div></div>";
-  }
-  var dopo = mie.filter(function (t) { return t.scadenza && t.scadenza > giornoPiu(14); }).sort(ordT);
-  tot += dopo.length;
-  h += gruppoT("Più avanti", dopo);
-  var senza = mie.filter(function (t) { return !t.scadenza; }).sort(ordT);
-  h += gruppoT("Senza data", senza, ' data-quando="senza"', null, "mcol");
-  if (!tot && !senza.length) h = '<div class="card"><div class="empty">Nessuna scadenza nei prossimi giorni.</div></div>' + h;
-  return h;
-}
-function vistaTutte(aperte) {
-  var list = aperte;
-  if (TF.cerca) { var q = TF.cerca.toLowerCase(); list = list.filter(function (t) { return (t.titolo + " " + (t.descrizione || "")).toLowerCase().indexOf(q) > -1; }); }
-  var h = '<div class="tcerca"><input id="tcerca" placeholder="Cerca fra le attività aperte…" value="' + esc(TF.cerca) + '"></div>';
-  if (!list.length) return h + '<div class="card"><div class="empty">' + (TF.cerca ? "Niente con questo testo." : "Nessuna attività aperta.") + "</div></div>";
-  var g = {}, nomi = {};
-  list.forEach(function (t) {
-    var k = t.progetto_id ? "p" + t.progetto_id : t.commessa_id ? "k" + t.commessa_id : t.cliente_id ? "c" + t.cliente_id : "z";
-    (g[k] = g[k] || []).push(t);
-    nomi[k] = t.progetto_id ? nameOf(D.prog, t.progetto_id) : t.commessa_id ? nameOf(D.com, t.commessa_id, "titolo") : t.cliente_id ? nameOf(D.cli, t.cliente_id) : "Senza progetto";
-  });
-  var ordine = Object.keys(g).sort(function (a, b) { if (a === "z") return 1; if (b === "z") return -1; return nomi[a].localeCompare(nomi[b]); });
-  return h + ordine.map(function (k) {
-    var t0 = g[k][0], k0 = t0.commessa_id ? by(D.com, t0.commessa_id) : null, cli0 = t0.cliente_id || (k0 && k0.cliente_id);
-    var sotto = k !== "z" && k.charAt(0) !== "c" && cli0 ? '<span class="sub">' + lnkCli(cli0, "lnk mini2") + "</span>" : "";
-    return '<div class="card tgroup"><div class="cardhead"><h2>' + esc(nomi[k]) + sotto + '</h2><span class="faint">' + g[k].length + "</span></div>" +
-      '<div class="tlist">' + g[k].slice().sort(ordT).map(function (t) { return rigaT(t, { noProg: k.charAt(0) !== "z" && k.charAt(0) !== "c" }); }).join("") + "</div></div>";
-  }).join("");
-}
 function vistaFatte(tutte) {
   var da = giornoPiu(-30);
   var list = tutte.filter(function (t) { return t.stato === "Fatto" && (t.completata_il || t.created_at || "").slice(0, 10) >= da && (TV.chi !== "io" || t.assegnato_id === me.pro_id); })
@@ -2099,7 +1970,7 @@ async function prossimaRicorrenza(t) {
   if (t.ricorrenza_fino && iso(nuova) > t.ricorrenza_fino) return;
   var r = await sb.from("task").insert({
     titolo: t.titolo, descrizione: t.descrizione, commessa_id: t.commessa_id, progetto_id: t.progetto_id,
-    lavorazione_id: t.lavorazione_id, assegnato_id: t.assegnato_id, stato: "Da fare", priorita: t.priorita,
+    assegnato_id: t.assegnato_id, stato: "Da fare", priorita: t.priorita,
     scadenza: iso(nuova), stimate: t.stimate, sezione: t.sezione, etichette: t.etichette,
     ricorrenza: t.ricorrenza, ricorrenza_fino: t.ricorrenza_fino, origine_id: t.origine_id || t.id
   });
@@ -2129,11 +2000,8 @@ async function creaModelloDaProgetto() {
   if (!nome) return;
   var inizio = p.inizio ? new Date(p.inizio) : new Date(p.created_at || Date.now());
   var voci = [];
-  lavOf(p.id).forEach(function (l) {
-    voci.push({ tipo: "lavorazione", nome: l.nome, giorni: l.fine ? Math.max(0, Math.round((new Date(l.fine) - inizio) / 86400000)) : null, ore: l.ore_stimate || null });
-  });
   D.task.filter(function (t) { return t.progetto_id === p.id; }).forEach(function (t) {
-    voci.push({ tipo: "attivita", nome: t.titolo, giorni: t.scadenza ? Math.max(0, Math.round((new Date(t.scadenza) - inizio) / 86400000)) : null, ore: t.stimate || null, sezione: t.sezione || null, lavorazione: t.lavorazione_id ? nameOf(D.lav, t.lavorazione_id) : null });
+    voci.push({ tipo: "attivita", nome: t.titolo, giorni: t.scadenza ? Math.max(0, Math.round((new Date(t.scadenza) - inizio) / 86400000)) : null, ore: t.stimate || null, sezione: t.sezione || null });
   });
   if (!voci.length) { toast("Quel progetto non ha ancora attività", true); return; }
   var r = await sb.from("modelli").insert({ pro_id: me.pro_id, nome: nome, descrizione: "Ricavato da " + p.nome, voci: voci });
@@ -2150,22 +2018,18 @@ async function applicaModello(mid) {
   var da = prompt("Da che giorno parte? (aaaa-mm-gg)", today());
   if (!da) return;
   var base = new Date(da);
-  var mappaLav = {};
   for (var i = 0; i < (m.voci || []).length; i++) {
     var v = m.voci[i];
     var quando = v.giorni == null ? null : iso(new Date(base.getTime() + v.giorni * 86400000));
-    if (v.tipo === "lavorazione") {
-      var rl = await sb.from("lavorazioni").insert({ progetto_id: p.id, commessa_id: p.commessa_id, nome: v.nome, pro_id: me.pro_id, stato: "Da iniziare", ore_stimate: v.ore || 0, inizio: da, fine: quando, ordine: i + 1 }).select().single();
-      if (!rl.error) mappaLav[v.nome] = rl.data.id;
-    } else {
-      await sb.from("task").insert({
-        titolo: v.nome, commessa_id: p.commessa_id, progetto_id: p.id,
-        lavorazione_id: v.lavorazione ? mappaLav[v.lavorazione] || null : null,
-        assegnato_id: me.pro_id, stato: "Da fare", priorita: "Media", scadenza: quando, stimate: v.ore || null, sezione: v.sezione || null
-      });
-    }
+    /* i modelli vecchi hanno dentro anche delle voci «lavorazione»: le faccio
+       nascere come sezioni, che è il posto dove quel livello è finito */
+    await sb.from("task").insert({
+      titolo: v.nome, commessa_id: p.commessa_id, progetto_id: p.id,
+      assegnato_id: me.pro_id, stato: "Da fare", priorita: "Media", scadenza: quando,
+      stimate: v.ore || null, sezione: v.sezione || (v.tipo === "lavorazione" ? v.nome : null)
+    });
   }
-  await reload(["lav", "task"]);
+  await reload(["task"]);
   closeModal(); toast("Modello applicato a " + p.nome); go("progetto", p.id, "attivita");
 }
 
@@ -2235,9 +2099,9 @@ function vAttivita() {
   }).join("") + "</ul>" : vuoto("Nessun commento.");
   h += '<form class="qadd" data-comm-task="' + t.id + '"><input name="testo" placeholder="Scrivi un commento…" autocomplete="off"><button class="btn sm" type="submit">Invia</button></form></div>';
 
-  h += '<div class="card"><div class="cardhead"><h2>Allegati</h2><button class="btn sm ghost" data-link="' + ctxAll(t.commessa_id, t.progetto_id, t.lavorazione_id, t.id) + '">+ Link</button></div>';
+  h += '<div class="card"><div class="cardhead"><h2>Allegati</h2><button class="btn sm ghost" data-link="' + ctxAll(t.commessa_id, t.progetto_id, t.id) + '">+ Link</button></div>';
   h += tabellaAllegati(files, { tipo: false });
-  h += zonaAllegati(ctxAll(t.commessa_id, t.progetto_id, t.lavorazione_id, t.id));
+  h += zonaAllegati(ctxAll(t.commessa_id, t.progetto_id, t.id));
   h += "</div>";
 
   h += "</div><div>";
@@ -2450,15 +2314,6 @@ function vProfilo() {
   return vPro();
 }
 
-/* ---------------- figure professionali ----------------
-   Il database sa che mestiere fai. Non per etichettarti, ma perché un fotografo
-   e un avvocato non usano lo stesso gestionale: uno vende servizi e giornate,
-   l'altro pratiche e ore; uno apre sopralluogo-shooting-selezione, l'altro
-   colloquio-studio-atto-udienze. La figura porta con sé quattro cose: l'unità
-   con cui vende, il modo in cui misura il lavoro, le voci tipiche del suo
-   listino e le attività tipo di un suo lavoro. Nessun mestiere è escluso: se
-   manca, si aggiunge al catalogo e da lì in poi vale per tutti. */
-function professione(pid) { return pid ? by(D.prof, pid) : null; }
 /* Le attività tipo si scrivono come si scriverebbero su un foglio: una per riga,
    e dopo i due punti le ore. Nessuno deve imparare una sintassi per dire
    "sopralluogo, quattro ore". */
@@ -3032,9 +2887,11 @@ function nomeDaUrl(u) {
 function urlValido(u) {
   try { var p = new URL(u); return p.protocol === "http:" || p.protocol === "https:"; } catch (e) { return false; }
 }
-/* contesto di un allegato: preventivo|progetto|lavorazione|attività, come stringa */
-function ctxAll(kid, pid, lid, tid, rid) { return [kid || "", pid || "", lid || "", tid || "", rid || ""].join("|"); }
-function ctxLeggi(s) { var p = String(s || "").split("|"); return { commessa_id: p[0] || null, progetto_id: p[1] || null, lavorazione_id: p[2] || null, task_id: p[3] || null, riunione_id: p[4] || null }; }
+/* Contesto di un allegato: preventivo|progetto|—|attività|riunione, come stringa.
+   La terza casella resta vuota: era il vecchio livello «lavorazione». La lascio
+   al suo posto perché i file già caricati hanno il contesto scritto così. */
+function ctxAll(kid, pid, tid, rid) { return [kid || "", pid || "", "", tid || "", rid || ""].join("|"); }
+function ctxLeggi(s) { var p = String(s || "").split("|"); return { commessa_id: p[0] || null, progetto_id: p[1] || null, task_id: p[3] || null, riunione_id: p[4] || null }; }
 
 /* la zona per trascinare, con accanto il pulsante per incollare un link */
 function zonaAllegati(ctx) {
@@ -3638,63 +3495,6 @@ function vProgetto() {
   return h + "</div></div>";
 }
 
-function vLavorazione() {
-  var l = by(D.lav, current);
-  if (!l) return '<div class="card">Lavorazione non trovata. <button class="lnk" data-go="progetti">Torna ai progetti</button></div>';
-  var p = by(D.prog, l.progetto_id), k = by(D.com, l.commessa_id);
-  var lt = taskOfLav(l.id), lo = oreOfLav(l.id);
-  var ore = sum(lo, function (o) { return o.ore; });
-  var perc = l.ore_stimate ? Math.min(100, Math.round(ore / l.ore_stimate * 100)) : 0;
-  var tm = timerMio(), attiva = tm && tm.lavorazione_id === l.id;
-  var h = crumbs(p ? [["Lavoro"], ["Progetti", "progetti"], [p.nome, "progetto", p.id, "attivita"], [l.nome]] : [["Lavoro"], ["Progetti", "progetti"], [l.nome]]);
-  h += '<div class="top"><h1>' + esc(l.nome) + '<span class="sub">' + (p ? '<button class="lnk" data-open-prog="' + p.id + '">' + esc(p.nome) + "</button> · " : "") + esc(k ? nameOf(D.cli, k.cliente_id) : "") + '</span></h1><div class="tools">' +
-    '<button class="btn sm ghost" data-edit="lav:' + l.id + '">Modifica</button>' +
-    (attiva ? '<button class="btn sm stop" data-tstop="1">■ Ferma <span id="timerlbl">' + durata(tm.iniziato) + "</span></button>" : '<button class="btn sm" data-tstart-lav="' + l.id + '">▶ Avvia timer</button>') +
-    "</div></div>";
-  h += '<div class="grid g4">' +
-    kpi(num(ore, 1) + " h", "Ore registrate", l.ore_stimate ? "su " + num(l.ore_stimate, 0) + " stimate · " + perc + "%" : "nessuna stima") +
-    kpi(String(lt.filter(function (x) { return x.stato !== "Fatto"; }).length), "Attività aperte", lt.length + " in totale") +
-    kpi(esc(l.stato), "Stato", l.pro_id ? nameOf(D.pros, l.pro_id) : "—") +
-    kpi(dt(l.fine), "Consegna", l.inizio ? "dal " + dt(l.inizio) : "") + "</div>";
-  var t = tab || "attivita";
-  h += schede([["attivita", "Attività", lt.filter(function (x) { return x.stato !== "Fatto"; }).length], ["ore", "Ore", num(ore, 1)], ["materiali", "Materiali", D.mat.filter(function (m) { return m.lavorazione_id === l.id; }).length]], t, "lavorazione", l.id);
-
-  h += '<div class="grid g32"><div>';
-  if (t === "attivita") {
-    h += '<div class="card"><div class="cardhead"><h2>Attività</h2><button class="btn sm ghost" data-new="task" data-ctx-lav="' + l.id + '">Nuova in dettaglio</button></div>' +
-      '<div class="tlist">' + lt.filter(function (x) { return !x.padre_id; }).map(rigaTaskLista).join("") + "</div>" +
-      '<form class="qadd" data-qadd-lav="' + l.id + '"><button class="ck" type="button" disabled></button><input name="titolo" placeholder="Aggiungi un\'attività a questa lavorazione" autocomplete="off"></form></div>';
-  }
-  if (t === "ore") {
-    h += '<div class="card"><div class="cardhead"><h2>Ore su questa lavorazione</h2><button class="btn sm ghost" data-new="ore" data-ctx-lav="' + l.id + '">+ Registra</button></div>' +
-      '<p class="faint" style="margin-bottom:12px">Vedi solo le tue: le ore di chi altro ci lavora restano sue.</p>' + tblOre(lo) + "</div>";
-  }
-  if (t === "materiali") {
-    var ml = D.mat.filter(function (m) { return m.lavorazione_id === l.id; });
-    h += '<div class="card"><div class="cardhead"><h2>Materiali</h2><button class="btn sm ghost" data-new="mat" data-ctx-lav="' + l.id + '">+ Aggiungi</button></div>' +
-      (ml.length ? "<table><tbody>" + ml.map(function (m) {
-        return "<tr><td>" + (m.path ? '<button class="lnk" data-file="' + m.id + '">' + esc(m.nome) + "</button>" : esc(m.nome)) + '</td><td class="faint">' + dshort(m.created_at) + "</td></tr>";
-      }).join("") + "</tbody></table>" : vuoto("Nessun materiale su questa lavorazione.")) + "</div>";
-  }
-  h += "</div><div>";
-
-  h += '<div class="card"><h3 style="margin-bottom:14px">Scheda</h3>' +
-    qcampo("lav", l.id, "stato", "Stato", qsel("lav", l.id, "stato", sel(["Da iniziare", "In corso", "In attesa", "Completata"], l.stato || "Da iniziare"))) +
-    qcampo("lav", l.id, "pro_id", "Chi la esegue", qsel("lav", l.id, "pro_id", opt(D.pros, l.pro_id))) +
-    '<div class="row2">' +
-      qcampo("lav", l.id, "inizio", "Inizio", qinput("lav", l.id, "inizio", "date", l.inizio)) +
-      qcampo("lav", l.id, "fine", "Consegna", qinput("lav", l.id, "fine", "date", l.fine)) +
-    "</div>" +
-    qcampo("lav", l.id, "ore_stimate", "Ore stimate", qinput("lav", l.id, "ore_stimate", "number", l.ore_stimate, ' step="0.5"')) +
-    "<table><tbody>" +
-    row2("Progetto", p ? '<button class="lnk" data-open-prog="' + p.id + '">' + esc(p.nome) + "</button>" : "—") +
-    row2("Preventivo", k ? '<button class="lnk" data-open-com="' + k.id + '">' + esc(k.titolo) + "</button>" : "—") +
-    row2("Consumo", l.ore_stimate ? perc + "% delle ore stimate" : "—") +
-    row2("Descrizione", esc(l.descrizione || "—")) + "</tbody></table>" +
-    '<div style="margin-top:12px"><button class="btn sm ghost" data-edit="lav:' + l.id + '">Apri il modulo completo</button></div></div>';
-  if (l.ore_stimate) h += '<div class="card"><h3 style="margin-bottom:10px">Stima contro consuntivo</h3>' + prog(perc) + '<p class="faint" style="margin-top:8px">' + num(ore, 1) + " h fatte su " + num(l.ore_stimate, 0) + " stimate" + (ore > l.ore_stimate ? " · sforato di " + num(ore - l.ore_stimate, 1) + " h" : " · restano " + num(l.ore_stimate - ore, 1) + " h") + "</p></div>";
-  return h + "</div></div>";
-}
 
 /* ---------------- calendario ---------------- */
 function eventiDi(g) {
@@ -6071,15 +5871,6 @@ var FORMS = {
       fld("descrizione", "Descrizione", "textarea", r.descrizione) +
       fld("note", "Note interne", "textarea", r.note);
   }},
-  lav: { t: "Lavorazione", tb: "lav", f: function (r) {
-    return fld("nome", "Nome della lavorazione (es. Programmazione backend)", "text", r.nome, true) +
-      '<div class="row2">' + selField("progetto_id", "Progetto", D.prog.map(function (p) { return '<option value="' + p.id + '"' + (r.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + " · " + esc(nameOf(D.com, p.commessa_id, "titolo")) + "</option>"; }).join("")) +
-      selField("pro_id", "Chi la esegue", opt(PROS_PRO(), r.pro_id || me.pro_id)) + "</div>" +
-      '<div class="row2">' + selField("stato", "Stato", sel(["Da iniziare", "In corso", "In attesa", "Completata"], r.stato || "Da iniziare")) + fld("ore_stimate", "Ore stimate", "number", r.ore_stimate == null ? 0 : r.ore_stimate) + "</div>" +
-      '<div class="row2">' + fld("inizio", "Inizio", "date", r.inizio) + fld("fine", "Consegna", "date", r.fine) + "</div>" +
-      '<div class="row2">' + fld("ordine", "Ordine", "number", r.ordine == null ? 1 : r.ordine) + selField("visibile_cliente", "Visibile al cliente", sel(["no", "si"], r.visibile_cliente ? "si" : "no")) + "</div>" +
-      fld("descrizione", "Descrizione", "textarea", r.descrizione);
-  }},
   task: { t: "Attività", tb: "task", f: function (r) {
     return '<div class="fgroup"><h3>Cosa</h3>' +
       fld("titolo", "Titolo", "text", r.titolo, true) +
@@ -6192,7 +5983,7 @@ var RAPIDI = { ore: 1, pren: 1, ev: 1, inter: 1, mat: 1, appr: 1, costi: 1 };
 /* Sezione di appartenenza di ogni modulo: serve per il percorso e per il ritorno */
 var FSEZ = {
   com: ["commesse", "Preventivi"], cli: ["clienti", "Clienti"], pros: ["pool", "Professionisti"],
-  serv: ["servizi", "I miei servizi"], prog: ["progetti", "Progetti"], lav: ["progetti", "Progetti"],
+  serv: ["servizi", "I miei servizi"], prog: ["progetti", "Progetti"],
   forn: ["fornitori", "Fornitori"], spazi: ["spazi", "Coworking & spazi"],
   ag: ["eventi", "Eventi e workshop"], can: ["chat", "Chat dello studio"], prof: ["professioni", "Figure professionali"],
   membri: ["impostazioni", "Impostazioni"], fasi: ["commesse", "Preventivi"], pag: ["commesse", "Preventivi"], costi: ["commesse", "Preventivi"],
@@ -6200,7 +5991,7 @@ var FSEZ = {
   task: ["task", "Attività"], ore: ["ore", "Le tue ore"], inter: ["clienti", "Clienti"], modelli: ["task", "Attività"],
   mat: ["commesse", "Preventivi"], ev: ["commesse", "Preventivi"], pren: ["spazi", "Coworking & spazi"], riu: ["riunioni", "Agenda"]
 };
-var FDETT = { com: ["commessa", "note"], cli: ["cliente", ""], prog: ["progetto", "attivita"], lav: ["lavorazione", ""], pros: ["pro", ""], task: ["attivita", ""], riu: ["riunione", ""] };
+var FDETT = { com: ["commessa", "note"], cli: ["cliente", ""], prog: ["progetto", "attivita"], pros: ["pro", ""], task: ["attivita", ""], riu: ["riunione", ""] };
 
 function openForm(entity, id, ctx) {
   var F = FORMS[entity]; if (!F) return;
@@ -6305,13 +6096,9 @@ async function saveForm(f) {
   if (entity === "ag" && !obj.pro_id) obj.pro_id = me.pro_id;
   if (entity === "costi" && !obj.pro_id) obj.pro_id = me.pro_id;
   if ("attivita_txt" in obj) { obj.attivita = attivitaDaTxt(obj.attivita_txt); delete obj.attivita_txt; }
-  /* Chi apre una lavorazione o un'attività sceglie il progetto, non il preventivo:
-     il preventivo lo ricavo io risalendo la catena. Senza, il database rifiuta la
-     riga perché non capisce a quale lavoro appartiene. */
-  if (!obj.commessa_id && obj.lavorazione_id) {
-    var lv0 = by(D.lav, obj.lavorazione_id);
-    if (lv0) { obj.commessa_id = lv0.commessa_id; if (!obj.progetto_id) obj.progetto_id = lv0.progetto_id; }
-  }
+  /* Chi apre un'attività sceglie il progetto, non il preventivo: il preventivo
+     lo ricavo io risalendo la catena. Senza, il database rifiuta la riga perché
+     non capisce a quale lavoro appartiene. */
   if (!obj.commessa_id && obj.progetto_id) {
     var pg0 = by(D.prog, obj.progetto_id);
     if (pg0) obj.commessa_id = pg0.commessa_id;
@@ -6645,7 +6432,7 @@ function render() {
     return;
   }
   buildNav();
-  var V = { riunioni: vRiunioni, riunione: vRiunione, attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vTask, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, posta: vPosta, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi, professioni: vProfessioni, eventi: vEventi, chat: vChat };
+  var V = { riunioni: vRiunioni, riunione: vRiunione, attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vTask, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, posta: vPosta, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi, professioni: vProfessioni, eventi: vEventi, chat: vChat };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search") || el("#fcerca") || el("#tcerca");
@@ -6740,9 +6527,9 @@ function countUp() {
 /* ---------------- eventi ---------------- */
 /* Un clic solo: finché la prima azione non ha finito, la seconda uguale non parte. */
 var INCORSO = {};
-var GUARDIA = ["avvia", "impCrea", "ciclo", "incassa", "tck", "apprVar", "tstart", "tstop", "tstartTask", "tstartLav", "propSi", "portnew", "riuTask", "riuStato", "duplTask", "dupl", "richCli", "richPro", "richOk"];
+var GUARDIA = ["avvia", "impCrea", "ciclo", "incassa", "tck", "apprVar", "tstart", "tstop", "tstartTask", "propSi", "portnew", "riuTask", "riuStato", "duplTask", "dupl", "richCli", "richPro", "richOk"];
 document.addEventListener("click", function (e) {
-  var t = e.target.closest("button, [data-open-task], [data-open-com], [data-open-prog], [data-open-lav], [data-day], [data-close]");
+  var t = e.target.closest("button, [data-open-task], [data-open-com], [data-open-prog], [data-day], [data-close]");
   if (!t) return;
   var d = t.dataset || {}, chiave = "";
   for (var gi = 0; gi < GUARDIA.length; gi++) if (d[GUARDIA[gi]] !== undefined) { chiave = GUARDIA[gi] + ":" + d[GUARDIA[gi]]; break; }
@@ -6769,7 +6556,6 @@ async function clicApp(e, t, d) {
   if (d.annulla) { tornaIndietro(); return; }
   if (d.openCom) { go("commessa", d.openCom, "servizi"); return; }
   if (d.openProg) { go("progetto", d.openProg, "attivita"); return; }
-  if (d.openLav) { go("lavorazione", d.openLav); return; }
   if (d.cal !== undefined) { CAL = d.cal === "0" ? 0 : CAL + (+d.cal); render(); return; }
   if (d.navg) { navToggle(d.navg); buildNav(); return; }
   if (d.link) { apriLink(d.link); return; }
@@ -7000,14 +6786,6 @@ async function clicApp(e, t, d) {
     if (rvp.error) { toast(erroreUmano(rvp.error), true); return; }
     await reload(["prog"]); toast(!pv.visibile_cliente ? "Il cliente ora vede questo progetto" : "Progetto reso interno"); render(); return;
   }
-  if (d.tstartLav) {
-    var lw = by(D.lav, d.tstartLav); if (!lw) return;
-    if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
-    if (!await primaFermaTimer()) return;
-    var rtl = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: lw.commessa_id, progetto_id: lw.progetto_id, lavorazione_id: lw.id, iniziato: new Date().toISOString() });
-    if (rtl.error) { toast(erroreUmano(rtl.error), true); return; }
-    await reload(["tmr"]); toast("Timer avviato su " + lw.nome); render(); return;
-  }
   if (d.openCli) { go("cliente", d.openCli); return; }
   if (d.openPro) { go("pro", d.openPro); return; }
   if (d.openProg) { go("progetto", d.openProg); return; }
@@ -7031,8 +6809,7 @@ async function clicApp(e, t, d) {
     if (d.ctxPro) ctx.pro_id = d.ctxPro;
     if (d.ctxAmb) ctx.ambito = d.ctxAmb;
     if (d.ctxProg) { ctx.progetto_id = d.ctxProg; var pk2 = by(D.prog, d.ctxProg); if (pk2) ctx.commessa_id = pk2.commessa_id; }
-    if (d.ctxLav) { var lk = by(D.lav, d.ctxLav); if (lk) { ctx.lavorazione_id = lk.id; ctx.progetto_id = lk.progetto_id; ctx.commessa_id = lk.commessa_id; } }
-    if (d.ctxTask) { var tk8 = by(D.task, d.ctxTask); if (tk8) { ctx.task_id = tk8.id; ctx.lavorazione_id = tk8.lavorazione_id; ctx.progetto_id = tk8.progetto_id; ctx.commessa_id = tk8.commessa_id; } }
+    if (d.ctxTask) { var tk8 = by(D.task, d.ctxTask); if (tk8) { ctx.task_id = tk8.id; ctx.progetto_id = tk8.progetto_id; ctx.commessa_id = tk8.commessa_id; } }
     openForm(d.new, null, ctx); return;
   }
   if (d.edit) { var p = d.edit.split(":"); openForm(p[0], p.slice(1).join(":")); return; }
@@ -7201,7 +6978,7 @@ async function clicApp(e, t, d) {
     var td = by(D.task, d.duplTask); if (!td) return;
     var copia = {
       titolo: td.titolo + " (copia)", descrizione: td.descrizione, commessa_id: td.commessa_id, progetto_id: td.progetto_id,
-      lavorazione_id: td.lavorazione_id, assegnato_id: td.assegnato_id, stato: "Da fare", priorita: td.priorita,
+      assegnato_id: td.assegnato_id, stato: "Da fare", priorita: td.priorita,
       scadenza: td.scadenza, inizio: td.inizio, stimate: td.stimate, sezione: td.sezione, etichette: td.etichette
     };
     var rdt = await sb.from("task").insert(copia).select().single();
@@ -7212,7 +6989,7 @@ async function clicApp(e, t, d) {
     var tk9 = by(D.task, d.tstartTask); if (!tk9) return;
     if (!me.pro_id) { toast("Il tuo utente non è collegato a una scheda", true); return; }
     if (!await primaFermaTimer()) return;
-    var rtt = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: tk9.commessa_id, progetto_id: tk9.progetto_id, lavorazione_id: tk9.lavorazione_id, task_id: tk9.id, iniziato: new Date().toISOString() });
+    var rtt = await sb.from("timer").upsert({ pro_id: me.pro_id, commessa_id: tk9.commessa_id, progetto_id: tk9.progetto_id, task_id: tk9.id, iniziato: new Date().toISOString() });
     if (rtt.error) { toast(erroreUmano(rtt.error), true); return; }
     await reload(["tmr"]); toast("Timer avviato"); render(); return;
   }
@@ -7565,7 +7342,7 @@ async function accettaPreventivo(kid) {
 /* Prima di avviare un timer nuovo, quello vecchio si chiude e le sue ore restano. */
 async function primaFermaTimer() {
   var tm = timerMio(); if (!tm) return true;
-  var dove = tm.task_id ? nameOf(D.task, tm.task_id, "titolo") : tm.lavorazione_id ? nameOf(D.lav, tm.lavorazione_id) : nameOf(D.com, tm.commessa_id, "titolo");
+  var dove = tm.task_id ? nameOf(D.task, tm.task_id, "titolo") : tm.progetto_id ? nameOf(D.prog, tm.progetto_id) : nameOf(D.com, tm.commessa_id, "titolo");
   if (!confirm("Hai già un timer acceso su «" + dove + "» da " + durata(tm.iniziato) + ". Lo fermo, registro le ore e parto col nuovo?")) return false;
   await stopTimer(true);
   return true;
@@ -7588,7 +7365,7 @@ async function stopTimer(zitto, oreForzate) {
   await sb.from("timer").delete().eq("pro_id", me.pro_id);
   if (ore >= 0.1) {
     var p = by(D.pros, me.pro_id);
-    var r = await sb.from("ore").insert({ pro_id: me.pro_id, commessa_id: tm.commessa_id, progetto_id: tm.progetto_id || null, lavorazione_id: tm.lavorazione_id || null, task_id: tm.task_id || null, data: giorno, ore: ore, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: tm.task_id ? nameOf(D.task, tm.task_id, "titolo") : tm.lavorazione_id ? nameOf(D.lav, tm.lavorazione_id) : "Sessione di lavoro" });
+    var r = await sb.from("ore").insert({ pro_id: me.pro_id, commessa_id: tm.commessa_id, progetto_id: tm.progetto_id || null, task_id: tm.task_id || null, data: giorno, ore: ore, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: tm.task_id ? nameOf(D.task, tm.task_id, "titolo") : tm.progetto_id ? nameOf(D.prog, tm.progetto_id) : "Sessione di lavoro" });
     if (r.error) { toast(erroreUmano(r.error), true); }
     else toast("Registrate " + num(ore, 1) + " h");
   } else if (!zitto) toast("Sessione troppo breve, non registrata");
@@ -7641,7 +7418,7 @@ async function uploadFile(files, ctx) {
     var tipo = ["jpg", "jpeg", "png", "gif", "webp", "heic"].indexOf(est) > -1 ? "Immagine" : ["pdf"].indexOf(est) > -1 ? "Documento" : ["mp4", "mov"].indexOf(est) > -1 ? "Video" : "File";
     var riga = { nome: f.name, path: path, dim: f.size, tipo: tipo, visibile_cliente: false, caricato_da: me.pro_id };
     riga.commessa_id = dove.commessa_id; riga.progetto_id = dove.progetto_id;
-    riga.lavorazione_id = dove.lavorazione_id; riga.task_id = dove.task_id; riga.riunione_id = dove.riunione_id;
+    riga.task_id = dove.task_id; riga.riunione_id = dove.riunione_id;
     var ri = await sb.from("materiali").insert(riga);
     if (ri.error) { toast(erroreUmano(ri.error), true); }
   }
@@ -7812,7 +7589,7 @@ async function invioModulo(e, f) {
     e.preventDefault();
     var tsub = f.titolo.value.trim(); if (!tsub) return;
     var pd = by(D.task, f.dataset.qaddSub); if (!pd) return;
-    var rqs = await sb.from("task").insert({ titolo: tsub, padre_id: pd.id, commessa_id: pd.commessa_id, progetto_id: pd.progetto_id, lavorazione_id: pd.lavorazione_id, assegnato_id: pd.assegnato_id || me.pro_id, creato_da: me.pro_id, stato: "Da fare", priorita: "Media" });
+    var rqs = await sb.from("task").insert({ titolo: tsub, padre_id: pd.id, commessa_id: pd.commessa_id, progetto_id: pd.progetto_id, assegnato_id: pd.assegnato_id || me.pro_id, creato_da: me.pro_id, stato: "Da fare", priorita: "Media" });
     if (rqs.error) { toast(erroreUmano(rqs.error), true); return; }
     f.titolo.value = ""; await reload(["task"]); render(); return;
   }
@@ -7829,16 +7606,6 @@ async function invioModulo(e, f) {
     var rda = await sb.from("task_dip").insert({ task_id: f.dataset.dipAdd, blocca_id: bl });
     if (rda.error) { toast(erroreUmano(rda.error), true); return; }
     await reload(["dip"]); render(); return;
-  }
-  if (f.dataset.qaddLav) {
-    e.preventDefault();
-    var titl = f.titolo.value.trim(); if (!titl) return;
-    var lv2 = by(D.lav, f.dataset.qaddLav);
-    var rql = await sb.from("task").insert({ titolo: titl, commessa_id: lv2 ? lv2.commessa_id : null, progetto_id: lv2 ? lv2.progetto_id : null, lavorazione_id: f.dataset.qaddLav, assegnato_id: me.pro_id, stato: "Da fare", priorita: "Media" });
-    if (rql.error) { toast(erroreUmano(rql.error), true); return; }
-    f.titolo.value = "";
-    await reload(["task"]); render();
-    return;
   }
   if (f.dataset.qadd) {
     e.preventDefault();
@@ -8028,7 +7795,6 @@ document.addEventListener("change", async function (e) {
     var patch = {}; patch[campo] = val;
     /* spostare una cosa da un progetto a un altro sposta anche il preventivo sotto */
     if (campo === "progetto_id" && val) { var pg9 = by(D.prog, val); if (pg9) patch.commessa_id = pg9.commessa_id; }
-    if (campo === "lavorazione_id" && val) { var lv9 = by(D.lav, val); if (lv9) { patch.progetto_id = lv9.progetto_id; patch.commessa_id = lv9.commessa_id; } }
     if (tbk === "task" && campo === "stato" && val === "Fatto") patch.completata_il = new Date().toISOString();
     /* Il preventivo che cambia momento non è un campo come gli altri: si segna la
        data del passaggio, si congela il numero quando parte, e all'accettazione
