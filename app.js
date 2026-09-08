@@ -24,13 +24,13 @@ var APPVER = (function () {
 })();
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
-var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
+var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], trasf: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
   prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [], pcfg: [], gconn: [], impg: [], mconn: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
-var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
+var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", trasf: "trasferte", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
   prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi", pcfg: "prenota_cfg", gconn: "google_conn", impg: "impegni_google", mconn: "mail_conn" };
 
 /* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
@@ -149,6 +149,21 @@ function costiProg(pid) { return D.costi.filter(function (c) { return c.progetto
 function costoVal(c) { return (+c.importo || 0) * (c.ricorrente ? Math.max(1, +c.cicli || 1) : 1); }
 function costiTot(list) { return sum(list, costoVal); }
 var TIPI_COSTO = ["Strumento", "Abbonamento", "Materiale", "Fornitore", "Advertising", "Altro"];
+/* Quanto ti costa andare dal cliente: i chilometri per la tua tariffa, più le
+   spese vive. Se la trasferta è addebitata al cliente non tocca il margine —
+   passa e basta, come un costo ribaltato. Il tempo del viaggio non è qui: è
+   nelle ore, a tariffa ridotta, se no si conterebbe due volte. */
+function trasfOf(k) { return D.trasf.filter(function (t) { return t.commessa_id === k; }); }
+function trasfProg(pid) { return D.trasf.filter(function (t) { return t.progetto_id === pid; }); }
+function trasfCli(cid) { return D.trasf.filter(function (t) { return t.cliente_id === cid; }); }
+function trasfVal(t) { return Math.round(((+t.km || 0) * (+t.tariffa_km || 0) + (+t.spese || 0)) * 100) / 100; }
+function trasfTot(list) { return sum(list, trasfVal); }
+/* quante uscite erano previste a preventivo: le voci di tipo Trasferta, con la
+   loro quantità. Una riga «4 uscite a 80 €» vale quattro trasferte. */
+function trasfPreviste(k) { return sum(righeOf(k).filter(function (r) { return r.tipo === "Trasferta" && !r.opzionale; }), function (r) { return r.qty == null ? 1 : r.qty; }); }
+function trasfPrevisteEur(k) { return sum(righeOf(k).filter(function (r) { return r.tipo === "Trasferta" && !r.opzionale; }), function (r) { return rigaCalc(r).prezzo; }); }
+function tariffaKmMia() { var p = me.pro_id ? by(D.pros, me.pro_id) : null; return p && p.tariffa_km != null ? +p.tariffa_km : 0.45; }
+function percViaggioMia() { var p = me.pro_id ? by(D.pros, me.pro_id) : null; return p && p.perc_viaggio != null ? +p.perc_viaggio : 50; }
 function proDi(k) {
   var s = {};
   var c = by(D.com, k);
@@ -169,14 +184,16 @@ function budget(k) {
   var oreFatte = sum(ore, function (o) { return o.ore; });
   /* i costi vivi del lavoro: quelli non ribaltati al cliente mangiano il margine */
   var costiVivi = costiTot(costiOf(k.id).filter(function (x) { return !x.ribaltato; }));
+  /* le trasferte non addebitate sono costo vivo esattamente come gli strumenti */
+  var trasfVive = trasfTot(trasfOf(k.id).filter(function (x) { return !x.addebitata; }));
   /* le ore registrate valgono più del piano: se ho lavorato più del previsto, il costo reale lo dice */
   var costoOre = sum(ore, function (o) { return (+o.ore || 0) * (+o.tariffa || 0); });
-  var costoReale = Math.max(c.cost, costoOre) + costiVivi;
+  var costoReale = Math.max(c.cost, costoOre) + costiVivi + trasfVive;
   var margPian = ricavo - c.cost;
   var margReale = ricavo - costoReale;
   var burnOre = oreStim ? Math.round(oreFatte / oreStim * 100) : null;
   var burnCosto = ricavo ? Math.round(costoReale / ricavo * 100) : 0;
-  return { ricavo: ricavo, extra: extra, oreStim: oreStim, oreFatte: oreFatte, costoPian: c.cost, costoReale: costoReale, costi: costiVivi, margPian: margPian, margReale: margReale, burnOre: burnOre, burnCosto: burnCosto, varianti: vApp.length };
+  return { ricavo: ricavo, extra: extra, oreStim: oreStim, oreFatte: oreFatte, costoPian: c.cost, costoReale: costoReale, costi: costiVivi + trasfVive, trasf: trasfVive, margPian: margPian, margReale: margReale, burnOre: burnOre, burnCosto: burnCosto, varianti: vApp.length };
 }
 function salute(k) {
   if (STATI_CHIUSI.concat(["Bozza"]).indexOf(k.stato) > -1) return { c: "", t: "—", d: "" };
@@ -564,6 +581,8 @@ function mieiDatiPersonali() {
   var pv = (D.priv || []).filter(function (x) { return x.pro_id === me.pro_id; })[0];
   if (pr) {
     pr.tariffa_oraria = pv ? pv.tariffa_oraria : null;
+    pr.tariffa_km = pv ? pv.tariffa_km : null;
+    pr.perc_viaggio = pv ? pv.perc_viaggio : null;
     pr.note = pv ? pv.note : null;
     pr.iban = pv ? pv.iban : null;
     pr.condizioni = pv ? pv.condizioni : null;
@@ -1286,7 +1305,7 @@ function vCommessa() {
     var bo = b.burnOre == null ? 0 : b.burnOre, bc = b.burnCosto;
     h += '<div class="card"><div class="grid g2">' +
       '<div><div class="cardhead"><h2>Le mie ore</h2><span class="faint">' + num(b.oreFatte, 1) + " / " + num(b.oreStim, 0) + " h stimate in totale</span></div><div class=\"prog\"><i class=\"" + (bo > 100 ? "bad" : bo > 85 ? "warn" : "ok") + '" style="width:' + Math.min(100, bo) + '%"></i></div><p class="faint" style="margin-top:6px">' + bo + "% delle ore stimate · quelle dei colleghi sono private</p></div>" +
-      '<div><div class="cardhead"><h2>Costo sul valore</h2><span class="faint">' + eur(Math.max(b.costoPian, b.costoReale)) + " su " + eur(b.ricavo) + "</span></div><div class=\"prog\"><i class=\"" + (bc > 90 ? "bad" : bc > 70 ? "warn" : "ok") + '" style="width:' + Math.min(100, bc) + '%"></i></div><p class="faint" style="margin-top:6px">' + bc + "% del valore va in compensi" + (b.costi ? " e costi (" + eur(b.costi) + " di strumenti e spese)" : "") + "</p></div>" +
+      '<div><div class="cardhead"><h2>Costo sul valore</h2><span class="faint">' + eur(Math.max(b.costoPian, b.costoReale)) + " su " + eur(b.ricavo) + "</span></div><div class=\"prog\"><i class=\"" + (bc > 90 ? "bad" : bc > 70 ? "warn" : "ok") + '" style="width:' + Math.min(100, bc) + '%"></i></div><p class="faint" style="margin-top:6px">' + bc + "% del valore va in compensi" + (b.costi ? " e costi (" + eur(b.costi) + (b.trasf ? " di cui " + eur(b.trasf) + " di trasferte" : " di strumenti e spese") + ")" : "") + "</p></div>" +
       "</div></div>";
   }
 
@@ -1375,6 +1394,25 @@ function vCommessa() {
   }
   if (t === "costi") {
     var cst = costiOf(k.id);
+    var tr = trasfOf(k.id), prevN = trasfPreviste(k.id), prevE = trasfPrevisteEur(k.id);
+    if (tr.length || prevN) {
+      var fatteE = trasfTot(tr), oltre = prevN && tr.length > prevN;
+      h += '<div class="card"><div class="cardhead"><h2>Trasferte</h2><span class="faint" style="margin-right:auto">' +
+        (prevN ? prevN + (prevN === 1 ? " uscita prevista" : " uscite previste") + " a preventivo" + (prevE ? " per " + eur(prevE) : "") : "nessuna prevista a preventivo") +
+        '</span><button class="btn sm ghost" data-new="trasf" data-ctx="' + k.id + '">+ Registra trasferta</button></div>' +
+        '<div class="grid g3">' +
+        kpi(prevN ? tr.length + " / " + prevN : String(tr.length), "Uscite fatte", prevN ? (oltre ? "ne hai fatte " + (tr.length - prevN) + " in più del previsto" : "sul previsto") : "non erano a preventivo") +
+        kpi(eur(fatteE), "Quanto sono costate", prevE ? "a preventivo " + eur(prevE) : "tutte fuori preventivo") +
+        kpi(eur(trasfTot(tr.filter(function (x) { return !x.addebitata; }))), "A carico tuo", "il margine ne tiene conto") + "</div>";
+      if (tr.length) h += '<table style="margin-top:12px"><thead><tr><th>Quando</th><th>Dove</th><th class="num">km</th><th class="num">Totale</th><th class="num"></th></tr></thead><tbody>' +
+        tr.slice().sort(function (a, b) { return (a.data || "") < (b.data || "") ? 1 : -1; }).map(function (x) {
+          return "<tr><td>" + dt(x.data) + "</td><td>" + esc(x.destinazione || "—") + (x.motivo ? ' <span class="faint">· ' + esc(x.motivo) + "</span>" : "") +
+            '</td><td class="num">' + (x.km ? num(x.km, 0) : "—") + '</td><td class="num">' + eur(trasfVal(x)) + (x.addebitata ? ' <span class="badge b-green">addebitata</span>' : "") +
+            '</td><td class="num"><button class="lnk" data-edit="trasf:' + x.id + '">apri</button></td></tr>';
+        }).join("") + "</tbody></table>";
+      else h += '<p class="faint" style="margin-top:10px">Erano previste ma non ne hai ancora registrata nessuna.</p>';
+      h += "</div>";
+    }
     h += '<div class="cardhead"><h2>Costi del lavoro</h2><span class="faint" style="margin-right:auto">' + (cst.length ? eur(costiTot(cst.filter(function (x) { return !x.ribaltato; }))) + " a carico tuo, il margine ne tiene conto" : "") + '</span><button class="btn sm ghost" data-new="costi" data-ctx="' + k.id + '">+ Registra un costo</button></div>';
     h += tabellaCosti(cst, { attr: 'data-ctx="' + k.id + '"' });
   }
@@ -2163,7 +2201,13 @@ function vOre() {
   var sett = list.filter(function (o) { return days(today(), o.data) < 7 && days(today(), o.data) >= 0; });
   var fatt = mese.filter(function (o) { return o.fatturabile; });
   var totMese = sum(mese, function (o) { return o.ore; });
-  var h = head("Le tue ore", "Il tuo registro ore: lo vedi solo tu, serve a te per tararti e per i clienti gestiti a ore", '<button class="btn sm" data-new="ore">+ Registra ore</button>');
+  var mieTrasf = D.trasf.filter(function (t) { return t.pro_id === me.pro_id; }).sort(function (a, b) { return (a.data || "") < (b.data || "") ? 1 : -1; });
+  var vista = tab === "trasferte" ? "trasferte" : "ore";
+  var h = vista === "trasferte"
+    ? head("Le tue trasferte", "Quanto ti costa andare dal cliente: chilometri, spese vive e tempo di viaggio. Lo vedi solo tu.", '<button class="btn sm" data-new="trasf">+ Registra trasferta</button>')
+    : head("Le tue ore", "Il tuo registro ore: lo vedi solo tu, serve a te per tararti e per i clienti gestiti a ore", '<button class="btn sm" data-new="ore">+ Registra ore</button>');
+  h += barraViste([["ore", "Ore"], ["trasferte", "Trasferte", mieTrasf.length]], vista, "ore");
+  if (vista === "trasferte") return h + vistaTrasferte(mieTrasf);
   h += '<div class="grid g4">' +
     kpi(num(totMese, 1) + " h", "Questo mese", num(sum(sett, function (o) { return o.ore; }), 1) + " h negli ultimi 7 giorni") +
     kpi(num(sum(fatt, function (o) { return o.ore; }), 1) + " h", "Fatturabili", totMese ? Math.round(sum(fatt, function (o) { return o.ore; }) / totMese * 100) + "% del totale" : "—") +
@@ -2250,6 +2294,37 @@ function vOre() {
   h += pk.length ? '<div class="bars">' + pk.slice(0, 8).map(function (id) { return bar(nameOf(D.com, id, "titolo"), per[id], per[pk[0]], num(per[id], 1) + " h"); }).join("") + "</div>" : vuoto("—");
   h += "</div>";
   h += '<div class="card"><div class="cardhead"><h2>Registrazioni</h2></div>' + tblOre(list.slice(0, 60)) + "</div>";
+  return h;
+}
+
+/* Il registro delle uscite: quante, quanto lontano, quanto sono costate e
+   quante di quelle il cliente le paga. I numeri in cima sono dell'anno in corso,
+   perché è così che si ragiona quando si decide se una tariffa regge. */
+function vistaTrasferte(list) {
+  var anno = String(new Date().getFullYear());
+  var quest = list.filter(function (t) { return (t.data || "").slice(0, 4) === anno; });
+  var km = sum(quest, function (t) { return t.km; });
+  var rimb = trasfTot(quest);
+  var addeb = trasfTot(quest.filter(function (t) { return t.addebitata; }));
+  var oreV = sum(quest, function (t) { return t.ore_viaggio; });
+  var h = '<div class="grid g4">' +
+    kpi(String(quest.length), "Uscite quest'anno", quest.length ? "l'ultima il " + dt(quest[0].data) : "nessuna ancora") +
+    kpi(num(km, 0) + " km", "Chilometri percorsi", "al tuo rimborso di " + eur(tariffaKmMia()) + " al km") +
+    kpi(eur(rimb), "Quanto ti sono costate", addeb ? eur(addeb) + " li paga il cliente" : "nessuna addebitata al cliente") +
+    kpi(num(oreV, 1) + " h", "Ore passate in viaggio", "contate al " + percViaggioMia() + "% della tariffa") + "</div>";
+  if (!list.length) return h + '<div class="card">' + vuoto("Nessuna trasferta registrata.", '<button class="lnk" data-new="trasf">Registra la prima</button>') + "</div>";
+  h += '<div class="card"><div class="cardhead"><h2>Tutte le tue uscite</h2><span class="faint">' + list.length + "</span></div>" +
+    '<table><thead><tr><th>Quando</th><th>Dove e perché</th><th>Per chi</th><th class="num">km</th><th class="num">Spese</th><th class="num">Viaggio</th><th class="num">Totale</th><th class="num"></th></tr></thead><tbody>' +
+    list.map(function (t) {
+      return "<tr><td>" + dt(t.data) + "</td><td><b>" + esc(t.destinazione || "—") + "</b>" + (t.motivo ? '<div class="faint">' + esc(t.motivo) + "</div>" : "") + "</td>" +
+        "<td>" + (t.cliente_id ? lnkCli(t.cliente_id, "lnk mini2") : t.commessa_id ? lnkCom(t.commessa_id, "lnk mini2") : '<span class="faint">—</span>') + "</td>" +
+        '<td class="num">' + (t.km ? num(t.km, 0) : "—") + '</td>' +
+        '<td class="num">' + (t.spese ? eur(t.spese) : "—") + '</td>' +
+        '<td class="num">' + (t.ore_viaggio ? num(t.ore_viaggio, 1) + " h" : "—") + '</td>' +
+        '<td class="num"><b>' + eur(trasfVal(t)) + "</b>" + (t.addebitata ? ' <span class="badge b-green">addebitata</span>' : "") + "</td>" +
+        '<td class="num"><button class="lnk" data-edit="trasf:' + t.id + '">apri</button> · <button class="lnk" data-del="trasf:' + t.id + '">elimina</button></td></tr>';
+    }).join("") + "</tbody></table>" +
+    '<p class="faint" style="margin-top:10px">Le ore di viaggio finiscono anche nel tuo registro ore, contate al ' + percViaggioMia() + '% della tariffa: così il costo di un cliente è quello vero.</p></div>';
   return h;
 }
 
@@ -5830,7 +5905,7 @@ var FORMS = {
       '<div class="row2">' + fld("piva", "P. IVA", "text", r.piva) + selField("owner_id", "Chi lo segue", opt(D.pros, r.owner_id || me.pro_id)) + "</div>" +
       fld("indirizzo", "Indirizzo", "text", r.indirizzo) + fld("note", "Note", "textarea", r.note);
   }},
-  pros: { t: "Professionista", tb: "pros", priv: ["tariffa_oraria", "note", "iban", "condizioni"], f: function (r) {
+  pros: { t: "Professionista", tb: "pros", priv: ["tariffa_oraria", "tariffa_km", "perc_viaggio", "note", "iban", "condizioni"], f: function (r) {
     var mio = r.id === me.pro_id || !r.id;
     return '<div class="fgroup"><h3>Scheda visibile ai colleghi</h3>' +
       fld("nome", "Nome", "text", r.nome, true) +
@@ -5847,6 +5922,9 @@ var FORMS = {
       (mio ? '<div class="fgroup priv"><h3>Solo tuo <span class="badge">privato</span></h3>' +
         '<p class="faint" style="margin-bottom:12px">Questi campi stanno in una tabella che risponde solo a te: nessun collega può leggerli, nemmeno interrogando il sistema.</p>' +
         fld("tariffa_oraria", "Tariffa oraria (€)", "number", r.tariffa_oraria) +
+        '<div class="row2">' + fld("tariffa_km", "Rimborso al chilometro (€)", "number", r.tariffa_km == null ? 0.45 : r.tariffa_km) +
+        fld("perc_viaggio", "Quanto vale un'ora di viaggio (% della tariffa)", "number", r.perc_viaggio == null ? 50 : r.perc_viaggio) + "</div>" +
+        '<p class="faint" style="margin:-6px 0 12px">Con 0,45 €/km e il 50%, una trasferta di 120 km con due ore di viaggio ti costa 54 € di rimborso più due ore contate a metà tariffa. Sono i numeri che rendono vero il margine.</p>' +
         fld("note", "Note personali", "textarea", r.note) + "</div>" : "");
   }},
   serv: { t: "Servizio", tb: "serv", f: function (r) {
@@ -5930,6 +6008,19 @@ var FORMS = {
       fld("url", "Link (fattura, abbonamento, ricevuta)", "text", r.url) +
       fld("note", "Note", "text", r.note);
   }},
+  trasf: { t: "Trasferta", tb: "trasf", f: function (r) {
+    return '<div class="row2">' + fld("data", "Quando", "date", r.data || today()) + fld("destinazione", "Dove sei andato", "text", r.destinazione, true) + "</div>" +
+      fld("motivo", "Perché ci sei andato (sopralluogo, riunione, consegna…)", "text", r.motivo) +
+      '<div class="row2">' + selField("cliente_id", "Cliente", '<option value="">— nessuno —</option>' + opt(D.cli, r.cliente_id)) +
+      selField("commessa_id", "Preventivo", '<option value="">— nessuno —</option>' + opt(D.com, r.commessa_id, "titolo")) + "</div>" +
+      selField("progetto_id", "Progetto", '<option value="">— nessuno —</option>' + progVisibili().map(function (p) { return '<option value="' + p.id + '"' + (r.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + "</option>"; }).join("")) +
+      '<div class="row2">' + fld("km", "Chilometri, andata e ritorno", "number", r.km) + fld("tariffa_km", "Rimborso al chilometro (€)", "number", r.tariffa_km == null ? tariffaKmMia() : r.tariffa_km) + "</div>" +
+      '<div class="row2">' + fld("spese", "Spese vive (€)", "number", r.spese) + fld("ore_viaggio", "Ore di viaggio", "number", r.ore_viaggio) + "</div>" +
+      fld("spese_dettaglio", "Cosa hai speso (treno 42, hotel 90, pranzo 18…)", "text", r.spese_dettaglio) +
+      selField("addebitata", "Addebitata al cliente", sel(["no", "si"], r.addebitata ? "si" : "no")) +
+      '<p class="faint" style="margin:-6px 0 12px">Se è addebitata, il cliente la paga e il tuo margine non ne risente. Se no, è un costo tuo e il margine lo dice.</p>' +
+      fld("note", "Note", "text", r.note);
+  }},
   pag: { t: "Scadenza di pagamento", tb: "pag", f: function (r) {
     return fld("nome", "Voce (es. Acconto 40%)", "text", r.nome, true) +
       selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) +
@@ -5988,7 +6079,7 @@ var FSEZ = {
   ag: ["eventi", "Eventi e workshop"], can: ["chat", "Chat dello studio"], prof: ["professioni", "Figure professionali"],
   membri: ["impostazioni", "Impostazioni"], fasi: ["commesse", "Preventivi"], pag: ["commesse", "Preventivi"], costi: ["commesse", "Preventivi"],
   vari: ["commesse", "Preventivi"], appr: ["commesse", "Preventivi"], righe: ["commesse", "Preventivi"],
-  task: ["task", "Attività"], ore: ["ore", "Le tue ore"], inter: ["clienti", "Clienti"], modelli: ["task", "Attività"],
+  task: ["task", "Attività"], ore: ["ore", "Le tue ore"], trasf: ["ore", "Le tue ore"], inter: ["clienti", "Clienti"], modelli: ["task", "Attività"],
   mat: ["commesse", "Preventivi"], ev: ["commesse", "Preventivi"], pren: ["spazi", "Coworking & spazi"], riu: ["riunioni", "Agenda"]
 };
 var FDETT = { com: ["commessa", "note"], cli: ["cliente", ""], prog: ["progetto", "attivita"], pros: ["pro", ""], task: ["attivita", ""], riu: ["riunione", ""] };
@@ -6119,11 +6210,35 @@ async function saveForm(f) {
     if (rp.error) toast("Scheda salvata, ma i dati personali no: " + erroreUmano(rp.error), true);
     else await reload(["priv"]);
   }
+  /* Le ore di viaggio finiscono nel registro ore, a tariffa ridotta: se restassero
+     solo sulla trasferta non entrerebbero nel costo del lavoro, e il margine
+     sembrerebbe più bello di quello che è. Una riga sola, che segue la trasferta. */
+  if (entity === "trasf") await oreDelViaggio(r.data);
   if (obj.commessa_id && entity !== "ev") await logEv(obj.commessa_id, (id ? "Modificato" : "Aggiunto") + ": " + F.t.toLowerCase() + (obj.nome ? " — " + obj.nome : obj.titolo ? " — " + obj.titolo : ""));
   await reload([F.tb, "ev"]);
   closeModal(); toast(dettoFatto(F.t, !!id));
   if (inPagina) { FDIRTY = false; dopoSalva(entity, nid); return; }
   render();
+}
+/* Il viaggio è tempo che non lavori: vale una percentuale della tua tariffa.
+   La riga di ore resta agganciata alla trasferta, così se correggi le ore di
+   viaggio si corregge anche lei, e se le azzeri sparisce. */
+async function oreDelViaggio(t) {
+  if (!t || !me.pro_id) return;
+  var p = by(D.pros, me.pro_id);
+  var ore = +t.ore_viaggio || 0;
+  var tariffa = Math.round((+((p && p.tariffa_oraria) || 0)) * percViaggioMia()) / 100;
+  var riga = { pro_id: me.pro_id, commessa_id: t.commessa_id || null, progetto_id: t.progetto_id || null,
+    data: t.data, ore: ore, tariffa: tariffa, fatturabile: !!t.addebitata,
+    descrizione: "Viaggio — " + (t.destinazione || "trasferta") };
+  if (t.ore_id) {
+    if (ore > 0) await sb.from("ore").update(riga).eq("id", t.ore_id);
+    else { await sb.from("ore").delete().eq("id", t.ore_id); await sb.from("trasferte").update({ ore_id: null }).eq("id", t.id); }
+  } else if (ore > 0) {
+    var ro = await sb.from("ore").insert(riga).select().single();
+    if (!ro.error) await sb.from("trasferte").update({ ore_id: ro.data.id }).eq("id", t.id);
+  }
+  await reload(["ore", "trasf"]);
 }
 function duplica(id) {
   var k = by(D.com, id); if (!k) return;
