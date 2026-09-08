@@ -147,6 +147,8 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 .navtit:hover .chev{border-color:var(--soft)}
 .navgroup{padding:18px 10px 7px;font-size:11px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:var(--soft)}
 .navsec{display:flex;flex-direction:column;gap:1px;overflow:hidden}
+/* la voce che sta sopra i gruppi: staccata, senza titolo sopra */
+.navsec.navsolo{margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid var(--line-soft)}
 .navsec.chiusa{display:none}
 .nav button[data-go]{
   position:relative;background:none;border:0;color:var(--txt);font:inherit;font-size:.925rem;font-weight:450;
@@ -1450,6 +1452,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=80"></script>
+<script src="app.js?v=81"></script>
 </body>
 </html>
