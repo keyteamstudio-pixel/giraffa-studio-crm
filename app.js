@@ -6483,93 +6483,125 @@ function palGo(i) {
 /* ---------------- render ---------------- */
 /* ---------------- il foglio diventa fogli ----------------
    Finché il preventivo sta in una pagina non cambia niente. Quando cresce, lo
-   taglio in fogli A4 veri: così mentre scrivi vedi dove cade la fine pagina e
-   puoi spostare le cose, invece di scoprirlo alla stampa. La tabella delle voci
-   si spezza riga per riga, tutto il resto passa intero: un blocco condizioni o
-   le firme non si tagliano mai a metà. */
+   taglio in fogli A4 veri: mentre scrivi vedi dove cade la fine pagina e puoi
+   spostare le cose, invece di scoprirlo alla stampa.
+
+   Il taglio si misura sul posto, non a tavolino: metto il blocco nel foglio e
+   chiedo al browser se ha sforato. È l'unico modo per non sbagliare, perché la
+   larghezza del foglio è diversa da quella della bozza e il testo va a capo in
+   un altro punto. Se un blocco da solo non ci sta, gli spezzo dentro la tabella
+   riga per riga: il resto — condizioni, chiusura, firme — non si taglia mai. */
 function impagina() {
   var a4 = el(".a4"); if (!a4 || a4.dataset.impaginato) return;
   var blocchi = Array.prototype.slice.call(a4.children);
   if (!blocchi.length) return;
 
-  /* quanto ci sta in un foglio: lo chiedo al foglio stesso, non a un numero fisso */
-  var prova = document.createElement("div");
-  prova.className = "foglio";
-  prova.style.visibility = "hidden";
-  a4.parentNode.insertBefore(prova, a4);
-  var stile = getComputedStyle(prova);
-  var utile = prova.clientHeight - parseFloat(stile.paddingTop) - parseFloat(stile.paddingBottom);
-  a4.parentNode.removeChild(prova);
-  if (!(utile > 100)) return;                     /* stampa o schermo strano: lascio com'è */
+  var culla = document.createElement("div");
+  culla.className = "a4 impaginato";
+  culla.style.cssText = "position:absolute;left:-99999px;top:0;visibility:hidden";
+  a4.parentNode.appendChild(culla);
 
-  var fogli = [], corrente = null, pieno = 0;
+  var fogli = [], corrente = null, tetto = 0;
   function nuovoFoglio() {
     corrente = document.createElement("div");
     corrente.className = "foglio";
-    fogli.push(corrente); pieno = 0;
+    culla.appendChild(corrente);
+    fogli.push(corrente);
+    if (!tetto) {
+      var st = getComputedStyle(corrente);
+      tetto = corrente.clientHeight - parseFloat(st.paddingTop) - parseFloat(st.paddingBottom);
+    }
     return corrente;
   }
-  function metti(nodo, altezza) {
-    if (!corrente || (pieno > 0 && pieno + altezza > utile)) nuovoFoglio();
-    corrente.appendChild(nodo); pieno += altezza;
+  /* quanto contenuto c'è dentro il foglio adesso */
+  function occupato(f) {
+    var h = 0;
+    Array.prototype.forEach.call(f.children, function (c) { h += c.getBoundingClientRect().height; });
+    return h;
   }
-  /* una tabella troppo lunga si spezza per righe, ripetendo l'intestazione */
-  function spezzaTabella(tab, alt) {
-    var righe = Array.prototype.slice.call(tab.querySelectorAll("tbody > tr"));
+  /* prova a metterlo: se sfora lo riporta indietro e dice di no */
+  function ciSta(nodo) {
+    corrente.appendChild(nodo);
+    if (occupato(corrente) <= tetto) return true;
+    corrente.removeChild(nodo);
+    return false;
+  }
+  function metti(nodo) {
+    if (!corrente) nuovoFoglio();
+    if (ciSta(nodo)) return true;
+    if (!corrente.children.length) { corrente.appendChild(nodo); return true; }  /* più alto di una pagina */
+    nuovoFoglio();
+    if (ciSta(nodo)) return true;
+    corrente.appendChild(nodo);                                                  /* non ci sta comunque */
+    return false;
+  }
+  /* un blocco troppo alto che contiene una tabella: la spezzo riga per riga */
+  function spezza(blocco) {
+    var tab = blocco.tagName === "TABLE" ? blocco : blocco.querySelector("table");
+    var righe = tab ? Array.prototype.slice.call(tab.querySelectorAll("tbody > tr")) : [];
+    if (!tab || righe.length < 3) { metti(blocco); return; }
+
     var testa = tab.querySelector("thead");
-    if (righe.length < 2) { metti(tab, alt); return; }
-    var altRighe = righe.map(function (r) { return r.getBoundingClientRect().height; });
-    var altTesta = testa ? testa.getBoundingClientRect().height : 0;
-    var pezzo = null, corpo = null, usato = 0;
-    function apriPezzo() {
-      pezzo = tab.cloneNode(false);
-      if (testa) pezzo.appendChild(testa.cloneNode(true));
-      corpo = document.createElement("tbody");
-      pezzo.appendChild(corpo);
-      usato = altTesta;
-      if (!corrente || pieno + altTesta + 40 > utile) nuovoFoglio();
-      corrente.appendChild(pezzo);
-    }
-    apriPezzo();
+    var corpo = tab.querySelector("tbody");
+    righe.forEach(function (r) { corpo.removeChild(r); });
+    metti(blocco);                                    /* il guscio, per ora vuoto */
+    var vivo = blocco, vivoCorpo = corpo;
     for (var i = 0; i < righe.length; i++) {
-      if (usato > altTesta && pieno + usato + altRighe[i] > utile) { pieno += usato; apriPezzo(); }
-      corpo.appendChild(righe[i]); usato += altRighe[i];
+      vivoCorpo.appendChild(righe[i]);
+      if (occupato(corrente) > tetto) {
+        vivoCorpo.removeChild(righe[i]);
+        /* apro la continuazione su un foglio nuovo, con la stessa intestazione */
+        var seguito = vivo.cloneNode(false);
+        var tabS = (vivo.tagName === "TABLE" ? seguito : null);
+        if (!tabS) {
+          var tCl = tab.cloneNode(false);
+          if (testa) tCl.appendChild(testa.cloneNode(true));
+          tabS = tCl; seguito.appendChild(tCl);
+        } else if (testa) { tabS.appendChild(testa.cloneNode(true)); }
+        vivoCorpo = document.createElement("tbody");
+        tabS.appendChild(vivoCorpo);
+        nuovoFoglio();
+        corrente.appendChild(seguito);
+        vivo = seguito;
+        vivoCorpo.appendChild(righe[i]);
+      }
     }
-    pieno += usato;
-    if (tab.parentNode) tab.parentNode.removeChild(tab);
   }
 
-  var misure = blocchi.map(function (b) { return b.getBoundingClientRect().height; });
-  a4.dataset.impaginato = "1";
+  nuovoFoglio();
+  /* niente altezze vere (stampa, prova automatica, schermo strano): non tocco nulla */
+  if (!(tetto > 100)) { culla.parentNode.removeChild(culla); return; }
   for (var i = 0; i < blocchi.length; i++) {
-    var b = blocchi[i], alt = misure[i];
-    if (alt > utile && b.tagName === "TABLE") spezzaTabella(b, alt);
-    else metti(b, alt);
+    var b = blocchi[i];
+    var h = b.getBoundingClientRect().height;
+    if (tetto && h > tetto) spezza(b); else metti(b);
   }
 
-  a4.innerHTML = "";
+  /* solo adesso, che è andato tutto bene, tocco quello che si vede */
   fogli.forEach(function (f, n) {
     var eti = document.createElement("div");
     eti.className = "fnum noprint";
     eti.textContent = "Pagina " + (n + 1) + " di " + fogli.length;
     f.appendChild(eti);
-    a4.appendChild(f);
   });
+  a4.innerHTML = "";
+  fogli.forEach(function (f) { a4.appendChild(f); });
   a4.classList.add("impaginato");
+  a4.dataset.impaginato = "1";
+  culla.parentNode.removeChild(culla);
 
   /* l'ultima pagina quasi vuota è il difetto che si scopre sempre troppo tardi */
-  var avviso = el(".fmagra"); if (avviso) avviso.remove();
-  if (fogli.length > 1) {
-    var ultimo = fogli[fogli.length - 1];
-    var riempito = 0;
+  var vecchio = el(".fmagra"); if (vecchio) vecchio.remove();
+  if (fogli.length > 1 && tetto) {
+    var ultimo = fogli[fogli.length - 1], riempito = 0;
     Array.prototype.forEach.call(ultimo.children, function (c) {
       if (!c.classList.contains("fnum")) riempito += c.getBoundingClientRect().height;
     });
-    if (riempito < utile * 0.3) {
+    if (riempito < tetto * 0.3) {
       var d = document.createElement("div");
       d.className = "fmagra noprint";
-      d.innerHTML = "L'ultima pagina è quasi vuota: nel PDF verrà un foglio con poco sopra. " +
-        "Accorcia una descrizione o togli un blocco e rientra in " + (fogli.length - 1) +
+      d.textContent = "L'ultima pagina è quasi vuota: nel PDF verrà un foglio con poco sopra. " +
+        "Accorcia una descrizione o togli un blocco per rientrare in " + (fogli.length - 1) +
         (fogli.length - 1 === 1 ? " pagina." : " pagine.");
       a4.parentNode.insertBefore(d, a4);
     }
