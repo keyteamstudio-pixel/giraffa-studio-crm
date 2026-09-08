@@ -6141,7 +6141,10 @@ function dopoSalva(entity, id) {
 async function saveForm(f) {
   var parts = f.dataset.save.split(":"), entity = parts[0], id = parts[1];
   var F = FORMS[entity], key = F.key || "id", obj = {};
-  var BOOL = ["fatturabile", "visibile_cliente", "perm_spazi", "perm_studio", "perm_accessi", "ricorrente", "ribaltato"];
+  /* i sì/no dei moduli: senza questo elenco partono come testo e il database li
+     rifiuta. «no» passava lo stesso perché Postgres lo legge come falso: il
+     difetto si vedeva solo cambiando idea da no a sì. */
+  var BOOL = ["fatturabile", "visibile_cliente", "perm_spazi", "perm_studio", "perm_accessi", "ricorrente", "ribaltato", "addebitata"];
   Array.prototype.forEach.call(f.elements, function (i) {
     if (!i.name) return;
     var v = i.value;
