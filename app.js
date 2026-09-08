@@ -6544,7 +6544,9 @@ function impagina() {
     var testa = tab.querySelector("thead");
     var corpo = tab.querySelector("tbody");
     righe.forEach(function (r) { corpo.removeChild(r); });
-    metti(blocco);                                    /* il guscio, per ora vuoto */
+    /* il guscio senza righe è piccolo: entra sempre, e non richiama se stesso */
+    if (!corrente || (corrente.children.length && !ciSta(blocco))) { nuovoFoglio(); corrente.appendChild(blocco); }
+    else if (!corrente.children.length) corrente.appendChild(blocco);
     var vivo = blocco, vivoCorpo = corpo;
     for (var i = 0; i < righe.length; i++) {
       vivoCorpo.appendChild(righe[i]);
@@ -6571,10 +6573,15 @@ function impagina() {
   nuovoFoglio();
   /* niente altezze vere (stampa, prova automatica, schermo strano): non tocco nulla */
   if (!(tetto > 100)) { culla.parentNode.removeChild(culla); return; }
+  /* Non misuro prima: provo. Un blocco che nella bozza stava in una pagina può
+     non starci nel foglio, che è più stretto e manda il testo a capo prima.
+     Se non ci sta nemmeno su un foglio vuoto, allora lo spezzo. */
   for (var i = 0; i < blocchi.length; i++) {
     var b = blocchi[i];
-    var h = b.getBoundingClientRect().height;
-    if (tetto && h > tetto) spezza(b); else metti(b);
+    if (!metti(b)) {
+      if (b.parentNode) b.parentNode.removeChild(b);
+      spezza(b);
+    }
   }
 
   /* solo adesso, che è andato tutto bene, tocco quello che si vede */
