@@ -6013,8 +6013,8 @@ var FORMS = {
   trasf: { t: "Trasferta", tb: "trasf", f: function (r) {
     return '<div class="row2">' + fld("data", "Quando", "date", r.data || today()) + fld("destinazione", "Dove sei andato", "text", r.destinazione, true) + "</div>" +
       fld("motivo", "Perché ci sei andato (sopralluogo, riunione, consegna…)", "text", r.motivo) +
-      '<div class="row2">' + selField("cliente_id", "Cliente", '<option value="">— nessuno —</option>' + opt(D.cli, r.cliente_id)) +
-      selField("commessa_id", "Preventivo", '<option value="">— nessuno —</option>' + opt(D.com, r.commessa_id, "titolo")) + "</div>" +
+      '<div class="row2">' + selField("cliente_id", "Cliente", opt(D.cli, r.cliente_id)) +
+      selField("commessa_id", "Preventivo", opt(D.com, r.commessa_id, "titolo")) + "</div>" +
       selField("progetto_id", "Progetto", '<option value="">— nessuno —</option>' + progVisibili().map(function (p) { return '<option value="' + p.id + '"' + (r.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + "</option>"; }).join("")) +
       '<div class="row2">' + fld("km", "Chilometri, andata e ritorno", "number", r.km) + fld("tariffa_km", "Rimborso al chilometro (€)", "number", r.tariffa_km == null ? tariffaKmMia() : r.tariffa_km) + "</div>" +
       '<div class="row2">' + fld("spese", "Spese vive (€)", "number", r.spese) + fld("ore_viaggio", "Ore di viaggio", "number", r.ore_viaggio) + "</div>" +
@@ -6283,6 +6283,12 @@ async function duplicaDavvero(id, titolo, cliente_id) {
 async function delRow(entity, id) {
   var F = FORMS[entity], tbk = F ? F.tb : entity, key = (F && F.key) || "id";
   if (!confirm("Eliminare definitivamente?")) return;
+  /* la riga di ore del viaggio è nata con la trasferta e se ne va con lei:
+     se restasse, resterebbe un costo senza più niente che lo spieghi */
+  if (entity === "trasf") {
+    var tv = by(D.trasf, id);
+    if (tv && tv.ore_id) await sb.from("ore").delete().eq("id", tv.ore_id);
+  }
   var r = await sb.from(TB[tbk]).delete().eq(key, id);
   if (r.error) {
     /* il database difende la storia: un cliente con preventivi non si butta via */
