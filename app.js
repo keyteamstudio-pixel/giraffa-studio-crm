@@ -6489,8 +6489,9 @@ function palGo(i) {
    Il taglio si misura sul posto, non a tavolino: metto il blocco nel foglio e
    chiedo al browser se ha sforato. È l'unico modo per non sbagliare, perché la
    larghezza del foglio è diversa da quella della bozza e il testo va a capo in
-   un altro punto. Se un blocco da solo non ci sta, gli spezzo dentro la tabella
-   riga per riga: il resto — condizioni, chiusura, firme — non si taglia mai. */
+   un altro punto. Se un blocco da solo non ci sta, lo spezzo dentro sulla cosa
+   più lunga che contiene: le righe di una tabella o le voci di un elenco. Quello
+   che non ha parti ripetute — condizioni, chiusura, firme — non si taglia mai. */
 function impagina() {
   var a4 = el(".a4"); if (!a4 || a4.dataset.impaginato) return;
   var blocchi = Array.prototype.slice.call(a4.children);
@@ -6530,37 +6531,64 @@ function impagina() {
     corrente.appendChild(nodo);                                                  /* non ci sta comunque */
     return false;
   }
-  /* un blocco troppo alto che contiene una tabella: la spezzo riga per riga */
+  /* un blocco più alto di una pagina va tagliato dentro. Non do per scontato
+     che sia una tabella: cerco la cosa più lunga che contiene — le righe di una
+     tabella, le voci di un elenco, o in mancanza d'altro i suoi figli — e taglio
+     lì. Se non ha proprio niente di ripetuto resta intero: meglio un foglio che
+     sfora che una frase spezzata a metà. */
   function spezza(blocco) {
+    var corpo = null, pezzi = [];
+    function candidato(c) {
+      if (!c) return;
+      var f = Array.prototype.filter.call(c.children, function (n) { return n.nodeType === 1; });
+      if (f.length > pezzi.length) { corpo = c; pezzi = f; }
+    }
     var tab = blocco.tagName === "TABLE" ? blocco : blocco.querySelector("table");
-    var righe = tab ? Array.prototype.slice.call(tab.querySelectorAll("tbody > tr")) : [];
-    if (!tab || righe.length < 3) { metti(blocco); return; }
+    candidato(tab ? tab.querySelector("tbody") : null);
+    candidato(/^(UL|OL)$/.test(blocco.tagName) ? blocco : blocco.querySelector("ul, ol"));
+    if (pezzi.length < 3) candidato(blocco);
+    if (pezzi.length < 3) { metti(blocco); return; }
 
-    var testa = tab.querySelector("thead");
-    var corpo = tab.querySelector("tbody");
-    righe.forEach(function (r) { corpo.removeChild(r); });
-    /* il guscio senza righe è piccolo: entra sempre, e non richiama se stesso */
+    var testa = tab ? tab.querySelector("thead") : null;
+    /* rifà il guscio vuoto per la continuazione: il blocco e tutto quello che
+       sta in mezzo fino al contenitore, con l'intestazione della tabella se c'è */
+    function guscio() {
+      var catena = [];
+      for (var n = corpo; n && n !== blocco; n = n.parentNode) catena.unshift(n);
+      var radice = blocco.cloneNode(false), giu = radice;
+      if (radice.tagName === "TABLE" && testa) radice.appendChild(testa.cloneNode(true));
+      for (var k = 0; k < catena.length; k++) {
+        var c = catena[k].cloneNode(false);
+        if (c.tagName === "TABLE" && testa) c.appendChild(testa.cloneNode(true));
+        giu.appendChild(c); giu = c;
+      }
+      return { fuori: radice, dentro: catena.length ? giu : radice };
+    }
+    /* quello che nel blocco viene dopo il contenitore — il "+ aggiungi una voce" —
+       segue il contenuto di foglio in foglio, se no resta appeso a metà documento */
+    var coda = [];
+    if (corpo !== blocco) {
+      var ramo = corpo;
+      while (ramo && ramo.parentNode !== blocco) ramo = ramo.parentNode;
+      if (ramo) for (var n = ramo.nextSibling; n; n = n.nextSibling) if (n.nodeType === 1) coda.push(n);
+    }
+
+    pezzi.forEach(function (p) { corpo.removeChild(p); });
+    /* il guscio svuotato è piccolo: entra sempre, e non richiama se stesso */
     if (!corrente || (corrente.children.length && !ciSta(blocco))) { nuovoFoglio(); corrente.appendChild(blocco); }
     else if (!corrente.children.length) corrente.appendChild(blocco);
-    var vivo = blocco, vivoCorpo = corpo;
-    for (var i = 0; i < righe.length; i++) {
-      vivoCorpo.appendChild(righe[i]);
+
+    var vivoCorpo = corpo;
+    for (var i = 0; i < pezzi.length; i++) {
+      vivoCorpo.appendChild(pezzi[i]);
       if (corrente.getBoundingClientRect().height > tetto + 0.5) {
-        vivoCorpo.removeChild(righe[i]);
-        /* apro la continuazione su un foglio nuovo, con la stessa intestazione */
-        var seguito = vivo.cloneNode(false);
-        var tabS = (vivo.tagName === "TABLE" ? seguito : null);
-        if (!tabS) {
-          var tCl = tab.cloneNode(false);
-          if (testa) tCl.appendChild(testa.cloneNode(true));
-          tabS = tCl; seguito.appendChild(tCl);
-        } else if (testa) { tabS.appendChild(testa.cloneNode(true)); }
-        vivoCorpo = document.createElement("tbody");
-        tabS.appendChild(vivoCorpo);
+        vivoCorpo.removeChild(pezzi[i]);
+        var g = guscio();
         nuovoFoglio();
-        corrente.appendChild(seguito);
-        vivo = seguito;
-        vivoCorpo.appendChild(righe[i]);
+        corrente.appendChild(g.fuori);
+        coda.forEach(function (c) { g.fuori.appendChild(c); });
+        vivoCorpo = g.dentro;
+        vivoCorpo.appendChild(pezzi[i]);
       }
     }
   }
