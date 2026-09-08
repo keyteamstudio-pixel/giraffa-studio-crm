@@ -499,6 +499,10 @@ function fcom() { return D.com.filter(function (k) { return mio(k, "com"); }); }
 function fcli() { return D.cli.filter(function (c) { return mio(c, "cli"); }); }
 function fore() { return D.ore.filter(function (o) { return mio(o, "ore"); }); }
 function ftask() { return D.task.filter(function (t) { return mio(t, "task"); }); }
+/* Il numero nel menu e quello che vedi aprendo devono essere lo stesso numero:
+   quindi lo conta una funzione sola, usata da tutti e due. */
+function taskDaFare() { return taskDiChi(ftask().filter(function (t) { return t.stato !== "Fatto"; })); }
+function riuProssime() { return D.riu.filter(function (r) { return r.data >= today() && r.stato !== "Annullata"; }); }
 
 /* ---------------- caricamento ---------------- */
 async function loadAll() {
@@ -579,6 +583,12 @@ function mieiDatiPersonali() {
 
 /* ---------------- nav ---------------- */
 /* Il menu: quattro zone. I numeri contano solo cose che ti aspettano. */
+/* Sotto «Lavoro» stanno quattro voci e non una di più, perché sono quattro le
+   domande che uno si fa: a che punto è il lavoro (Progetti), cosa devo fare io
+   (Attività), quando (Agenda), quanto ci ho messo (Ore). Ogni voce in più era
+   una risposta doppia: «Carico» diceva le stesse cose di Attività e Ore con dei
+   numeri fermi, e «Riunioni» era un secondo calendario. «Oggi» è salito sopra i
+   gruppi perché è la prima pagina del gestionale, non un capitolo del lavoro. */
 /* Tre zone e basta: quello che fai oggi, i clienti, lo studio. Niente frasi di
    spiegazione sotto i titoli — un menu si legge, non si studia — ed etichette
    di una parola dove la parola basta. Quello che riguarda solo te (profilo,
@@ -605,14 +615,12 @@ function navOrdina(v) {
 }
 function navFor() {
   return navOrdina([
-    { g: "Lavoro" },
     { k: "dash", t: "Oggi", d: "Cosa guardare adesso", c: function () { return (D.rich || []).filter(function (r) { return r.stato === "Nuova"; }).length; } },
-    { k: "calendario", t: "Calendario", d: "Scadenze e consegne sul mese" },
-    { k: "riunioni", t: "Riunioni", d: "Videocall, appunti, decisioni", c: function () { return D.riu.filter(function (r) { return r.data >= today() && r.stato !== "Annullata"; }).length; } },
-    { k: "progetti", t: "Progetti", d: "Progetti aperti in cui sei dentro", c: function () { return progVisibili().filter(function (p) { return p.stato !== "Completato" && p.stato !== "Sospeso"; }).length; } },
-    { k: "task", t: "Attività", d: "Attività aperte assegnate a te", c: function () { return ftask().filter(function (t) { return t.stato !== "Fatto" && t.assegnato_id === me.pro_id; }).length; } },
-    { k: "ore", t: "Ore", d: "La tua settimana, ora per ora" },
-    { k: "carico", t: "Carico", d: "Quanto lavoro hai davanti" },
+    { g: "Lavoro" },
+    { k: "progetti", t: "Progetti", d: "A che punto è il lavoro", c: function () { return progVisibili().filter(function (p) { return p.stato !== "Completato" && p.stato !== "Sospeso"; }).length; } },
+    { k: "task", t: "Attività", d: "Cosa devi fare", c: function () { return taskDaFare().length; } },
+    { k: "calendario", t: "Agenda", d: "Quando: impegni, scadenze, riunioni", c: function () { return riuProssime().length; } },
+    { k: "ore", t: "Ore", d: "Quanto ci hai messo", c: null },
     { g: "Clienti" },
     { k: "clienti", t: "Clienti", d: "I tuoi clienti", c: function () { return fcli().length; } },
     { k: "posta", t: "Posta", d: "La tua Gmail, con i clienti accanto", c: function () { return GM.nonLetti || 0; } },
@@ -660,13 +668,14 @@ function buildNav() {
   var vv = view;
   if (vv === "nuovo" || vv === "mod") { var fs = FSEZ[current]; vv = fs ? fs[0] : "dash"; }
   if (vv === "riga") vv = "commesse";
-  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse", documento: "commesse", importa: "commesse", professioni: "profilo", riunione: "riunioni" }[vv] || vv;
+  var h = "", cur = { commessa: "commesse", cliente: "clienti", pro: "pool", progetto: "progetti", lavorazione: "progetti", attivita: "task", riga: "commesse", documento: "commesse", importa: "commesse", professioni: "profilo", riunioni: "calendario", riunione: "calendario", carico: "task" }[vv] || vv;
   h += '<button class="cerca" data-pal="1" title="Cerca ovunque (⌘K)"><span>Cerca o esegui un\'azione…</span><kbd>⌘K</kbd></button>';
   h += '<button class="cerca chiedi" data-chiedi="1" title="Fai una domanda sui tuoi dati"><span>Chiedi…</span></button>';
   var ap = navAperti(), qui = gruppoDi(cur), gr = null, gsub = "", buf = "";
   var zona = 0;
   function chiudiZona() {
-    if (gr === null) return;
+    /* la voce sopra i gruppi è la home: nessun titolo, nessuna tendina */
+    if (gr === null) { if (buf) { h += '<div class="navsec pri navsolo">' + buf + "</div>"; buf = ""; } return; }
     var aperta = ap[gr] !== false || gr === qui;
     var pri = zona++ === 0 ? " pri" : "";
     h += '<button class="navtit' + pri + (aperta ? " ap" : "") + '" data-navg="' + esc(gr) + '"' +
@@ -768,6 +777,14 @@ function barraViste(tabs, attiva, rotta, filtri) {
         (v[2] != null ? '<span class="cnt">' + v[2] + "</span>" : "") + "</button>";
     }).join("") + "</div>" : "") +
     (filtri ? '<div class="vfilt">' + filtri + "</div>" : "") + "</div>";
+}
+/* Agenda: un posto solo per il «quando». Il calendario e l'elenco delle riunioni
+   sono due modi di guardare la stessa settimana, non due sezioni diverse. */
+function barraAgenda(qui, filtri) {
+  var t = [["mese", "Mese", null, "calendario|-|mese"], ["settimana", "Settimana", null, "calendario|-|settimana"], ["riunioni", "Riunioni", riuProssime().length, "riunioni|-|prossime"]];
+  return '<div class="vbar"><div class="vtabs">' + t.map(function (v) {
+    return '<button data-route="' + v[3] + '" class="' + (qui === v[0] ? "on" : "") + '">' + v[1] + (v[2] ? ' <span class="cnt">' + v[2] + "</span>" : "") + "</button>";
+  }).join("") + "</div>" + (filtri ? '<div class="vfilt">' + filtri + "</div>" : "") + "</div>";
 }
 function elencoCat(list, campo) {
   var c = {};
@@ -1421,7 +1438,8 @@ function vRiunioni() {
   var pros = tutte.filter(function (r) { return r.data >= oggi && r.stato !== "Annullata"; }).sort(function (a, b) { return (a.data + (a.ora || "")) < (b.data + (b.ora || "")) ? -1 : 1; });
   var pass = tutte.filter(function (r) { return r.data < oggi || r.stato === "Annullata"; }).sort(function (a, b) { return (a.data + (a.ora || "")) < (b.data + (b.ora || "")) ? 1 : -1; });
   var vista = tab === "passate" ? "passate" : "prossime", lista = vista === "passate" ? pass : pros;
-  var h = head("Riunioni", "Videocall e incontri: link, ordine del giorno, appunti, decisioni, prossimi passi", '<button class="btn sm" data-new="riu">+ Riunione</button>');
+  var h = head("Agenda", "Videocall e incontri: link, ordine del giorno, appunti, decisioni, prossimi passi", '<button class="btn sm" data-new="riu">+ Riunione</button>');
+  h += barraAgenda("riunioni");
   h += barraViste([["prossime", "Prossime", pros.length], ["passate", "Passate", pass.length]], vista, "riunioni",
     '<input id="fcerca" data-rf="cerca" placeholder="Cerca per titolo, cliente, appunti…" value="' + esc(RF.cerca) + '">');
   var daChiudere = pass.filter(function (r) { return r.stato !== "Tenuta" && r.stato !== "Annullata"; });
@@ -1433,7 +1451,7 @@ function vRiunione() {
   var r = by(D.riu, current);
   if (!r) return '<div class="card">Riunione non trovata. <button class="lnk" data-route="riunioni">Torna alle riunioni</button></div>';
   var oggi = today(), mia = r.pro_id === me.pro_id;
-  var h = crumbs([[gruppoDi("riunioni") || "Lavoro"], ["Riunioni", "riunioni"], [r.titolo]]);
+  var h = crumbs([["Lavoro"], ["Agenda", "riunioni"], [r.titolo]]);
   h += '<div class="top"><h1>' + esc(r.titolo) + '<span class="sub">' + dt(r.data) + (oraRiu(r) ? " · " + oraRiu(r) : "") + " · " + esc(r.tipo || "Videocall") +
     (r.cliente_id ? " · " + lnkCli(r.cliente_id) : "") + (r.commessa_id ? " · " + lnkCom(r.commessa_id) : "") + (r.progetto_id ? " · " + lnkProg(r.progetto_id) : "") + '</span></h1><div class="tools">' +
     (r.link ? '<a class="btn sm" href="' + esc(r.link) + '" target="_blank" rel="noopener">Entra nella videocall</a>' : "") +
@@ -1829,7 +1847,7 @@ function capisciTask(testo, ctx) {
   }
   if (ctx.indexOf("prog:") === 0 && !r.progetto_id) r.progetto_id = ctx.slice(5);
   if (r.progetto_id) { var pg2 = by(D.prog, r.progetto_id); if (pg2) { r.commessa_id = pg2.commessa_id; var k2 = by(D.com, pg2.commessa_id); if (k2 && !r.cliente_id) r.cliente_id = k2.cliente_id; } }
-  if (!r.scadenza && ctx === "oggi") r.scadenza = today();
+  if (!r.scadenza && (ctx === "oggi" || ctx === "dafare")) r.scadenza = today();
   if (!r.scadenza && ctx === "prossimi") r.scadenza = giornoPiu(1);
   var h = [];
   h.push(r.scadenza ? etichettaGiorno(r.scadenza) : "senza data");
@@ -1874,6 +1892,32 @@ function gruppoT(titolo, list, attr, o, cls) {
   if (!list.length) return "";
   return '<div class="card tgroup' + (cls ? " " + cls : "") + '"' + (attr || "") + '><div class="cardhead"><h2>' + titolo + '</h2><span class="faint">' + list.length + "</span></div>" +
     '<div class="tlist">' + list.map(function (t) { return rigaT(t, o); }).join("") + "</div></div>";
+}
+/* Un elenco solo, con il tempo come titolo dei gruppi. Il campo di ricerca
+   compare quando le cose sono tante: prima serve a niente e ruba il cursore. */
+function vistaDaFare(mie, tutte) {
+  var h = "";
+  if (mie.length > 8 || TF.cerca) h += '<div class="tcerca"><input id="tcerca" placeholder="Cerca fra le attività da fare…" value="' + esc(TF.cerca) + '"></div>';
+  if (TF.cerca) {
+    var q = TF.cerca.toLowerCase();
+    mie = mie.filter(function (t) { return (t.titolo + " " + (t.descrizione || "")).toLowerCase().indexOf(q) > -1; });
+    if (!mie.length) return h + '<div class="card"><div class="empty">Niente con questo testo.</div></div>';
+  }
+  var ritardo = mie.filter(function (t) { return t.scadenza && t.scadenza < today(); }).sort(ordT);
+  var oggi = mie.filter(function (t) { return t.scadenza === today(); }).sort(ordT);
+  var sette = mie.filter(function (t) { return t.scadenza && t.scadenza > today() && t.scadenza <= giornoPiu(7); }).sort(ordT);
+  var dopo = mie.filter(function (t) { return t.scadenza && t.scadenza > giornoPiu(7); }).sort(ordT);
+  var senza = mie.filter(function (t) { return !t.scadenza; }).sort(ordT);
+  var fatteOggi = tutte.filter(function (t) { return t.stato === "Fatto" && (t.completata_il || "").slice(0, 10) === today() && (TV.chi !== "io" || t.assegnato_id === me.pro_id); });
+  if (!mie.length) h += '<div class="card"><div class="empty">Non hai niente da fare. Scrivi qui sopra la prima cosa, oppure aprine una da un progetto.</div></div>';
+  h += gruppoT("In ritardo", ritardo);
+  h += '<div class="card tgroup mcol" data-giorno="' + today() + '"><div class="cardhead"><h2>Oggi</h2><span class="faint">' + oggi.length + "</span></div>" +
+    '<div class="tlist">' + (oggi.length ? oggi.map(function (t) { return rigaT(t, { noData: true }); }).join("") : '<div class="tdrop">Trascina qui quello che vuoi fare oggi.</div>') + "</div></div>";
+  h += gruppoT("Nei prossimi 7 giorni", sette);
+  h += gruppoT("Più avanti", dopo);
+  h += gruppoT("Senza data", senza, ' data-quando="senza"', null, "mcol");
+  if (fatteOggi.length) h += '<div class="card tgroup fatte"><div class="cardhead"><h2>Fatte oggi</h2><span class="faint">' + fatteOggi.length + '</span></div><div class="tlist">' + fatteOggi.map(function (t) { return rigaT(t, { noData: true }); }).join("") + "</div></div>";
+  return h;
 }
 function vistaOggi(mie, tutte) {
   var ritardo = mie.filter(function (t) { return t.scadenza && t.scadenza < today(); }).sort(ordT);
@@ -1970,16 +2014,24 @@ function pannelloTask(id) {
     '<div class="tpfoot"><button class="lnk" data-route="attivita|' + t.id + '|">Scheda completa</button> · <button class="lnk" data-dupl-task="' + t.id + '">Duplica</button> · <button class="lnk" data-del="task:' + t.id + '">Elimina</button></div>' +
     "</div></aside>";
 }
+/* Due schede e basta: quello che devi fare e quello che hai fatto. Dentro «Da
+   fare» è il tempo a fare da titolo — in ritardo, oggi, questa settimana, più
+   avanti, senza data — così il numero nel menu e quello che vedi aprendo sono
+   lo stesso numero. Prima erano quattro schede e la prima si apriva vuota
+   mentre il menu diceva otto: due risposte diverse alla stessa domanda.
+   Le viste da tavolo grande — bacheca, timeline, calendario — restano, ma in
+   una tendina: servono ogni tanto, non ogni giorno. */
 function vTask() {
-  var vista = tab || "oggi";
-  if (vista === "lista" || vista === "mie") vista = "tutte";
+  var vista = tab || "dafare";
+  if (["oggi", "prossimi", "tutte", "lista", "mie"].indexOf(vista) > -1) vista = "dafare";
   var alt = ["bacheca", "calendario", "timeline"].indexOf(vista) > -1;
   var tutte = ftask();
-  var aperte = tutte.filter(function (t) { return t.stato !== "Fatto"; });
-  var mie = taskDiChi(aperte);
+  var mie = taskDaFare();
   var ritardo = mie.filter(function (t) { return t.scadenza && t.scadenza < today(); }).length;
   var oggi = mie.filter(function (t) { return t.scadenza === today(); }).length;
-  var sub = (ritardo ? ritardo + " in ritardo · " : "") + oggi + " per oggi · " + mie.length + " aperte" + (TV.chi === "io" ? "" : " nello studio");
+  var sette = mie.filter(function (t) { return t.scadenza && t.scadenza > today() && t.scadenza <= giornoPiu(7); }).length;
+  var stim = sum(mie, function (t) { return t.stimate; });
+  var sub = mie.length + (mie.length === 1 ? " cosa da fare" : " cose da fare") + (ritardo ? " · " + ritardo + " in ritardo" : "") + (TV.chi === "io" ? "" : " · di tutto lo studio");
   var h = head("Attività", sub,
     '<span class="vtabs mini"><button data-tv="io" class="' + (TV.chi === "io" ? "on" : "") + '">Le mie</button><button data-tv="tutti" class="' + (TV.chi === "tutti" ? "on" : "") + '">Tutti</button></span>' +
     '<select class="altre" data-tvista="1"><option value="">Altre viste…</option><option value="bacheca">Bacheca</option><option value="calendario">Calendario</option><option value="timeline">Timeline</option><option value="modelli">Modelli di lavoro</option></select>' +
@@ -1992,16 +2044,21 @@ function vTask() {
     else h += vistaTimeline(list);
     return h;
   }
-  var pross = mie.filter(function (t) { return t.scadenza && t.scadenza > today(); }).length;
-  h += '<div class="vbar"><div class="vtabs">' + [["oggi", "Oggi", ritardo + oggi], ["prossimi", "Prossimi giorni", pross], ["tutte", "Tutte", mie.length], ["fatte", "Fatte", null]].map(function (v) {
+  h += '<div class="vbar"><div class="vtabs">' + [["dafare", "Da fare", mie.length], ["fatte", "Fatte", null]].map(function (v) {
     return '<button data-route="task|-|' + v[0] + '" class="' + (vista === v[0] ? "on" : "") + '">' + v[1] + (v[2] ? ' <span class="cnt">' + v[2] + "</span>" : "") + "</button>";
   }).join("") + "</div></div>";
-  if (vista !== "fatte") h += scriviTask(vista, vista === "oggi" ? "Cosa devi fare oggi? Scrivi e premi Invio · «bozza sito Lucchi ven @Goffredo»" : vista === "prossimi" ? "Scrivi con il giorno · «call Borsari mer», «consegna 12/9»" : "Scrivi un\'attività e premi Invio · «#Sito Lucchi bozza home ven»");
+  if (vista !== "fatte") {
+    /* i quattro numeri che prima stavano in «Carico»: qui hanno accanto le cose
+       a cui si riferiscono, e si aggiornano da soli invece di restare a zero */
+    h += '<div class="grid g4">' +
+      kpi(String(ritardo), "In ritardo", ritardo ? "da rimettere in fila" : "niente arretrato") +
+      kpi(String(oggi), "Oggi", "con scadenza oggi") +
+      kpi(String(sette), "Nei prossimi 7 giorni", "che ti aspettano") +
+      kpi(stim ? num(stim, 0) + " h" : "—", "Ore stimate", stim ? "su quello che resta da fare" : "nessuna stima messa") + "</div>";
+    h += scriviTask("dafare", "Cosa devi fare? Scrivi e premi Invio · «bozza sito Lucchi ven @Goffredo»");
+  }
   h += '<div class="tmain' + (PANEL ? " con-pannello" : "") + '">';
-  if (vista === "oggi") h += vistaOggi(mie, tutte);
-  else if (vista === "prossimi") h += vistaProssimi(mie);
-  else if (vista === "fatte") h += vistaFatte(tutte);
-  else h += vistaTutte(mie);
+  h += vista === "fatte" ? vistaFatte(tutte) : vistaDaFare(mie, tutte);
   h += "</div>";
   if (PANEL) h += pannelloTask(PANEL);
   return h;
@@ -2053,7 +2110,7 @@ async function prossimaRicorrenza(t) {
 function apriModelli() {
   var miei = D.modelli.filter(function (m) { return m.pro_id === me.pro_id || m.condiviso; });
   modal('<div class="box wide"><h2>Modelli di lavoro</h2>' +
-    '<p class="faint" style="margin-bottom:14px">Un modello è un elenco di lavorazioni e attività con le scadenze contate dal giorno di partenza. Lo applichi a un progetto e nasce tutto insieme.</p>' +
+    '<p class="faint" style="margin-bottom:14px">Un modello è un elenco di attività con le scadenze contate dal giorno di partenza. Lo applichi a un progetto e nasce tutto insieme.</p>' +
     (miei.length ? '<table><thead><tr><th>Modello</th><th>Voci</th><th>Di chi</th><th></th></tr></thead><tbody>' + miei.map(function (m) {
       return "<tr><td><b>" + esc(m.nome) + "</b>" + (m.descrizione ? '<div class="faint">' + esc(m.descrizione) + "</div>" : "") + "</td><td>" + (m.voci || []).length +
         "</td><td>" + (m.pro_id === me.pro_id ? "tuo" : esc(nameOf(D.pros, m.pro_id))) + (m.condiviso ? ' <span class="badge">condiviso</span>' : "") +
@@ -2078,7 +2135,7 @@ async function creaModelloDaProgetto() {
   D.task.filter(function (t) { return t.progetto_id === p.id; }).forEach(function (t) {
     voci.push({ tipo: "attivita", nome: t.titolo, giorni: t.scadenza ? Math.max(0, Math.round((new Date(t.scadenza) - inizio) / 86400000)) : null, ore: t.stimate || null, sezione: t.sezione || null, lavorazione: t.lavorazione_id ? nameOf(D.lav, t.lavorazione_id) : null });
   });
-  if (!voci.length) { toast("Quel progetto non ha ancora lavorazioni o attività", true); return; }
+  if (!voci.length) { toast("Quel progetto non ha ancora attività", true); return; }
   var r = await sb.from("modelli").insert({ pro_id: me.pro_id, nome: nome, descrizione: "Ricavato da " + p.nome, voci: voci });
   if (r.error) { toast(erroreUmano(r.error), true); return; }
   await reload(["modelli"]); closeModal(); toast("Modello creato con " + voci.length + " voci"); render();
@@ -2199,8 +2256,6 @@ function vAttivita() {
     "</div>" +
     campoRapido(t.id, "progetto_id", "Progetto", '<select data-qset="task|progetto_id|' + t.id + '"><option value="">— nessuno —</option>' +
       progVisibili().map(function (p) { return '<option value="' + p.id + '"' + (t.progetto_id === p.id ? " selected" : "") + ">" + esc(p.nome) + " · " + esc(nameOf(D.com, p.commessa_id, "titolo")) + "</option>"; }).join("") + "</select>") +
-    campoRapido(t.id, "lavorazione_id", "Lavorazione", '<select data-qset="task|lavorazione_id|' + t.id + '"><option value="">— nessuna —</option>' +
-      D.lav.filter(function (l) { return !t.progetto_id || l.progetto_id === t.progetto_id; }).map(function (l) { return '<option value="' + l.id + '"' + (t.lavorazione_id === l.id ? " selected" : "") + ">" + esc(l.nome) + "</option>"; }).join("") + "</select>") +
     campoRapido(t.id, "sezione", "Sezione", '<input type="text" data-qset="task|sezione|' + t.id + '" value="' + esc(t.sezione || "") + '" placeholder="es. Prima consegna">') +
     campoRapido(t.id, "ricorrenza", "Si ripete", '<select data-qset="task|ricorrenza|' + t.id + '">' +
       selKV([["", "no, una volta sola"], ["settimanale", "ogni settimana"], ["quindicinale", "ogni due settimane"], ["mensile", "ogni mese"]], t.ricorrenza || "") + "</select>") +
@@ -2258,42 +2313,48 @@ function vOre() {
   }
   var mieOre = D.ore.filter(function (o) { return o.pro_id === me.pro_id; });
   var settPrec = gg.map(function (g) { return iso(new Date(new Date(g).getTime() - 7 * 86400000)); });
-  var righeTs = D.lav.filter(function (l) {
-    if (TSEXTRA.indexOf(l.id) > -1) return true;
-    if (mieOre.some(function (o) { return o.lavorazione_id === l.id && gg.indexOf(o.data) > -1; })) return true;
-    if (l.stato === "Completata") return false;
-    if (l.pro_id === me.pro_id) return true;
+  /* Le righe della settimana sono i progetti. Prima erano le lavorazioni: da
+     quando quel livello non esiste più la griglia restava vuota per sempre e le
+     ore da qui non si potevano scrivere. Un difetto che si vedeva solo usandola. */
+  var righeTs = progVisibili().filter(function (p) {
+    if (TSEXTRA.indexOf(p.id) > -1) return true;
+    if (mieOre.some(function (o) { return o.progetto_id === p.id && gg.indexOf(o.data) > -1; })) return true;
+    if (p.stato === "Completato" || p.stato === "Sospeso") return false;
+    if (p.pro_id === me.pro_id) return true;
     /* righe suggerite: dove hai messo ore nelle ultime due settimane */
-    return mieOre.some(function (o) { return o.lavorazione_id === l.id && days(today(), o.data) <= 14 && days(today(), o.data) >= 0; });
+    return mieOre.some(function (o) { return o.progetto_id === p.id && days(today(), o.data) <= 14 && days(today(), o.data) >= 0; });
   });
-  function cella(lid, g) { return sum(mieOre.filter(function (o) { return o.lavorazione_id === lid && o.data === g; }), function (o) { return o.ore; }); }
+  function cella(pid, g) { return sum(mieOre.filter(function (o) { return o.progetto_id === pid && o.data === g; }), function (o) { return o.ore; }); }
+  function stimaProg(pid) { return sum(taskOfProg(pid), function (t) { return t.stimate; }); }
   var titSett = lun.toLocaleDateString("it-IT", { day: "numeric", month: "short" }) + " → " + new Date(lun.getTime() + 6 * 86400000).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
 
   var oreSettPrec = sum(mieOre.filter(function (o) { return settPrec.indexOf(o.data) > -1; }), function (o) { return o.ore; });
   h += '<div class="card" style="margin-top:18px"><div class="cardhead"><h2>La mia settimana</h2><div class="wknav"><button class="btn sm ghost" data-wk="-1">‹</button><span class="faint">' + titSett + '</span><button class="btn sm ghost" data-wk="1">›</button>' + (WEEK ? '<button class="btn sm ghost" data-wk="0">Oggi</button>' : "") +
     (oreSettPrec ? '<button class="btn sm ghost" data-tscopy="1" title="Ricrea le stesse righe e le stesse ore della settimana precedente">Copia settimana scorsa</button>' : "") + "</div></div>";
   h += '<p class="faint" style="margin-bottom:12px">Scrivi le ore nelle caselle: si salvano da sole. Ti muovi con le frecce, <b>Invio</b> scende di una riga, <b>Tab</b> passa al giorno dopo.</p>';
-  h += '<div class="tswrap"><table class="ts"><thead><tr><th>Lavorazione</th>' + nomi.map(function (n, i) { return '<th class="num' + (gg[i] === today() ? " oggi" : "") + '">' + n + "</th>"; }).join("") + '<th class="num">Tot</th><th class="num">Stima</th></tr></thead><tbody>';
-  righeTs.forEach(function (l, ri) {
+  h += '<div class="tswrap"><table class="ts"><thead><tr><th>Progetto</th>' + nomi.map(function (n, i) { return '<th class="num' + (gg[i] === today() ? " oggi" : "") + '">' + n + "</th>"; }).join("") + '<th class="num">Tot</th><th class="num">Stima</th></tr></thead><tbody>';
+  if (!righeTs.length) h += '<tr><td colspan="10" class="faint" style="padding:14px">Nessun progetto aperto: aprine uno da un preventivo accettato, o aggiungine uno qui sotto.</td></tr>';
+  righeTs.forEach(function (p, ri) {
     var tot = 0;
-    var fatteL = sum(oreOfLav(l.id), function (o) { return o.ore; });
-    var res = l.ore_stimate ? Math.max(0, (+l.ore_stimate || 0) - fatteL) : null;
-    h += "<tr><td>" + esc(l.nome) + '<div class="faint">' + lnkProg(l.progetto_id, "lnk mini2") + " · " + lnkCom(l.commessa_id, "lnk mini2") + "</div></td>";
+    var fatteP = sum(oreOfProg(p.id), function (o) { return o.ore; });
+    var stP = stimaProg(p.id);
+    var res = stP ? Math.max(0, stP - fatteP) : null;
+    h += "<tr><td>" + esc(p.nome) + '<div class="faint">' + (p.commessa_id ? lnkCom(p.commessa_id, "lnk mini2") : "lavoro dello studio") + "</div></td>";
     gg.forEach(function (g, ci) {
-      var v = cella(l.id, g); tot += v;
-      h += '<td class="num"><input class="tsc' + (g === today() ? " oggi" : "") + '" inputmode="decimal" data-ts="' + l.id + "|" + g + '" data-rc="' + ri + "|" + ci + '" value="' + (v ? num(v, 1) : "") + '" placeholder="·"></td>';
+      var v = cella(p.id, g); tot += v;
+      h += '<td class="num"><input class="tsc' + (g === today() ? " oggi" : "") + '" inputmode="decimal" data-ts="' + p.id + "|" + g + '" data-rc="' + ri + "|" + ci + '" value="' + (v ? num(v, 1) : "") + '" placeholder="·"></td>';
     });
-    h += '<td class="num tsr" data-tsrow="' + l.id + '">' + (tot ? num(tot, 1) : "—") + "</td>" +
-      '<td class="num faint">' + (l.ore_stimate ? num(fatteL, 1) + " / " + num(l.ore_stimate, 0) + (res === 0 ? ' <span class="badge b-red">finite</span>' : "") : "—") + "</td></tr>";
+    h += '<td class="num tsr" data-tsrow="' + p.id + '">' + (tot ? num(tot, 1) : "—") + "</td>" +
+      '<td class="num faint">' + (stP ? num(fatteP, 1) + " / " + num(stP, 0) + (res === 0 ? ' <span class="badge b-red">finite</span>' : "") : "—") + "</td></tr>";
   });
   h += '</tbody><tfoot><tr><td><b>Totale</b></td>' + gg.map(function (g) {
     var t2 = sum(mieOre.filter(function (o) { return o.data === g; }), function (o) { return o.ore; });
     return '<td class="num" data-tscol="' + g + '"><b>' + (t2 ? num(t2, 1) : "—") + "</b></td>";
   }).join("") + '<td class="num" id="tstot"><b>' + num(sum(mieOre.filter(function (o) { return gg.indexOf(o.data) > -1; }), function (o) { return o.ore; }), 1) + "</b></td><td></td></tr></tfoot></table></div>";
-  var candidate = D.lav.filter(function (l) { return righeTs.indexOf(l) === -1; });
+  var candidate = progVisibili().filter(function (p) { return righeTs.indexOf(p) === -1; });
   if (candidate.length) {
-    h += '<form class="qadd" data-tsadd="1" style="margin-top:12px"><select name="lav"><option value="">Aggiungi una riga…</option>' +
-      candidate.map(function (l) { return '<option value="' + l.id + '">' + esc(l.nome) + " · " + esc(nameOf(D.prog, l.progetto_id)) + "</option>"; }).join("") +
+    h += '<form class="qadd" data-tsadd="1" style="margin-top:12px"><select name="prog"><option value="">Aggiungi una riga…</option>' +
+      candidate.map(function (p) { return '<option value="' + p.id + '">' + esc(p.nome) + (p.commessa_id ? " · " + esc(nameOf(D.com, p.commessa_id, "titolo")) : "") + "</option>"; }).join("") +
       '</select><button class="btn sm ghost" type="submit">Aggiungi</button></form>';
   }
   h += "</div>";
@@ -2744,73 +2805,6 @@ function vFornitori() {
       }).join("") + "</tbody></table></div>";
   });
   return h;
-}
-
-/* ---------------- carico di lavoro ---------------- */
-/* Il mio carico: solo il mio lavoro. Le ore e le stime degli altri non passano di qui. */
-function vCarico() {
-  var mieLav = D.lav.filter(function (l) { return l.pro_id === me.pro_id && l.stato !== "Completata"; });
-  var mieRighe = D.righe.filter(function (r) {
-    var s = by(D.serv, r.serv_id);
-    var k = by(D.com, r.commessa_id);
-    return (r.assegnato_id === me.pro_id || (s && s.pro_id === me.pro_id)) && k && ["Accettato"].indexOf(k.stato) > -1;
-  });
-  var stim = sum(mieLav, function (l) { return l.ore_stimate; });
-  var stimRighe = sum(mieRighe, function (r) { return r.ore_stimate; });
-  var fatte = sum(D.ore.filter(function (o) { return o.pro_id === me.pro_id; }), function (o) { return o.ore; });
-  var fatteAttive = sum(D.ore.filter(function (o) { return o.pro_id === me.pro_id && mieLav.some(function (l) { return l.id === o.lavorazione_id; }); }), function (o) { return o.ore; });
-  var residuo = Math.max(0, stim - fatteAttive);
-  var mieTask = D.task.filter(function (t) { return t.assegnato_id === me.pro_id && t.stato !== "Fatto"; });
-  var scadute = mieTask.filter(function (t) { return t.scadenza && t.scadenza < today(); });
-  var settimana = iso(new Date(Date.now() + 7 * 86400000));
-
-  var h = head("Il mio carico", "Quanto lavoro hai davanti nelle prossime settimane. Solo il tuo: il carico degli altri è loro.");
-  h += '<div class="grid g4">' +
-    kpi(num(residuo, 0) + " h", "Ore ancora da fare", num(fatteAttive, 1) + " h fatte su " + num(stim, 0) + " h stimate") +
-    kpi(String(mieLav.length), "Lavorazioni aperte", mieRighe.length + " voci di preventivo assegnate a te") +
-    kpi(String(mieTask.length), "Attività aperte", scadute.length ? scadute.length + " già scadute" : "nessuna scaduta") +
-    kpi(num(stimRighe, 0) + " h", "Stimate a preventivo", "sui lavori approvati e in corso") + "</div>";
-
-  var perProgetto = {};
-  mieLav.forEach(function (l) {
-    var fatteL = sum(oreOfLav(l.id), function (o) { return o.ore; });
-    var res = Math.max(0, (+l.ore_stimate || 0) - fatteL);
-    var pn = l.progetto_id ? nameOf(D.prog, l.progetto_id) : "Senza progetto";
-    perProgetto[pn] = (perProgetto[pn] || 0) + res;
-  });
-  var pk = Object.keys(perProgetto).filter(function (x) { return perProgetto[x] > 0; }).sort(function (a, b) { return perProgetto[b] - perProgetto[a]; });
-  var mx = Math.max.apply(null, pk.map(function (x) { return perProgetto[x]; }).concat([1]));
-
-  h += '<div class="grid g32" style="margin-top:18px"><div>';
-  h += '<div class="card"><div class="cardhead"><h2>Ore residue per progetto</h2></div>' +
-    (pk.length ? '<div class="bars">' + pk.map(function (x) { return bar(x, perProgetto[x], mx, num(perProgetto[x], 0) + " h"); }).join("") + "</div>"
-      : vuoto("Nessuna stima aperta: aggiungi le ore stimate alle tue lavorazioni per vedere il carico.")) + "</div>";
-
-  h += '<div class="card"><div class="cardhead"><h2>Le tue lavorazioni aperte</h2><button class="btn sm ghost" data-go="progetti">Vai ai progetti</button></div>';
-  h += mieLav.length ? '<table><thead><tr><th>Lavorazione</th><th>Progetto</th><th>Consegna</th><th class="num">Stimate</th><th class="num">Fatte</th><th class="num">Residuo</th></tr></thead><tbody>' +
-    mieLav.slice().sort(function (a, b) { return (a.fine || "9999") < (b.fine || "9999") ? -1 : 1; }).map(function (l) {
-      var f = sum(oreOfLav(l.id), function (o) { return o.ore; });
-      var res = Math.max(0, (+l.ore_stimate || 0) - f);
-      var late = l.fine && l.fine < today();
-      return '<tr><td><button class="lnk" data-open-lav="' + l.id + '">' + esc(l.nome) + "</button></td><td>" + esc(l.progetto_id ? nameOf(D.prog, l.progetto_id) : "—") + "</td><td>" +
-        (late ? '<span class="badge b-red">' + dt(l.fine) + "</span>" : dt(l.fine)) + '</td><td class="num">' + num(l.ore_stimate, 0) + '</td><td class="num">' + num(f, 1) + '</td><td class="num">' + num(res, 0) + "</td></tr>";
-    }).join("") + "</tbody></table>" : vuoto("Nessuna lavorazione aperta assegnata a te.");
-  h += "</div></div><div>";
-
-  h += '<div class="card"><div class="cardhead"><h2>Nei prossimi 7 giorni</h2></div>';
-  var prossime = mieTask.filter(function (t) { return t.scadenza && t.scadenza <= settimana; }).sort(function (a, b) { return a.scadenza < b.scadenza ? -1 : 1; });
-  h += prossime.length ? '<div class="checklist">' + prossime.map(function (t) {
-    return '<div class="cri"><b>' + esc(t.titolo) + '</b><span class="faint"> · ' + (t.scadenza < today() ? "scaduta il " : "entro ") + dt(t.scadenza) + (t.commessa_id ? " · " + esc(nameOf(D.com, t.commessa_id, "titolo")) : "") + "</span></div>";
-  }).join("") + "</div>" : vuoto("Niente in scadenza questa settimana.");
-  h += "</div>";
-
-  h += '<div class="card"><h3 style="margin-bottom:12px">In sintesi</h3><table><tbody>' +
-    row2("Ore registrate in tutto", num(fatte, 1) + " h") +
-    row2("Media a settimana (12 sett.)", num(sum(settimane(D.ore.filter(function (o) { return o.pro_id === me.pro_id; }), 12), function (x) { return x; }) / 12, 1) + " h") +
-    row2("Attività scadute", scadute.length ? '<span class="badge b-red">' + scadute.length + "</span>" : "0") +
-    row2("Lavorazioni senza stima", mieLav.filter(function (l) { return !l.ore_stimate; }).length) +
-    '</tbody></table><p class="faint" style="margin-top:10px">Serve a te per tararti: nessun altro vede questi numeri.</p></div>';
-  return h + "</div></div>";
 }
 
 /* ---------------- clienti ---------------- */
@@ -3458,9 +3452,8 @@ function vProgetti() {
   if (!list.length) return h + '<div class="card">' + vuoto("Nessun progetto con questi filtri: i progetti nascono dentro un preventivo.", '<button class="lnk" data-go="commesse">Vai ai preventivi</button>') + "</div>";
 
   function rigaProg(p) {
-    var lv = lavOf(p.id);
     var ore = sum(oreOfProg(p.id), function (o) { return o.ore; });
-    var stim = sum(lv, function (l) { return l.ore_stimate; });
+    var stim = sum(taskOfProg(p.id), function (t) { return t.stimate; });
     var tkTutte = taskOfProg(p.id).filter(function (t) { return !t.padre_id; });
     var tk = tkTutte.filter(function (t) { return t.stato !== "Fatto"; });
     var late = p.fine && p.fine < today() && p.stato !== "Completato";
@@ -3518,9 +3511,9 @@ function vProgetti() {
   }
   h += '<div class="grid g3">';
   list.forEach(function (p) {
-    var k = by(D.com, p.commessa_id), lv = lavOf(p.id);
+    var k = by(D.com, p.commessa_id);
     var ore = sum(oreOfProg(p.id), function (o) { return o.ore; });
-    var stim = sum(lv, function (l) { return l.ore_stimate; });
+    var stim = sum(taskOfProg(p.id), function (t) { return t.stimate; });
     var tk = taskOfProg(p.id).filter(function (t) { return t.stato !== "Fatto"; });
     var av = avanzProg(p);
     var late = p.fine && p.fine < today() && p.stato !== "Completato";
@@ -3530,7 +3523,7 @@ function vProgetti() {
       '<span class="badge ' + (p.stato === "Completato" ? "b-green" : p.stato === "In corso" ? "b-terra" : p.stato === "In attesa cliente" ? "b-amber" : "") + '">' + esc(p.stato || "—") + "</span></div>" +
       '<div class="pcbody">' + ring(av, 62) +
       "<table><tbody>" +
-      row2("Lavorazioni", lv.length + (tk.length ? ' · <span class="faint">' + tk.length + " attività aperte</span>" : "")) +
+      row2("Attività aperte", tk.length || "nessuna") +
       row2("Ore", num(ore, 1) + " h" + (stim ? ' <span class="faint">su ' + num(stim, 0) + " stimate</span>" : "")) +
       row2("Consegna", p.fine ? (late ? '<span class="badge b-red">' + dt(p.fine) + "</span>" : dt(p.fine)) : "—") +
       "</tbody></table></div>" +
@@ -3544,8 +3537,8 @@ function vProgetto() {
   var p = by(D.prog, current);
   if (!p) return '<div class="card">Progetto non trovato. <button class="lnk" data-go="progetti">Torna ai progetti</button></div>';
   var k = by(D.com, p.commessa_id);
-  var lv = lavOf(p.id), tk = taskOfProg(p.id), ore = oreOfProg(p.id), mt = matOfProg(p.id);
-  var oreT = sum(ore, function (o) { return o.ore; }), stim = sum(lv, function (l) { return l.ore_stimate; });
+  var tk = taskOfProg(p.id), ore = oreOfProg(p.id), mt = matOfProg(p.id);
+  var oreT = sum(ore, function (o) { return o.ore; }), stim = sum(tk, function (t) { return t.stimate; });
   var av = avanzProg(p), t = tab || "attivita";
   var tm = timerMio();
 
@@ -3632,10 +3625,13 @@ function vProgetto() {
     '<div style="margin-top:12px"><button class="btn sm ghost" data-edit="prog:' + p.id + '">Apri il modulo completo</button></div></div>';
 
   h += '<div class="card"><h3 style="margin-bottom:12px">Chi ci lavora</h3>';
+  /* chi ci lavora si legge dalle ore registrate: è l'unica cosa che dice
+     davvero chi ci ha messo mano, e si aggiorna da sola */
   var perPro = {};
-  lv.forEach(function (l) { if (l.pro_id) perPro[l.pro_id] = (perPro[l.pro_id] || 0) + sum(oreOfLav(l.id), function (o) { return o.ore; }); });
-  var pk = Object.keys(perPro);
-  h += pk.length ? '<div class="bars">' + pk.map(function (id) { return bar(nameOf(D.pros, id), perPro[id], Math.max.apply(null, pk.map(function (x) { return perPro[x]; }).concat([1])), num(perPro[id], 1) + " h"); }).join("") + "</div>" : vuoto("Nessuno assegnato.");
+  ore.forEach(function (o) { if (o.pro_id) perPro[o.pro_id] = (perPro[o.pro_id] || 0) + (+o.ore || 0); });
+  tk.forEach(function (t) { if (t.assegnato_id && perPro[t.assegnato_id] == null) perPro[t.assegnato_id] = 0; });
+  var pk = Object.keys(perPro).sort(function (a, b) { return perPro[b] - perPro[a]; });
+  h += pk.length ? '<div class="bars">' + pk.map(function (id) { return bar(nameOf(D.pros, id), perPro[id], Math.max.apply(null, pk.map(function (x) { return perPro[x]; }).concat([1])), perPro[id] ? num(perPro[id], 1) + " h" : "nessuna ora"); }).join("") + "</div>" : vuoto("Nessuno assegnato e nessuna ora registrata.");
   h += "</div>";
 
   h += '<div class="card"><h3 style="margin-bottom:12px">Ultime ore</h3>' + tblOre(ore.slice(0, 8)) + "</div>";
@@ -3705,7 +3701,6 @@ function eventiDi(g) {
   var out = [];
   ftask().forEach(function (t) { if (t.scadenza === g && t.stato !== "Fatto") out.push({ c: "b-amber", t: t.titolo, s: "attività", act: 'data-open-task="' + t.id + '"' }); });
   D.fasi.forEach(function (f) { if (f.fine === g) out.push({ c: "b-blue", t: f.nome, s: "fine fase", act: 'data-open-com="' + f.commessa_id + '"' }); });
-  D.lav.forEach(function (l) { if (l.fine === g && l.stato !== "Completata") out.push({ c: "b-terra", t: l.nome, s: "consegna lavorazione", act: 'data-open-lav="' + l.id + '"' }); });
   D.pag.forEach(function (p) { if (p.scadenza === g && p.stato !== "Incassato") out.push({ c: "b-red", t: eur(p.importo) + " · " + p.nome, s: "pagamento", act: 'data-open-com="' + p.commessa_id + '"' }); });
   D.pren.forEach(function (r) { if (r.data === g) out.push({ c: "b-green", t: nameOf(D.spazi, r.spazio_id), s: r.slot || "prenotazione", act: 'data-go="spazi"' }); });
   D.riu.forEach(function (r) { if (r.data === g && r.stato !== "Annullata") out.push({ c: "b-blue", t: (r.ora ? r.ora.slice(0, 5) + " " : "") + r.titolo, s: "riunione", act: 'data-route="riunione|' + r.id + '|"' }); });
@@ -3726,9 +3721,10 @@ function vCalendario() {
   var start = new Date(base); start.setDate(1 - ((base.getDay() + 6) % 7));
   var lun = new Date(oggi); lun.setDate(oggi.getDate() - ((oggi.getDay() + 6) % 7) + CAL * 7);
   var titolo = settimana ? "Settimana dal " + dt(iso(lun)) : mese.charAt(0).toUpperCase() + mese.slice(1);
-  var h = head("Calendario", titolo,
-    '<div class="wknav"><button class="btn sm ghost" data-cal="-1">‹</button>' + (CAL ? '<button class="btn sm ghost" data-cal="0">Oggi</button>' : "") + '<button class="btn sm ghost" data-cal="1">›</button></div>');
-  h += barraViste([["mese", "Mese"], ["settimana", "Settimana"]], settimana ? "settimana" : "mese", "calendario");
+  var h = head("Agenda", titolo,
+    '<div class="wknav"><button class="btn sm ghost" data-cal="-1">‹</button>' + (CAL ? '<button class="btn sm ghost" data-cal="0">Oggi</button>' : "") + '<button class="btn sm ghost" data-cal="1">›</button></div>' +
+    '<button class="btn sm" data-new="riu">+ Riunione</button>');
+  h += barraAgenda(settimana ? "settimana" : "mese");
 
   if (settimana) {
     h += '<div class="card"><div class="week">';
@@ -3767,7 +3763,6 @@ function vCalendario() {
   }).join("") + "</ul>" : vuoto("Niente in programma.");
   h += '</div><div class="card"><div class="cardhead"><h2>Come si legge</h2></div><div class="legend" style="flex-direction:column;gap:10px;align-items:flex-start">' +
     '<span><i style="background:var(--amber)"></i>Attività da fare</span>' +
-    '<span><i style="background:var(--terra)"></i>Consegna di una lavorazione</span>' +
     '<span><i style="background:var(--blue)"></i>Fine di una fase</span>' +
     '<span><i style="background:var(--red)"></i>Pagamento in scadenza</span>' +
     '<span><i style="background:var(--green)"></i>Prenotazione di uno spazio, evento dello studio</span>' +
@@ -3788,7 +3783,7 @@ function cardIscrizione() {
   var h = '<div class="card" style="margin-top:18px"><div class="cardhead"><h2>Portalo nel tuo calendario</h2>' +
     (u ? '<button class="btn sm ghost" data-cal-nuovo="1">Rigenera il link</button>' : "") + "</div>";
   if (!u) {
-    h += '<p class="faint">Crea il tuo indirizzo personale: da lì Google Calendar, Apple Calendario o Outlook leggono da soli le tue scadenze, le tue lavorazioni e le tue prenotazioni.</p>' +
+    h += '<p class="faint">Crea il tuo indirizzo personale: da lì Google Calendar, Apple Calendario o Outlook leggono da soli le tue scadenze, i tuoi progetti e le tue prenotazioni.</p>' +
       '<div style="margin-top:14px"><button class="btn" data-cal-nuovo="1">Crea il mio link</button></div></div>';
     return h;
   }
@@ -6203,7 +6198,7 @@ var FSEZ = {
   membri: ["impostazioni", "Impostazioni"], fasi: ["commesse", "Preventivi"], pag: ["commesse", "Preventivi"], costi: ["commesse", "Preventivi"],
   vari: ["commesse", "Preventivi"], appr: ["commesse", "Preventivi"], righe: ["commesse", "Preventivi"],
   task: ["task", "Attività"], ore: ["ore", "Le tue ore"], inter: ["clienti", "Clienti"], modelli: ["task", "Attività"],
-  mat: ["commesse", "Preventivi"], ev: ["commesse", "Preventivi"], pren: ["spazi", "Coworking & spazi"], riu: ["riunioni", "Riunioni"]
+  mat: ["commesse", "Preventivi"], ev: ["commesse", "Preventivi"], pren: ["spazi", "Coworking & spazi"], riu: ["riunioni", "Agenda"]
 };
 var FDETT = { com: ["commessa", "note"], cli: ["cliente", ""], prog: ["progetto", "attivita"], lav: ["lavorazione", ""], pros: ["pro", ""], task: ["attivita", ""], riu: ["riunione", ""] };
 
@@ -6650,10 +6645,13 @@ function render() {
     return;
   }
   buildNav();
-  var V = { riunioni: vRiunioni, riunione: vRiunione, attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vCarico, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, posta: vPosta, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi, professioni: vProfessioni, eventi: vEventi, chat: vChat };
+  var V = { riunioni: vRiunioni, riunione: vRiunione, attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, lavorazione: vLavorazione, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vTask, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, posta: vPosta, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi, professioni: vProfessioni, eventi: vEventi, chat: vChat };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
-  var s = el("#search") || el("#tcerca") || el("#fcerca");
+  var s = el("#search") || el("#fcerca") || el("#tcerca");
+  /* la ricerca delle attività si prende il cursore solo se ci stavi già
+     scrivendo: se no ruba il posto alla casella per scrivere una cosa nuova */
+  if (s && s.id === "tcerca" && !s.value) s = null;
   if (s && window.innerWidth > 760 && !("ontouchstart" in window)) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
   if (view === "chat") { var cms = el(".chatms"); if (cms) cms.scrollTop = cms.scrollHeight; segnaLetto(); }
   /* dopo che il browser ha disegnato: solo allora le altezze sono vere.
@@ -7258,9 +7256,9 @@ async function clicApp(e, t, d) {
       var gC = iso(new Date(lunC.getTime() + gi9 * 86400000));
       var pC = iso(new Date(lunC.getTime() + (gi9 - 7) * 86400000));
       D.ore.filter(function (o) { return o.pro_id === me.pro_id && o.data === pC; }).forEach(function (o) {
-        var gia = D.ore.some(function (x) { return x.pro_id === me.pro_id && x.data === gC && x.lavorazione_id === o.lavorazione_id; });
+        var gia = D.ore.some(function (x) { return x.pro_id === me.pro_id && x.data === gC && x.progetto_id === o.progetto_id; });
         if (gia) return;
-        nuoveC.push({ pro_id: me.pro_id, lavorazione_id: o.lavorazione_id, progetto_id: o.progetto_id, commessa_id: o.commessa_id, data: gC, ore: o.ore, tariffa: o.tariffa, fatturabile: o.fatturabile, descrizione: o.descrizione });
+        nuoveC.push({ pro_id: me.pro_id, progetto_id: o.progetto_id, commessa_id: o.commessa_id, data: gC, ore: o.ore, tariffa: o.tariffa, fatturabile: o.fatturabile, descrizione: o.descrizione });
       });
     }
     if (!nuoveC.length) { toast("Niente da copiare: la settimana scorsa è vuota o è già stata copiata"); return; }
@@ -7596,9 +7594,9 @@ async function stopTimer(zitto, oreForzate) {
   } else if (!zitto) toast("Sessione troppo breve, non registrata");
   await reload(["tmr", "ore"]); if (!zitto) render();
 }
-async function salvaTs(lid, data, val) {
-  var lav = by(D.lav, lid);
-  var righe = D.ore.filter(function (o) { return o.pro_id === me.pro_id && o.lavorazione_id === lid && o.data === data; });
+async function salvaTs(pid, data, val) {
+  var pg = by(D.prog, pid);
+  var righe = D.ore.filter(function (o) { return o.pro_id === me.pro_id && o.progetto_id === pid && o.data === data; });
   var v = Math.round((parseFloat(String(val).replace(",", ".")) || 0) * 10) / 10;
   if (v <= 0) { if (righe.length) await sb.from("ore").delete().in("id", righe.map(function (x) { return x.id; })); }
   else if (righe.length) {
@@ -7606,7 +7604,7 @@ async function salvaTs(lid, data, val) {
     if (righe.length > 1) await sb.from("ore").delete().in("id", righe.slice(1).map(function (x) { return x.id; }));
   } else {
     var p = by(D.pros, me.pro_id);
-    var r = await sb.from("ore").insert({ pro_id: me.pro_id, lavorazione_id: lid, progetto_id: lav ? lav.progetto_id : null, commessa_id: lav ? lav.commessa_id : null, data: data, ore: v, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: lav ? lav.nome : "Ore della settimana" });
+    var r = await sb.from("ore").insert({ pro_id: me.pro_id, progetto_id: pid, commessa_id: pg ? pg.commessa_id : null, data: data, ore: v, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: pg ? pg.nome : "Ore della settimana" });
     if (r.error) { toast(erroreUmano(r.error), true); return; }
   }
   await reload(["ore"]);
@@ -7748,7 +7746,7 @@ async function invioModulo(e, f) {
   }
   if (f.dataset.tsadd) {
     e.preventDefault();
-    var lid9 = f.lav.value; if (!lid9) return;
+    var lid9 = f.prog.value; if (!lid9) return;
     if (TSEXTRA.indexOf(lid9) === -1) TSEXTRA.push(lid9);
     render(); return;
   }
