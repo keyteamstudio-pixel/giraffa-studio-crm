@@ -6626,8 +6626,10 @@ function render() {
   var s = el("#search") || el("#tcerca") || el("#fcerca");
   if (s && window.innerWidth > 760 && !("ontouchstart" in window)) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
   if (view === "chat") { var cms = el(".chatms"); if (cms) cms.scrollTop = cms.scrollHeight; segnaLetto(); }
-  /* dopo che il browser ha disegnato: solo allora le altezze sono vere */
-  if (el(".a4")) requestAnimationFrame(function () { try { impagina(); } catch (e) {} });
+  /* dopo che il browser ha disegnato: solo allora le altezze sono vere.
+     Non uso requestAnimationFrame perché in una scheda aperta di lato non
+     scatta finché non ci vai sopra, e il foglio resterebbe da impaginare. */
+  if (el(".a4")) setTimeout(function () { try { impagina(); } catch (e) {} }, 0);
   countUp();
 }
 
@@ -8297,6 +8299,13 @@ async function start() {
 /* ---- nodo 9: chat, bacheca e badge si aggiornano da soli, senza ricaricare ----
    Ogni mezzo minuto, solo se la finestra è visibile e nessuno sta scrivendo. */
 var AGG_T = null;
+/* Se il preventivo è stato disegnato in una scheda di lato, le altezze erano
+   zero: appena la scheda torna davanti, riprovo. impagina() non fa niente se
+   ha già lavorato, quindi chiamarla di nuovo è innocuo. */
+document.addEventListener("visibilitychange", function () {
+  if (!document.hidden) setTimeout(function () { try { impagina(); } catch (e) {} }, 0);
+});
+
 function avviaAggiornamenti() {
   if (AGG_T) return;
   AGG_T = setInterval(aggiornaVivo, 30000);
