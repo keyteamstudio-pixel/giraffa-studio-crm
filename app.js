@@ -45,6 +45,8 @@ var WEEK = 0, NOTEDIT = false, NOTET = null, TICK = null, TSEXTRA = [];
 function el(s) { return document.querySelector(s); }
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function eur(n) { return "€ " + Math.round(+n || 0).toLocaleString("it-IT"); }
+/* per le cifre piccole, dove l'euro tondo direbbe zero: il rimborso al chilometro */
+function eurc(n) { return "€ " + (+n || 0).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function num(n, d) { var v = +n || 0; return v.toLocaleString("it-IT", { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }); }
 function dt(s) { if (!s) return "—"; var d = new Date(s); return isNaN(d) ? "—" : d.toLocaleDateString("it-IT", { day: "2-digit", month: "short", year: "numeric" }); }
 function dshort(s) { if (!s) return "—"; var d = new Date(s); return isNaN(d) ? "—" : d.toLocaleDateString("it-IT", { day: "2-digit", month: "2-digit" }); }
@@ -2309,7 +2311,7 @@ function vistaTrasferte(list) {
   var oreV = sum(quest, function (t) { return t.ore_viaggio; });
   var h = '<div class="grid g4">' +
     kpi(String(quest.length), "Uscite quest'anno", quest.length ? "l'ultima il " + dt(quest[0].data) : "nessuna ancora") +
-    kpi(num(km, 0) + " km", "Chilometri percorsi", "al tuo rimborso di " + eur(tariffaKmMia()) + " al km") +
+    kpi(num(km, 0) + " km", "Chilometri percorsi", "al tuo rimborso di " + eurc(tariffaKmMia()) + " al km") +
     kpi(eur(rimb), "Quanto ti sono costate", addeb ? eur(addeb) + " li paga il cliente" : "nessuna addebitata al cliente") +
     kpi(num(oreV, 1) + " h", "Ore passate in viaggio", "contate al " + percViaggioMia() + "% della tariffa") + "</div>";
   if (!list.length) return h + '<div class="card">' + vuoto("Nessuna trasferta registrata.", '<button class="lnk" data-new="trasf">Registra la prima</button>') + "</div>";
@@ -6155,6 +6157,9 @@ async function saveForm(f) {
     F.priv.forEach(function (c) { if (c in obj) { privati[c] = obj[c]; delete obj[c]; } });
   }
   if (entity === "task" && !id) obj.creato_da = me.pro_id;
+  /* la trasferta è tua come le ore: senza il tuo nome sopra il database la
+     rifiuta, ed è giusto così — il rimborso di un altro non lo scrivi tu */
+  if (entity === "trasf" && !obj.pro_id) obj.pro_id = me.pro_id;
   /* le caselle dei partecipanti diventano un elenco */
   if (entity === "riu") {
     var part = [];
