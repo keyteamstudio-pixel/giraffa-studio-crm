@@ -964,7 +964,8 @@ function cardRichieste() {
   if (!nuove.length) return "";
   var h = '<div class="card" style="border-color:var(--terra)"><div class="cardhead"><h2>Richieste dal sito</h2><span class="badge b-amber">' + nuove.length + (nuove.length === 1 ? " nuova" : " nuove") + "</span></div>";
   h += nuove.map(function (r) {
-    var tipo = r.tipo === "candidatura" ? "Vuole entrare nello studio" : r.tipo === "preventivo" ? "Chiede un preventivo" : "Scrive";
+    /* dal sito arrivano tre strade: chi ha un lavoro, chi vuole entrare, chi propone di collaborare */
+    var tipo = r.tipo === "candidatura" ? "Vuole entrare nello studio" : r.tipo === "preventivo" ? "Chiede un preventivo" : r.tipo === "partner" ? "Propone una collaborazione" : "Scrive";
     var chi = esc(r.nome) + (r.azienda ? " · " + esc(r.azienda) : "") + (r.mestiere ? " · " + esc(r.mestiere) : "") + (r.citta ? " · " + esc(r.citta) : "");
     var contatti = '<a href="mailto:' + esc(r.email) + '">' + esc(r.email) + "</a>" + (r.telefono ? ' · <a href="tel:' + esc(String(r.telefono).replace(/\s+/g, "")) + '">' + esc(r.telefono) + "</a>" : "") + (r.portfolio ? ' · <a href="' + esc(r.portfolio) + '" target="_blank" rel="noopener">il suo lavoro</a>' : "");
     return '<div class="rich"><div class="richtop"><b>' + tipo + "</b><span class=\"faint\">" + dt(String(r.created_at).slice(0, 10)) + "</span></div>" +
