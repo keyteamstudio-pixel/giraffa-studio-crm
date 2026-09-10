@@ -25,13 +25,15 @@ var APPVER = (function () {
 var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
 var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], trasf: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
-  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [], pcfg: [], gconn: [], impg: [], mconn: [] };
+  prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [], pcfg: [], gconn: [], impg: [], mconn: [],
+  rmie: [], rocc: [], rfonti: [], rprof: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
 var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", trasf: "trasferte", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
-  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi", pcfg: "prenota_cfg", gconn: "google_conn", impg: "impegni_google", mconn: "mail_conn" };
+  prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi", pcfg: "prenota_cfg", gconn: "google_conn", impg: "impegni_google", mconn: "mail_conn",
+  rmie: "radar_mie", rocc: "radar_occasioni_mie", rfonti: "radar_fonti", rprof: "pro_profilo" };
 
 /* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
 var COLONNE = { port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd", gconn: "pro_id,email,scopes,created_at,updated_at,sync_at,errore", mconn: "pro_id,email,utente,imap_host,imap_port,smtp_host,smtp_port,cartella_inviati,created_at,updated_at,errore" };
@@ -637,6 +639,7 @@ function navFor() {
     { k: "clienti", t: "Clienti", d: "I tuoi clienti", c: function () { return fcli().length; } },
     { k: "posta", t: "Posta", d: "La tua Gmail, con i clienti accanto", c: function () { return GM.nonLetti || 0; } },
     { k: "commesse", t: "Preventivi", d: "I tuoi e quelli dello studio", c: function () { return fcom().filter(function (k) { return STATI_APERTI.indexOf(k.stato) > -1; }).length; } },
+    { k: "radar", t: "Radar", d: "Bandi e norme che riguardano te o i tuoi clienti", c: function () { return radarNuove().length; } },
     { k: "amm", t: "Amministrazione", d: "Incassi, scadenze, preventivi in gioco" },
     { k: "report", t: "Report", d: "Numeri e andamenti" },
     { g: "Studio" },
@@ -2711,6 +2714,232 @@ function vStudio() {
 }
 
 /* ---------------- fornitori condivisi ---------------- */
+/* -------------------------------------------------------------------- Radar
+   Bandi, agevolazioni e norme. Ogni documento si legge una volta sola e si
+   mette accanto al tuo profilo e ai tuoi clienti.
+
+   Qui dentro non si scrive mai che hai diritto a qualcosa. Si scrive cosa
+   combacia, cosa manca, cosa resta da verificare, da dove viene il documento
+   e quando quella fonte e' stata controllata l'ultima volta. La decisione
+   resta tua, e la responsabilita' pure. */
+function radarMie() { return (D.rmie || []).filter(function (r) { return r.pro_id === me.pro_id; }); }
+function radarNuove() { return radarMie().filter(function (r) { return r.stato === "nuova"; }); }
+function radarOcc(sid) { return (D.rocc || []).filter(function (o) { return o.segnalazione_id === sid; }); }
+function radarProfilo() { var l = (D.rprof || []).filter(function (p) { return p.pro_id === me.pro_id; }); return l[0] || null; }
+function radarViva(r) { return r.stato !== "scartata" && r.stato !== "archiviata"; }
+function radarPerMe() { return radarMie().filter(function (r) { return radarViva(r) && r.per_chi !== "clienti"; }); }
+function radarPerClienti() { return radarMie().filter(function (r) { return radarViva(r) && r.per_chi !== "me"; }); }
+function radarSalvate() { return radarMie().filter(function (r) { return r.stato === "salvata"; }); }
+
+/* quanto manca alla scadenza, a colpo d'occhio */
+function radarQuando(r) {
+  if (!r.scade_il) return '<span class="faint">termine non indicato</span>';
+  var g = days(r.scade_il, today());
+  if (g < 0) return '<span class="badge b-red">termine passato</span>';
+  if (g <= 15) return '<span class="badge b-red">restano ' + g + (g === 1 ? " giorno" : " giorni") + "</span>";
+  if (g <= 45) return '<span class="badge b-amber">entro il ' + dt(r.scade_il) + "</span>";
+  return '<span class="badge">entro il ' + dt(r.scade_il) + "</span>";
+}
+function radarVoce(x) {
+  if (x == null) return "";
+  if (typeof x === "string") return esc(x);
+  if (x.voce) return esc(x.voce) + (x.note ? ' <span class="faint">' + esc(x.note) + "</span>" : "");
+  if (x.testo) return esc(x.testo);
+  return esc(String(x));
+}
+function radarBlocco(titolo, voci, classe) {
+  if (!voci || !voci.length) return "";
+  return '<div class="rbl ' + (classe || "") + '"><b>' + esc(titolo) + "</b><ul>" +
+    voci.map(function (x) { return "<li>" + radarVoce(x) + "</li>"; }).join("") + "</ul></div>";
+}
+function radarImporto(i) {
+  if (!i || typeof i !== "object") return "";
+  var p = [];
+  if (i.tipo) p.push(esc(i.tipo));
+  if (i.percentuale) p.push("fino al " + num(i.percentuale) + "%");
+  if (i.max) p.push("non oltre " + eur(i.max));
+  if (i.min) p.push("da " + eur(i.min));
+  return p.length ? '<div class="rbl"><b>Quanto vale</b><p>' + p.join(" &middot; ") + "</p></div>" : "";
+}
+/* La riga che non deve mancare mai: da dove viene e quando l'abbiamo guardata. */
+function radarFonte(r) {
+  return '<div class="rfonte">Da <a href="' + esc(r.atto_url || "#") + '" target="_blank" rel="noopener">' + esc(r.fonte_nome || "fonte non indicata") + "</a>" +
+    (r.pubblicato ? ", pubblicato il " + dt(r.pubblicato) : "") +
+    (r.fonte_controllata ? ". Fonte controllata il " + dt(r.fonte_controllata) : "") +
+    (r.atto_versione > 1 ? ' <span class="badge b-amber">il testo è cambiato dopo la prima lettura</span>' : "") + "</div>";
+}
+function radarAzioni(r) {
+  return '<div class="razioni">' +
+    '<button class="btn sm" data-route="radar|' + esc(r.id) + '|">Apri</button>' +
+    (r.stato === "salvata"
+      ? '<button class="btn sm ghost" data-radar-stato="' + esc(r.id) + ':vista">Togli dai salvati</button>'
+      : '<button class="btn sm ghost" data-radar-stato="' + esc(r.id) + ':salvata">Tieni d\'occhio</button>') +
+    '<button class="lnk mini" data-radar-stato="' + esc(r.id) + ':scartata">Non mi riguarda</button>' +
+    "</div>";
+}
+function radarCard(r) {
+  var occ = radarOcc(r.id);
+  var h = '<div class="card"><div class="cardhead"><h2>' + esc(r.titolo_breve || r.atto_titolo || "Senza titolo") + "</h2>" + radarQuando(r) + "</div>";
+  if (r.stato === "nuova") h += '<span class="badge b-terra">nuova</span> ';
+  h += '<p class="muted" style="margin-top:6px">' + esc(r.perche || r.sintesi || "") + "</p>";
+  if (occ.length) {
+    h += '<div class="rbl ok"><b>Potrebbe riguardare ' + occ.length + (occ.length === 1 ? " tuo cliente" : " tuoi clienti") + "</b><ul>" +
+      occ.map(function (o) { return "<li>" + esc(o.cliente_nome) + "</li>"; }).join("") + "</ul></div>";
+  }
+  h += radarFonte(r) + radarAzioni(r) + "</div>";
+  return h;
+}
+/* La scheda intera. Tre colonne di verita': cosa combacia, cosa manca,
+   e la piu' importante, cosa nessuno puo' sapere dai dati. */
+function radarDettaglio(r) {
+  var occ = radarOcc(r.id);
+  var h = head(r.titolo_breve || r.atto_titolo || "Segnalazione", r.ente || "",
+    '<button class="btn sm ghost" data-go="radar">Torna al Radar</button>' +
+    (r.stato === "salvata" ? "" : '<button class="btn sm" data-radar-stato="' + esc(r.id) + ':salvata">Tieni d\'occhio</button>'));
+  h += '<div class="card"><div class="cardhead"><h2>Di cosa si tratta</h2>' + radarQuando(r) + "</div>";
+  h += "<p>" + esc(r.sintesi || "—") + "</p>";
+  h += radarImporto(r.importo);
+  h += radarBlocco("A chi si rivolge, con le parole del documento", r.chi_puo);
+  h += radarBlocco("Spese che il documento ammette", r.spese_ammesse);
+  if (r.come_si_fa) h += '<div class="rbl"><b>Come si presenta la domanda</b><p>' + esc(r.come_si_fa) + "</p></div>";
+  h += radarFonte(r) + "</div>";
+
+  h += '<div class="card"><div class="cardhead"><h2>Come sta rispetto al tuo profilo</h2></div>';
+  h += '<p class="muted">' + esc(r.perche || "") + "</p>";
+  h += radarBlocco("Combacia", r.combaciano, "ok");
+  h += radarBlocco("Non combacia", r.mancano, "no");
+  h += radarBlocco("Da verificare: qui il gestionale non può rispondere al posto tuo", r.da_verificare, "warn");
+  h += radarBlocco("Condizioni scritte nel documento", r.requisiti);
+  if (r.incerto) h += '<div class="rbl warn"><b>Cosa il documento non dice</b><p>' + esc(r.incerto) + "</p></div>";
+  h += '<p class="faint" style="margin-top:10px">Questa non è una verifica di ammissibilità. È un confronto fra quello che c\'è scritto nel documento e quello che c\'è scritto nel tuo profilo. Prima di presentare una domanda, il documento va letto, e per le cose fiscali serve il tuo commercialista.</p>';
+  h += "</div>";
+
+  if (occ.length) {
+    h += '<div class="card"><div class="cardhead"><h2>Occasioni per i tuoi clienti</h2><span class="faint">' + occ.length + "</span></div>";
+    occ.forEach(function (o) {
+      var sv = (o.servizi || []).map(function (id) { var s = by(D.serv, id); return s ? s.nome : null; }).filter(Boolean);
+      h += '<div class="rocc"><div class="cardhead"><h3>' + esc(o.cliente_nome) + "</h3>" +
+        (o.cliente_settore ? '<span class="faint">' + esc(o.cliente_settore) + "</span>" : "") + "</div>";
+      h += "<p>" + esc(o.perche || "") + "</p>";
+      h += radarBlocco("Perché rientra fra i destinatari", o.combaciano, "ok");
+      h += radarBlocco("Da chiedere prima di proporre qualcosa", o.da_verificare, "warn");
+      if (sv.length) h += '<div class="rbl ok"><b>Tuoi servizi che potrebbero rientrarci</b><ul>' + sv.map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("") + "</ul></div>";
+      h += '<div class="razioni">' +
+        '<button class="btn sm" data-radar-prev="' + esc(o.id) + '">Apri un preventivo per ' + esc(o.cliente_nome) + "</button>" +
+        '<button class="btn sm ghost" data-route="cliente|' + esc(o.cliente_id) + '|">Vai alla scheda cliente</button>' +
+        (o.stato === "contattato" ? '<span class="badge b-green">contattato</span>' : '<button class="lnk mini" data-radar-occ="' + esc(o.id) + ':contattato">Segna come contattato</button>') +
+        "</div></div>";
+    });
+    h += "</div>";
+  }
+  return h;
+}
+/* Le fonti si dichiarano. Se una non è coperta, deve vedersi che non lo è:
+   e' l'unica cosa che distingue un radar onesto da una newsletter. */
+function radarFonti() {
+  var f = (D.rfonti || []).slice().sort(function (a, b) { return (a.attiva === b.attiva) ? (a.nome < b.nome ? -1 : 1) : (a.attiva ? -1 : 1); });
+  var h = '<div class="card"><div class="cardhead"><h2>Da dove guardiamo</h2><span class="faint">' + f.filter(function (x) { return x.attiva; }).length + " attive su " + f.length + "</span></div>";
+  h += '<p class="muted">Il Radar guarda solo queste. Quello che non è in elenco non viene controllato da nessuno, e la pagina non deve far credere il contrario. I portali delle regioni, in particolare, non offrono un modo automatico di leggerli: per ora si controllano a mano.</p>';
+  h += '<table><thead><tr><th>Fonte</th><th>Cosa contiene</th><th>Come</th><th>Ultimo controllo</th><th>Esito</th></tr></thead><tbody>';
+  h += f.map(function (x) {
+    return "<tr><td><b>" + esc(x.nome) + "</b>" + (x.note ? '<div class="faint">' + esc(x.note) + "</div>" : "") + "</td>" +
+      "<td>" + esc(x.tipo) + '<div class="faint">' + esc(x.territorio || "") + "</div></td>" +
+      "<td>" + (x.attiva ? esc(x.modo === "rss" ? "in automatico" : x.modo) : '<span class="badge">spenta</span>') + "</td>" +
+      "<td>" + (x.ultimo_controllo ? dt(x.ultimo_controllo) : "—") + "</td>" +
+      "<td>" + (x.ultimo_esito === "ok" ? '<span class="badge b-green">letta</span>'
+        : x.ultimo_esito ? '<span class="badge b-red" title="' + esc(x.ultimo_errore || "") + '">' + esc(x.ultimo_esito) + "</span>"
+          : '<span class="faint">mai</span>') + "</td></tr>";
+  }).join("") + "</tbody></table></div>";
+  return h;
+}
+/* Senza profilo il Radar non ha niente da confrontare, e si vede. */
+function radarSchedaProfilo() {
+  var p = radarProfilo() || {};
+  var mancano = [];
+  if (!p.ateco) mancano.push("il codice ATECO");
+  if (!p.forma) mancano.push("la forma giuridica");
+  if (!p.regime) mancano.push("il regime fiscale");
+  if (!p.avvio) mancano.push("la data di avvio");
+  if (!p.provincia) mancano.push("la provincia");
+  if (!(p.parole_chiave || []).length) mancano.push("le parole chiave del tuo lavoro");
+  var forme = [["", "—"], ["libero professionista", "Libero professionista"], ["ditta individuale", "Ditta individuale"], ["srl", "Srl"], ["srls", "Srls"], ["snc", "Snc"], ["sas", "Sas"], ["spa", "Spa"], ["cooperativa", "Cooperativa"], ["associazione", "Associazione"], ["ets", "Ente del terzo settore"], ["altro", "Altro"]];
+  var regimi = [["", "—"], ["forfettario", "Forfettario"], ["semplificato", "Semplificato"], ["ordinario", "Ordinario"], ["altro", "Altro"]];
+  var raggi = [["comune", "Il mio comune"], ["provincia", "La mia provincia"], ["regione", "La mia regione"], ["nazionale", "Tutta Italia"], ["estero", "Anche estero"]];
+
+  var h = '<div class="card"><div class="cardhead"><h2>Il tuo profilo</h2>' +
+    (mancano.length ? '<span class="badge b-amber">' + mancano.length + " cose da compilare</span>" : '<span class="badge b-green">completo</span>') + "</div>";
+  h += '<p class="muted">Il Radar confronta questi dati con quello che c\'è scritto nei documenti. Ogni campo vuoto diventa un &laquo;da verificare&raquo;: non un errore, ma una risposta in meno.</p>';
+  if (mancano.length) h += '<div class="rbl warn"><b>Manca ancora</b><ul>' + mancano.map(function (x) { return "<li>" + esc(x) + "</li>"; }).join("") + "</ul></div>";
+  h += '<div class="grid g2" style="margin-top:14px">';
+  h += '<div class="qfield"><label>Codice ATECO</label><input id="rp-ateco" value="' + esc(p.ateco || "") + '" placeholder="es. 73.11.02"></div>';
+  h += '<div class="qfield"><label>Cosa dice quel codice</label><input id="rp-ateco-desc" value="' + esc(p.ateco_desc || "") + '" placeholder="la descrizione che trovi in visura"></div>';
+  h += '<div class="qfield"><label>Forma giuridica</label><select id="rp-forma">' + opzioni(forme, p.forma || "") + "</select></div>";
+  h += '<div class="qfield"><label>Regime fiscale</label><select id="rp-regime">' + opzioni(regimi, p.regime || "") + "</select></div>";
+  h += '<div class="qfield"><label>Attività avviata il</label><input type="date" id="rp-avvio" value="' + esc(p.avvio || "") + '"></div>';
+  h += '<div class="qfield"><label>Dipendenti</label><input type="number" min="0" id="rp-dip" value="' + esc(p.dipendenti == null ? "" : p.dipendenti) + '"></div>';
+  h += '<div class="qfield"><label>Comune</label><input id="rp-comune" value="' + esc(p.comune || "") + '"></div>';
+  h += '<div class="qfield"><label>Provincia</label><input id="rp-prov" maxlength="2" value="' + esc(p.provincia || "") + '" placeholder="VR"></div>';
+  h += '<div class="qfield"><label>Regione</label><input id="rp-regione" value="' + esc(p.regione || "") + '"></div>';
+  h += '<div class="qfield"><label>Fin dove ti sposti</label><select id="rp-raggio">' + opzioni(raggi, p.raggio || "regione") + "</select></div>";
+  h += '<div class="qfield"><label>Albo o ordine</label><input id="rp-albo" value="' + esc(p.albo || "") + '" placeholder="se non sei iscritto, lascia vuoto"></div>';
+  h += '<div class="qfield"><label>Parole chiave del tuo lavoro</label><input id="rp-parole" value="' + esc((p.parole_chiave || []).join(", ")) + '" placeholder="separate da virgola"></div>';
+  h += '<div class="qfield"><label>Settori dei tuoi clienti</label><input id="rp-settori" value="' + esc((p.settori_clienti || []).join(", ")) + '" placeholder="separati da virgola"></div>';
+  h += "</div>";
+  h += '<div class="razioni"><button class="btn" data-radar-profilo="1">Salva il profilo</button>' +
+    '<span class="faint">Questi dati restano tuoi: non li vede nessun altro nella rete.</span></div>';
+  h += "</div>";
+  return h;
+}
+function vRadar() {
+  if (!me.pro_id) return head("Radar", "") + '<div class="card">' + vuoto("Il Radar lavora sul profilo di un professionista, e il tuo account non ne ha ancora uno.") + "</div>";
+  var uno = current ? radarMie().filter(function (r) { return r.id === current; })[0] : null;
+  if (uno) return radarDettaglio(uno);
+
+  var t = tab || "te";
+  var perMe = radarPerMe(), perCli = radarPerClienti(), salv = radarSalvate();
+  var h = head("Radar",
+    "Bandi, agevolazioni e norme lette per te. Qui non si dice mai che hai diritto a qualcosa: si dice cosa combacia, cosa manca e cosa resta da verificare.",
+    '<button class="btn sm ghost" data-radar-cerca="1">Cerca adesso</button>');
+  h += barraViste([
+    ["te", "Riguarda te", perMe.length],
+    ["clienti", "Per i tuoi clienti", perCli.length],
+    ["salvate", "Tenute d'occhio", salv.length],
+    ["fonti", "Da dove guardiamo", null],
+    ["profilo", "Il tuo profilo", null]
+  ], t, "radar", "");
+
+  if (t === "fonti") return h + radarFonti();
+  if (t === "profilo") return h + radarSchedaProfilo();
+
+  var p = radarProfilo();
+  if (!p || !p.ateco) {
+    h += '<div class="card"><div class="rbl warn"><b>Il profilo non è completo</b>' +
+      "<p>Senza codice ATECO e senza le parole chiave del tuo lavoro, il Radar può solo escludere per territorio e forma giuridica. Compila il profilo e le segnalazioni diventano molto piu\' precise.</p></div>" +
+      '<div class="razioni"><button class="btn sm" data-route="radar|-|profilo">Compila il profilo</button></div></div>';
+  }
+
+  var list = t === "clienti" ? perCli : t === "salvate" ? salv : perMe;
+  list = list.slice().sort(function (a, b) {
+    var sa = a.scade_il || "9999", sb2 = b.scade_il || "9999";
+    if (sa !== sb2) return sa < sb2 ? -1 : 1;
+    return (b.punteggio || 0) - (a.punteggio || 0);
+  });
+
+  if (!list.length) {
+    var quando = (D.rfonti || []).filter(function (x) { return x.ultimo_controllo; }).sort(function (a, b) { return a.ultimo_controllo < b.ultimo_controllo ? 1 : -1; })[0];
+    h += '<div class="card">' + vuoto(
+      t === "salvate" ? "Non stai tenendo d'occhio niente."
+        : t === "clienti" ? "Nessuna misura sembra riguardare i tuoi clienti, fra quelle uscite finora."
+          : "Nessuna misura sembra riguardare te, fra quelle uscite finora.",
+      '<button class="lnk" data-route="radar|-|fonti">Guarda quali fonti controlliamo</button>') +
+      (quando ? '<p class="faint" style="margin-top:8px">Ultimo controllo delle fonti: ' + dt(quando.ultimo_controllo) + ". Un elenco vuoto quasi sempre vuol dire che davvero non è uscito niente per te: è il modo giusto di funzionare.</p>" : "") +
+      "</div>";
+    return h;
+  }
+  h += list.map(radarCard).join("");
+  return h;
+}
+
 function vFornitori() {
   var ff = FS.forn, q = (ff.cerca || "").toLowerCase();
   var list = D.forn.filter(function (f) {
@@ -6562,7 +6791,7 @@ function render() {
     return;
   }
   buildNav();
-  var V = { riunioni: vRiunioni, riunione: vRiunione, attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vTask, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, posta: vPosta, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi, professioni: vProfessioni, eventi: vEventi, chat: vChat };
+  var V = { riunioni: vRiunioni, riunione: vRiunione, attivita: vAttivita, dash: vDash, commesse: vCommesse, commessa: vCommessa, progetti: vProgetti, progetto: vProgetto, calendario: vCalendario, clienti: vClienti, cliente: vCliente, pool: vPool, pro: vPro, servizi: vServizi, task: vTask, ore: vOre, report: vReport, carico: vTask, spazi: vSpazi, amm: vAmm, studio: vStudio, fornitori: vFornitori, profilo: vProfilo, posta: vPosta, impostazioni: vSettings, nuovo: vForm, mod: vForm, riga: vRiga, documento: vDocumento, importa: vImporta, prospetto: vProspetto, sistema: vSistema, analisi: vAnalisi, professioni: vProfessioni, eventi: vEventi, chat: vChat, radar: vRadar };
   var f = V[view] || vDash;
   el("#main").innerHTML = f();
   var s = el("#search") || el("#fcerca") || el("#tcerca");
@@ -6657,7 +6886,7 @@ function countUp() {
 /* ---------------- eventi ---------------- */
 /* Un clic solo: finché la prima azione non ha finito, la seconda uguale non parte. */
 var INCORSO = {};
-var GUARDIA = ["avvia", "impCrea", "ciclo", "incassa", "tck", "apprVar", "tstart", "tstop", "tstartTask", "propSi", "portnew", "riuTask", "riuStato", "duplTask", "dupl", "richCli", "richPro", "richOk"];
+var GUARDIA = ["avvia", "impCrea", "ciclo", "incassa", "tck", "apprVar", "tstart", "tstop", "tstartTask", "propSi", "portnew", "riuTask", "riuStato", "duplTask", "dupl", "richCli", "richPro", "richOk", "radarCerca", "radarPrev", "radarProfilo"];
 document.addEventListener("click", function (e) {
   var t = e.target.closest("button, [data-open-task], [data-open-com], [data-open-prog], [data-day], [data-close]");
   if (!t) return;
@@ -6931,6 +7160,72 @@ async function clicApp(e, t, d) {
   }
   if (d.apprSi) { await apprRispondi(d.apprSi, "Approvata"); return; }
   if (d.apprNo) { await apprRispondi(d.apprNo, "Modifiche richieste"); return; }
+  /* ------------------------------------------------------------- Radar */
+  if (d.radarStato) {
+    var rs = d.radarStato.split(":");
+    var rsu = await sb.from("radar_segnalazioni").update({ stato: rs[1], visto_il: new Date().toISOString() }).eq("id", rs[0]);
+    if (rsu.error) { toast(erroreUmano(rsu.error), true); return; }
+    await reload(["rmie"]);
+    toast(rs[1] === "salvata" ? "La tengo d'occhio: se il testo cambia, te lo dico"
+      : rs[1] === "scartata" ? "Non te la faccio più vedere" : "Tolta dai salvati");
+    if (rs[1] === "scartata" && view === "radar" && current === rs[0]) { go("radar"); return; }
+    render(); return;
+  }
+  if (d.radarOcc) {
+    var ro = d.radarOcc.split(":");
+    var rou = await sb.from("radar_occasioni").update({ stato: ro[1] }).eq("id", ro[0]);
+    if (rou.error) { toast(erroreUmano(rou.error), true); return; }
+    await reload(["rocc"]); toast("Segnato"); render(); return;
+  }
+  if (d.radarPrev) {
+    var oc = (D.rocc || []).filter(function (x) { return x.id === d.radarPrev; })[0];
+    if (!oc) { toast("Non trovo più questa occasione", true); return; }
+    var sg = (D.rmie || []).filter(function (x) { return x.id === oc.segnalazione_id; })[0];
+    var ri = await sb.from("commesse").insert({
+      titolo: sg && sg.titolo_breve ? String(sg.titolo_breve).slice(0, 120) : "Occasione dal Radar",
+      cliente_id: oc.cliente_id, owner_id: me.pro_id, stato: "Bozza", ambito: "auto",
+      data: today(), validita: 30, iva: 22, sezioni: [], tipo_prezzo: "Fisso"
+    }).select().single();
+    if (ri.error) { toast(erroreUmano(ri.error), true); return; }
+    await sb.from("radar_occasioni").update({ stato: "preventivo", commessa_id: ri.data.id }).eq("id", oc.id);
+    await reload(["com", "rocc"]);
+    DOCNUOVO = ri.data.id;
+    toast("Preventivo aperto e collegato all'occasione");
+    go("commessa", ri.data.id, "servizi"); return;
+  }
+  if (d.radarCerca) {
+    var pr0 = radarProfilo();
+    if (!pr0) { toast("Prima compila il profilo: senza, non c'è niente da confrontare.", true); go("radar", null, "profilo"); return; }
+    toast("Sto confrontando i documenti già letti con il tuo profilo. Ci vuole una ventina di secondi.");
+    var rc = await sb.rpc("radar_chiama", { funzione: "radar-incrocio", corpo: { pro_id: me.pro_id, quanti: 20 } });
+    if (rc.error) { toast(erroreUmano(rc.error), true); return; }
+    await new Promise(function (ok) { setTimeout(ok, 28000); });
+    await reload(["rmie", "rocc"]);
+    var n = radarNuove().length;
+    toast(n ? "Fatto: " + n + (n === 1 ? " segnalazione da guardare" : " segnalazioni da guardare") : "Fatto: non è uscito niente che ti riguardi");
+    render(); return;
+  }
+  if (d.radarProfilo) {
+    var vv2 = function (id) { var n = el("#" + id); return n ? String(n.value || "").trim() : ""; };
+    var ll2 = function (id) { return vv2(id).split(",").map(function (x) { return x.trim(); }).filter(Boolean); };
+    var at = vv2("rp-ateco");
+    if (at && !/^[0-9]{2}(\.[0-9]{1,2}){0,2}$/.test(at)) { toast("Il codice ATECO va scritto come 73.11.02: due cifre, poi al massimo altri due gruppi.", true); return; }
+    var pv = vv2("rp-prov").toUpperCase();
+    if (pv && !/^[A-Z]{2}$/.test(pv)) { toast("La provincia va scritta con due lettere, per esempio VR.", true); return; }
+    var dip = vv2("rp-dip");
+    var up = await sb.from("pro_profilo").upsert({
+      pro_id: me.pro_id, ateco: at || null, ateco_desc: vv2("rp-ateco-desc") || null,
+      forma: vv2("rp-forma") || null, regime: vv2("rp-regime") || null,
+      avvio: vv2("rp-avvio") || null, dipendenti: dip === "" ? null : Number(dip),
+      comune: vv2("rp-comune") || null, provincia: pv || null, regione: vv2("rp-regione") || null,
+      raggio: vv2("rp-raggio") || "regione", albo: vv2("rp-albo") || null,
+      parole_chiave: ll2("rp-parole"), settori_clienti: ll2("rp-settori")
+    }, { onConflict: "pro_id" });
+    if (up.error) { toast(erroreUmano(up.error), true); return; }
+    await reload(["rprof"]);
+    toast("Profilo salvato. Da ora il Radar confronta anche questi dati.");
+    render(); return;
+  }
   if (d.new === "com") { await nuovoPreventivo({ cliente_id: d.ctxCli || null, ambito: d.ctxAmb || "auto" }); return; }
   if (d.new) {
     var ctx = {};
