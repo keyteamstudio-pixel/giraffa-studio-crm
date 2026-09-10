@@ -2914,7 +2914,7 @@ function vRadar() {
   var p = radarProfilo();
   if (!p || !p.ateco) {
     h += '<div class="card"><div class="rbl warn"><b>Il profilo non è completo</b>' +
-      "<p>Senza codice ATECO e senza le parole chiave del tuo lavoro, il Radar può solo escludere per territorio e forma giuridica. Compila il profilo e le segnalazioni diventano molto piu\' precise.</p></div>" +
+      "<p>Senza codice ATECO e senza le parole chiave del tuo lavoro, il Radar può solo escludere per territorio e forma giuridica. Compila il profilo e le segnalazioni diventano molto più precise.</p></div>" +
       '<div class="razioni"><button class="btn sm" data-route="radar|-|profilo">Compila il profilo</button></div></div>';
   }
 
