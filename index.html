@@ -369,6 +369,27 @@ tfoot td{border-top:1px solid var(--line);border-bottom:0;padding-top:14px}
 .faint{color:var(--soft);font-size:13px}
 .empty{color:var(--soft);font-size:14px;padding:20px 2px}
 
+/* Radar: blocchi di lettura. Il colore dice subito di che natura è la riga,
+   perché la differenza fra «combacia» e «da verificare» è tutta la sostanza. */
+.rbl{margin-top:14px;padding:12px 14px;border-radius:var(--r-s);background:var(--paper);border:1px solid var(--line-soft)}
+.rbl>b{display:block;font-size:.78rem;text-transform:uppercase;letter-spacing:.04em;color:var(--soft);margin-bottom:6px}
+.rbl ul{margin:0;padding-left:18px}
+.rbl li{margin:3px 0;line-height:1.45}
+.rbl p{margin:0;line-height:1.5}
+.rbl.ok{background:rgba(46,140,87,.07);border-color:rgba(46,140,87,.2)}
+.rbl.ok>b{color:#2e8c57}
+.rbl.no{background:rgba(190,60,40,.06);border-color:rgba(190,60,40,.18)}
+.rbl.no>b{color:#be3c28}
+.rbl.warn{background:var(--terra-soft);border-color:rgba(255,90,31,.22)}
+.rbl.warn>b{color:var(--terra-ink)}
+.rfonte{margin-top:14px;font-size:.8rem;color:var(--soft);border-top:1px solid var(--line-soft);padding-top:10px}
+.rfonte a{color:var(--soft);text-decoration:underline}
+.rfonte a:hover{color:var(--ink)}
+.razioni{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.rocc{padding:16px 0;border-top:1px solid var(--line-soft)}
+.rocc:first-of-type{border-top:0;padding-top:4px}
+.rocc h3{margin:0;font-size:1.02rem}
+
 .field{margin-bottom:15px}
 label{display:block;font-size:13px;color:var(--soft);font-weight:550;margin-bottom:6px;letter-spacing:-.003em}
 input,select,textarea{
@@ -1452,6 +1473,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=87"></script>
+<script src="app.js?v=88"></script>
 </body>
 </html>
