@@ -26,17 +26,20 @@ var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
 var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], trasf: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
   prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [], pcfg: [], gconn: [], impg: [], mconn: [],
-  rmie: [], rocc: [], rfonti: [], rprof: [] };
+  rmie: [], rocc: [], rfonti: [], rprof: [], copie: [], provarip: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
 var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", trasf: "trasferte", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
   prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi", pcfg: "prenota_cfg", gconn: "google_conn", impg: "impegni_google", mconn: "mail_conn",
-  rmie: "radar_mie", rocc: "radar_occasioni_mie", rfonti: "radar_fonti", rprof: "pro_profilo" };
+  rmie: "radar_mie", rocc: "radar_occasioni_mie", rfonti: "radar_fonti", rprof: "pro_profilo",
+  copie: "copie_db", provarip: "prova_ripristino" };
 
 /* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
-var COLONNE = { port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd", gconn: "pro_id,email,scopes,created_at,updated_at,sync_at,errore", mconn: "pro_id,email,utente,imap_host,imap_port,smtp_host,smtp_port,cartella_inviati,created_at,updated_at,errore" };
+/* delle copie si legge la scheda, mai il contenuto: sono megabyte e non servono qui */
+var COLONNE = { copie: "id,quando,motivo,byte",
+  port: "id,cliente_id,token,attivo,scadenza,ultimo_accesso,created_at,ha_pwd", gconn: "pro_id,email,scopes,created_at,updated_at,sync_at,errore", mconn: "pro_id,email,utente,imap_host,imap_port,smtp_host,smtp_port,cartella_inviati,created_at,updated_at,errore" };
 var view = "dash", current = null, tab = "", persp = "all", search = "";
 var PORT = [], STATS = null;
 var EXP = {}, VISTA = "tabella", FSTATO = "", FSAL = "", DRAG = null;
@@ -104,7 +107,12 @@ window.addEventListener("hashchange", function () {
 function puo(p) { return !!(me.perm && me.perm[p]); }
 function isPR() { return false; }
 function isCliente() { return me.ruolo === "cliente"; }
-function vediCosti() { return !isPR(); }
+/* I conti di un lavoro li vede chi ne risponde. Chi ci lavora dentro vede il
+   proprio compenso, le proprie ore e l'avanzamento: non il margine di chi ha
+   venduto. Non è segretezza, è che il margine riguarda chi si prende il rischio.
+   Stessa cosa per il listino: costo e margine di un servizio sono di chi lo offre. */
+function vediCosti(k) { return !!(me.pro_id && k && k.owner_id === me.pro_id); }
+function vediCostoServizio(s) { return !!(me.pro_id && s && s.pro_id === me.pro_id); }
 
 /* Il preventivo ha quattro momenti e basta: lo scrivi, lo mandi, te lo accettano,
    lo chiudi. "Perso" non e' un quinto momento, e' la porta di servizio: serve
@@ -1132,7 +1140,7 @@ function tblCom(list) {
       h += '<tr class="expr"><td></td><td colspan="9"><div class="expgrid">' +
         '<div><h3>Prossimi passi</h3>' + (px.length ? px.map(function (p) { return '<div class="pstep"><b>' + esc(p.t) + '</b><span class="faint">' + esc(p.d) + "</span></div>"; }).join("") : '<span class="faint">Nulla in programma.</span>') + "</div>" +
         '<div><h3>Numeri</h3><div class="pstep"><b>' + num(b.oreFatte, 1) + " / " + num(b.oreStim, 0) + ' h</b><span class="faint">ore fatte sul budget</span></div>' +
-        (vediCosti() ? '<div class="pstep"><b>' + eur(b.margReale) + '</b><span class="faint">margine atteso</span></div>' : "") + "</div>" +
+        (vediCosti(k) ? '<div class="pstep"><b>' + eur(b.margReale) + '</b><span class="faint">margine atteso</span></div>' : "") + "</div>" +
         '<div><h3>Scorciatoie</h3><div class="qbtns"><button class="btn sm ghost" data-open-com="' + k.id + '">Apri</button><button class="btn sm ghost" data-route="documento|' + k.id + '|">Documento</button><button class="btn sm ghost" data-new="ore" data-ctx="' + k.id + '">Ore</button><button class="btn sm ghost" data-new="task" data-ctx="' + k.id + '">Attività</button></div></div>' +
         "</div></td></tr>";
     }
@@ -1305,9 +1313,12 @@ function vCommessa() {
     kpi(eur(b.ricavo), "Valore del lavoro", c.mrr ? eur(c.mrr) + " al mese ricorrenti" : b.extra ? eur(k.budget_importo || c.tot) + " + " + eur(b.extra) + " di varianti" : "imponibile " + eur(c.imp) + " · IVA " + eur(c.iva)) +
     kpi(av == null ? "—" : av + " %", "Avanzamento", progOf(k.id).length + " progetti") +
     kpi('<span class="badge ' + sal.c + '" style="font-size:.9rem;padding:5px 12px">' + sal.t + "</span>", "Salute", sal.d) +
-    kpi(vediCosti() ? eur(b.margReale) : num(b.oreFatte, 1) + " h", vediCosti() ? "Margine atteso" : "Ore registrate", vediCosti() ? "pianificato " + eur(b.margPian) : "su " + num(b.oreStim, 0) + " stimate") + "</div>";
+    kpi(vediCosti(k) ? eur(b.margReale) : num(b.oreFatte, 1) + " h", vediCosti(k) ? "Margine atteso" : "Le tue ore", vediCosti(k) ? "pianificato " + eur(b.margPian) : "su " + num(b.oreStim, 0) + " stimate") + "</div>";
 
-  if (vediCosti()) {
+  if (!vediCosti(k)) {
+    h += '<div class="card"><p class="faint">I conti di questo lavoro li vede chi ne risponde. Qui sotto trovi la tua parte: le tue ore e il tuo compenso.</p></div>';
+  }
+  if (vediCosti(k)) {
     var bo = b.burnOre == null ? 0 : b.burnOre, bc = b.burnCosto;
     h += '<div class="card"><div class="grid g2">' +
       '<div><div class="cardhead"><h2>Le mie ore</h2><span class="faint">' + num(b.oreFatte, 1) + " / " + num(b.oreStim, 0) + " h stimate in totale</span></div><div class=\"prog\"><i class=\"" + (bo > 100 ? "bad" : bo > 85 ? "warn" : "ok") + '" style="width:' + Math.min(100, bo) + '%"></i></div><p class="faint" style="margin-top:6px">' + bo + "% delle ore stimate · quelle dei colleghi sono private</p></div>" +
@@ -1326,9 +1337,10 @@ function vCommessa() {
     row2("Imponibile servizi", eur(c.imp)) +
     (b.extra ? row2("Varianti approvate", eur(b.extra)) : "") +
     row2("<b>Valore del lavoro</b>", "<b>" + eur(b.ricavo) + "</b>") +
-    (vediCosti() ? row2("Costo pianificato", eur(b.costoPian)) + row2("Costo reale (ore)", eur(b.costoReale)) +
+    (vediCosti(k) ? row2("Costo pianificato", eur(b.costoPian)) + row2("Costo reale (ore)", eur(b.costoReale)) +
       row2("Margine pianificato", eur(b.margPian) + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margPian / b.ricavo * 100) : 0) + "%)</span>") +
-      row2("<b>Margine atteso</b>", "<b>" + eur(b.margReale) + "</b>" + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margReale / b.ricavo * 100) : 0) + "%)</span>") : "") +
+      row2("<b>Margine atteso</b>", "<b>" + eur(b.margReale) + "</b>" + ' <span class="faint">(' + (b.ricavo ? Math.round(b.margReale / b.ricavo * 100) : 0) + "%)</span>") +
+      '<tr><td colspan="2" class="faint" style="padding-top:10px">Il margine prende il maggiore fra costo previsto e ore davvero registrate: se lavori meno del previsto non migliora. È una scelta prudenziale, decisa a tavolino, non un calcolo che si aggiusta da solo.</td></tr>' : "") +
 
     (me.pro_id ? row2("Il mio compenso", eur(c.mio)) : "") +
     row2("Ore stimate / fatte", num(b.oreStim, 0) + " h / " + num(b.oreFatte, 1) + " h") +
@@ -3373,13 +3385,15 @@ function vPro() {
 /* ---------------- servizi ---------------- */
 function tblServ(list) {
   if (!list.length) return vuoto("Nessun servizio.", '<button class="lnk" data-new="serv">Aggiungine uno</button>');
-  var h = '<table><thead><tr><th>Servizio</th><th>Categoria</th><th>Professionista</th><th>Unità</th>' + (vediCosti() ? '<th class="num">Costo</th>' : "") + '<th class="num">Prezzo</th>' + (vediCosti() ? '<th class="num">Margine</th>' : "") + "<th></th></tr></thead><tbody>";
+  var conConti = list.some(vediCostoServizio);
+  var h = '<table><thead><tr><th>Servizio</th><th>Categoria</th><th>Professionista</th><th>Unità</th>' + (conConti ? '<th class="num">Costo</th>' : "") + '<th class="num">Prezzo</th>' + (conConti ? '<th class="num">Margine</th>' : "") + "<th></th></tr></thead><tbody>";
   list.forEach(function (s) {
+    var mio = vediCostoServizio(s);
     var m = (+s.prezzo || 0) - (+s.costo || 0);
     h += "<tr><td>" + esc(s.nome) + (s.descrizione ? '<div class="faint">' + esc(s.descrizione) + "</div>" : "") + "</td><td>" + esc(s.cat || "—") + "</td><td>" + esc(nameOf(D.pros, s.pro_id)) + "</td><td>" + esc(s.unita || "—") + "</td>" +
-      (vediCosti() ? '<td class="num">' + eur(s.costo) + "</td>" : "") + '<td class="num">' + eur(s.prezzo) + "</td>" +
-      (vediCosti() ? '<td class="num">' + eur(m) + ' <span class="faint">' + (s.prezzo ? Math.round(m / s.prezzo * 100) : 0) + "%</span></td>" : "") +
-      '<td class="num"><button class="lnk" data-edit="serv:' + s.id + '">Modifica</button></td></tr>';
+      (conConti ? '<td class="num">' + (mio ? eur(s.costo) : '<span class="faint">—</span>') + "</td>" : "") + '<td class="num">' + eur(s.prezzo) + "</td>" +
+      (conConti ? '<td class="num">' + (mio ? eur(m) + ' <span class="faint">' + (s.prezzo ? Math.round(m / s.prezzo * 100) : 0) + "%</span>" : '<span class="faint">—</span>') + "</td>" : "") +
+      '<td class="num">' + (mio ? '<button class="lnk" data-edit="serv:' + s.id + '">Modifica</button>' : '<span class="faint">di ' + esc(nameOf(D.pros, s.pro_id)) + "</span>") + "</td></tr>";
   });
   return h + "</tbody></table>";
 }
@@ -5804,12 +5818,44 @@ async function caricaDiagnostica() {
   if (r.error) { DIAGERR = r.error.message; return; }
   DIAG = r.data || null;
 }
+/* Le copie di sicurezza, dette come stanno.
+   Una copia che vive nello stesso posto dei dati non protegge da granché:
+   per questo la scheda insiste sul file scaricato, e dice quando il
+   ripristino è stato provato per l'ultima volta. Un backup mai ripristinato
+   è una speranza, non un backup. */
+function cardCopie() {
+  var c = (D.copie || []).slice().sort(function (a, b) { return a.quando < b.quando ? 1 : -1; });
+  var ultima = c[0];
+  var pr = (D.provarip || []);
+  var quando = pr.length ? pr.map(function (x) { return x.quando; }).sort().reverse()[0] : null;
+  var ultimoGiro = pr.filter(function (x) { return x.quando === quando; });
+  var storte = ultimoGiro.filter(function (x) { return !x.contenuto_uguale; });
+
+  var h = '<div class="card" style="margin-top:18px"><div class="cardhead"><h2>Copie di sicurezza</h2>' +
+    (ultima ? '<span class="faint">' + c.length + (c.length === 1 ? " copia tenuta" : " copie tenute") + "</span>" : '<span class="badge b-red">nessuna copia</span>') + "</div>";
+  h += "<table><tbody>" +
+    row2("Ultima copia", ultima ? dt(ultima.quando) + ' <span class="faint">' + esc(ultima.motivo || "") + " · " + Math.round((+ultima.byte || 0) / 1024) + " KB</span>" : "—") +
+    row2("Si rifà da sola", "ogni lunedì mattina, e se ne tengono otto") +
+    row2("Ripristino provato", quando
+      ? dt(quando) + ' <span class="faint">' + ultimoGiro.length + " tabelle rimesse dentro, " +
+        (storte.length ? storte.length + " da guardare" : "tutte identiche") + "</span>"
+      : '<span class="badge b-red">mai</span>') +
+    "</tbody></table>";
+  h += '<p class="faint" style="margin-top:10px">La copia vive dentro lo stesso database che dovrebbe proteggere. Serve a tornare indietro da un errore, non da un disastro: per quello scaricane una ogni tanto e tienila sul tuo computer.</p>';
+  if (storte.length) {
+    h += '<p class="neg" style="margin-top:8px">Non sono tornate identiche: ' +
+      esc(storte.map(function (x) { return x.tabella; }).join(", ")) + "</p>";
+  }
+  return h + "</div>";
+}
 function vSistema() {
   if (!puoSistema()) return '<div class="card"><h2>Non è roba tua</h2><p class="muted" style="margin-top:8px">Questa parte la vede solo chi cura gli accessi dello studio.</p></div>';
   var h = crumbs([["Profilo"], ["Sistema"]]);
   h += '<div class="top"><h1>Sistema<span class="sub">Come sta il CRM, pezzo per pezzo</span></h1><div class="tools">' +
     '<button class="btn sm ghost" data-diagpulisci="1">Svuota il registro errori</button>' +
+    '<button class="btn sm ghost" data-scarica-copia="1">Scarica una copia</button>' +
     '<button class="btn sm" data-diag="1">Ricontrolla adesso</button></div></div>';
+  h += cardCopie();
 
   if (DIAGERR) return h + '<div class="card"><h2>Non riesco a leggere</h2><p class="muted" style="margin-top:8px">' + esc(DIAGERR) + "</p></div>";
   if (!DIAG) return h + '<div class="card"><p class="faint">Premi «Ricontrolla adesso» per leggere lo stato del sistema.</p></div>';
@@ -6886,7 +6932,7 @@ function countUp() {
 /* ---------------- eventi ---------------- */
 /* Un clic solo: finché la prima azione non ha finito, la seconda uguale non parte. */
 var INCORSO = {};
-var GUARDIA = ["avvia", "impCrea", "ciclo", "incassa", "tck", "apprVar", "tstart", "tstop", "tstartTask", "propSi", "portnew", "riuTask", "riuStato", "duplTask", "dupl", "richCli", "richPro", "richOk", "radarCerca", "radarPrev", "radarProfilo"];
+var GUARDIA = ["avvia", "impCrea", "ciclo", "incassa", "tck", "apprVar", "tstart", "tstop", "tstartTask", "propSi", "portnew", "riuTask", "riuStato", "duplTask", "dupl", "richCli", "richPro", "richOk", "radarCerca", "radarPrev", "radarProfilo", "scaricaCopia"];
 document.addEventListener("click", function (e) {
   var t = e.target.closest("button, [data-open-task], [data-open-com], [data-open-prog], [data-day], [data-close]");
   if (!t) return;
@@ -7160,6 +7206,19 @@ async function clicApp(e, t, d) {
   }
   if (d.apprSi) { await apprRispondi(d.apprSi, "Approvata"); return; }
   if (d.apprNo) { await apprRispondi(d.apprNo, "Modifiche richieste"); return; }
+  if (d.scaricaCopia) {
+    toast("Preparo la copia. Su un database piccolo ci vogliono pochi secondi.");
+    var rcp = await sb.rpc("dump_tutto");
+    if (rcp.error) { toast(erroreUmano(rcp.error), true); return; }
+    var testo = JSON.stringify(rcp.data);
+    var url = URL.createObjectURL(new Blob([testo], { type: "application/json" }));
+    var a = document.createElement("a");
+    a.href = url; a.download = "giraffa-copia-" + today() + ".json";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 8000);
+    toast("Copia scaricata, " + Math.round(testo.length / 1024) + " KB. Tienila fuori da qui: è lì che serve.");
+    return;
+  }
   /* ------------------------------------------------------------- Radar */
   if (d.radarStato) {
     var rs = d.radarStato.split(":");
@@ -7700,6 +7759,15 @@ async function chiudiLavoro(kid) {
   if (tk.length) await sb.from("task").update({ stato: "Fatto", completata_il: new Date().toISOString() }).in("id", tk);
   if (pg.length || tk.length) await logEv(kid, "Chiusi " + pg.length + " progetti e " + tk.length + " attività col preventivo");
   await reload(["prog", "task"]);
+  /* Un lavoro non si chiude in silenzio con dei soldi ancora fuori. Non si
+     impedisce la chiusura: si dice, e resta scritto nello storico. */
+  var aperti = pagOf(kid).filter(function (p) { return p.stato !== "Incassato"; });
+  if (aperti.length) {
+    var quanto = aperti.reduce(function (n, p) { return n + (+p.importo || 0); }, 0);
+    toast("Chiuso, ma restano " + eur(quanto) + " da incassare su " + aperti.length +
+      (aperti.length === 1 ? " scadenza." : " scadenze."), true);
+    await logEv(kid, "Chiuso con " + eur(quanto) + " ancora da incassare");
+  }
 }
 /* Il lavoro perso non lascia code: via le attività mai fatte e le scadenze mai
    dovute; i progetti restano, sospesi, con dentro note e file. */
