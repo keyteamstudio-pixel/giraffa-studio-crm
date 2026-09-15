@@ -376,7 +376,7 @@ tfoot td{border-top:1px solid var(--line);border-bottom:0;padding-top:14px}
 .tbar{display:flex;align-items:center;gap:10px;margin:18px 0 12px}
 .tbar-dx{margin-left:auto;display:flex;align-items:center;gap:8px}
 .tbar select,.tbar input{height:32px;font:inherit;font-size:.88rem}
-select.tvista{border:0;background:none;font-weight:600;color:var(--ink);padding:4px 2px;cursor:pointer;max-width:230px}
+select.tvista{border:0;font-weight:600;color:var(--ink);padding:4px 20px 4px 2px;cursor:pointer;max-width:240px;appearance:none;-webkit-appearance:none;background-color:transparent;background-repeat:no-repeat;background-position:right 2px center;background-size:9px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6' fill='none' stroke='%23857b6b' stroke-width='1.4' stroke-linecap='round'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E")}
 select.tvista:hover{color:var(--terra-ink)}
 input.tcerca{width:190px}
 .ttab-box{background:var(--card);border:1px solid var(--line);border-radius:var(--r-s);overflow:hidden}
@@ -394,7 +394,8 @@ input.tcerca{width:190px}
 .ttab tr.dragging{opacity:.4}
 .ttab .cck{width:42px;padding-right:0}
 .ttab .cnome{width:auto}
-.ttab .cprog{width:180px}
+.ttab .cprog{width:200px;max-width:200px}
+.ttab .cprog .rel{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ttab .cpers{width:150px}
 .ttab .cdata{width:140px}
 .ttab .tnome{display:flex;align-items:center;gap:8px;background:none;border:0;font:inherit;color:var(--ink);
@@ -432,7 +433,7 @@ input.tcerca{width:190px}
   padding:4px 12px;cursor:pointer;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .oggichip:hover{border-color:var(--sand)}
 .oggichip.fatta{color:var(--soft);text-decoration:line-through}
-.oggibox .tdrop{color:var(--soft);font-size:.85rem}
+.oggibox .tdrop{color:var(--soft);font-size:.85rem;background:none;border:0;padding:0;margin:0}
 
 /* Radar: blocchi di lettura. Il colore dice subito di che natura è la riga,
    perché la differenza fra «combacia» e «da verificare» è tutta la sostanza. */
@@ -1538,6 +1539,6 @@ window.GS_CONFIG = {
   });
 })();
 </script>
-<script src="app.js?v=91"></script>
+<script src="app.js?v=92"></script>
 </body>
 </html>
