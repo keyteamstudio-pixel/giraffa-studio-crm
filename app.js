@@ -1969,6 +1969,7 @@ function ico(nome) {
     persona: '<circle cx="7" cy="5.2" r="2.1"/><path d="M3.3 11.6c0-1.9 1.7-3 3.7-3s3.7 1.1 3.7 3"/>',
     data: '<rect x="2.6" y="3.4" width="8.8" height="8" rx="1.2"/><path d="M2.6 6.1h8.8M5 2.2v2.2M9 2.2v2.2"/>',
     tabella: '<rect x="2.2" y="3" width="9.6" height="8" rx="1.2"/><path d="M2.2 6h9.6M6 6v5"/>',
+    doc: '<path d="M4 2.3h3.9L10.4 4.8v6.9a.8.8 0 01-.8.8H4a.8.8 0 01-.8-.8V3.1a.8.8 0 01.8-.8z"/><path d="M7.9 2.3v2.5h2.5"/>',
     nota: '<path d="M2.6 4.2a1 1 0 011-1h6.8a1 1 0 011 1v4.2a1 1 0 01-1 1H6.2L3.6 11.4V9.4h-1a1 1 0 01-1-1z"/>'
   }[nome] || "";
   return '<svg class="ic" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + "</svg>";
@@ -2016,7 +2017,7 @@ function rigaTab(t) {
   var gia = sub.filter(function (x) { return x.stato === "Fatto"; }).length;
   return '<tr class="tr' + (fatto ? " fatta" : "") + (PANEL === t.id ? " sel" : "") + '" draggable="true" data-open-task="' + t.id + '">' +
     '<td class="cck"><button class="ck' + (fatto ? " on" : "") + '" data-tck="' + t.id + '" title="' + (fatto ? "Riapri" : "Segna fatta") + '"></button></td>' +
-    '<td class="cnome"><button class="tnome" data-open-task="' + t.id + '">' + ico("testo") +
+    '<td class="cnome"><button class="tnome" data-open-task="' + t.id + '">' + ico("doc") +
       "<span>" + esc(t.titolo) + "</span>" +
       (sub.length ? '<span class="faint"> ' + gia + "/" + sub.length + "</span>" : "") +
       (t.descrizione ? '<span class="nota" title="Ha una descrizione">' + ico("nota") + "</span>" : "") +
