@@ -1602,6 +1602,11 @@ function chiaveGruppo(t) {
   if (TGROUP === "sezione") return t.sezione || "Senza sezione";
   return "Tutte";
 }
+/* ------------------------------------------------------------ in naftalina
+   Bacheca, calendario e timeline delle attività non sono più raggiungibili
+   dall'interfaccia: Attività adesso è una tabella sola. Il codice resta qui
+   per una settimana. Se non mancano a nessuno, si toglie; se mancano, torna
+   con una riga. Da qui in giù fino a «vistaTimeline» non chiama più nessuno. */
 function barraTask(vista) {
   var opts = function (list, val) { return list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (val === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join(""); };
   var progetti = [["", "Tutti i progetti"]].concat(progVisibili().map(function (p) { return [p.id, p.nome]; }));
@@ -1948,45 +1953,146 @@ function pannelloTask(id) {
    mentre il menu diceva otto: due risposte diverse alla stessa domanda.
    Le viste da tavolo grande — bacheca, timeline, calendario — restano, ma in
    una tendina: servono ogni tanto, non ogni giorno. */
+/* ---------------------------------------------------------------- Attività
+   Una tabella, e basta. Le colonne dicono di che tipo è ogni cosa, si ordina
+   cliccando l'intestazione, e stato, persona e scadenza si cambiano nella riga
+   senza aprire niente.
+
+   Sopra la tabella resta «Oggi». Quella non è un dato da mettere in colonna:
+   è la decisione che prendi la mattina, trascinandoci dentro le cose. */
+var TSU = true;
+function ico(nome) {
+  var p = {
+    testo: '<path d="M2.6 3.6h8.8M7 3.6v7.8"/>',
+    link: '<path d="M4 10L10 4M6.2 4H10v3.8"/>',
+    stato: '<circle cx="7" cy="7" r="4.4"/><circle cx="7" cy="7" r="1.5" fill="currentColor" stroke="none"/>',
+    persona: '<circle cx="7" cy="5.2" r="2.1"/><path d="M3.3 11.6c0-1.9 1.7-3 3.7-3s3.7 1.1 3.7 3"/>',
+    data: '<rect x="2.6" y="3.4" width="8.8" height="8" rx="1.2"/><path d="M2.6 6.1h8.8M5 2.2v2.2M9 2.2v2.2"/>',
+    tabella: '<rect x="2.2" y="3" width="9.6" height="8" rx="1.2"/><path d="M2.2 6h9.6M6 6v5"/>',
+    nota: '<path d="M2.6 4.2a1 1 0 011-1h6.8a1 1 0 011 1v4.2a1 1 0 01-1 1H6.2L3.6 11.4V9.4h-1a1 1 0 01-1-1z"/>'
+  }[nome] || "";
+  return '<svg class="ic" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + p + "</svg>";
+}
+function nomeProgetto(t) {
+  if (t.progetto_id) { var p = by(D.prog, t.progetto_id); if (p) return p.nome; }
+  if (t.commessa_id) { var k = by(D.com, t.commessa_id); if (k) return k.titolo; }
+  return "";
+}
+function nomePersona(t) {
+  if (!t.assegnato_id) return "";
+  return t.assegnato_id === me.pro_id ? "Tu" : nameOf(D.pros, t.assegnato_id);
+}
+function ordinaCol(a, b) {
+  var v = 0, P = { "Da fare": 0, "In corso": 1, "In review": 2, "Fatto": 3 };
+  if (TSORT === "titolo") v = (a.titolo || "").localeCompare(b.titolo || "");
+  else if (TSORT === "progetto") v = nomeProgetto(a).localeCompare(nomeProgetto(b));
+  else if (TSORT === "stato") v = (P[a.stato] || 0) - (P[b.stato] || 0);
+  else if (TSORT === "persona") v = nomePersona(a).localeCompare(nomePersona(b));
+  else {
+    var x = a.scadenza || "9999-99-99", y = b.scadenza || "9999-99-99";
+    v = x < y ? -1 : x > y ? 1 : 0;
+  }
+  if (v === 0) v = (a.titolo || "").localeCompare(b.titolo || "");
+  return TSU ? v : -v;
+}
+function colonna(chiave, etichetta, icona, cls) {
+  return '<th class="' + (cls || "") + '"><button class="th" data-tsort="' + chiave + '">' + ico(icona) + esc(etichetta) +
+    (TSORT === chiave ? '<span class="ord">' + (TSU ? "↑" : "↓") + "</span>" : "") + "</button></th>";
+}
+function pillStato(t) {
+  var c = { "In corso": "b-blue", "In review": "b-amber", "Fatto": "b-green" }[t.stato] || "";
+  return '<button class="pill ' + c + '" data-tstato="' + t.id + '" title="Cambia lo stato"><i></i>' + esc(t.stato || "Da fare") + "</button>";
+}
+function popStato(t) {
+  return '<div class="popt">Stato</div>' + TASK_STATI.map(function (s) {
+    return '<button data-tset="' + t.id + "|stato|" + s + '"' + (t.stato === s ? ' class="on"' : "") + ">" + esc(s) + "</button>";
+  }).join("");
+}
+function rigaTab(t) {
+  var fatto = t.stato === "Fatto";
+  var late = t.scadenza && t.scadenza < today() && !fatto;
+  var np = nomeProgetto(t);
+  var sub = D.task.filter(function (x) { return x.padre_id === t.id; });
+  var gia = sub.filter(function (x) { return x.stato === "Fatto"; }).length;
+  return '<tr class="tr' + (fatto ? " fatta" : "") + (PANEL === t.id ? " sel" : "") + '" draggable="true" data-open-task="' + t.id + '">' +
+    '<td class="cck"><button class="ck' + (fatto ? " on" : "") + '" data-tck="' + t.id + '" title="' + (fatto ? "Riapri" : "Segna fatta") + '"></button></td>' +
+    '<td class="cnome"><button class="tnome" data-open-task="' + t.id + '">' + ico("testo") +
+      "<span>" + esc(t.titolo) + "</span>" +
+      (sub.length ? '<span class="faint"> ' + gia + "/" + sub.length + "</span>" : "") +
+      (t.descrizione ? '<span class="nota" title="Ha una descrizione">' + ico("nota") + "</span>" : "") +
+      "</button></td>" +
+    '<td class="cprog">' + (np ? '<span class="rel">' + esc(np) + "</span>" : '<span class="faint">—</span>') + "</td>" +
+    "<td>" + pillStato(t) + "</td>" +
+    '<td class="cpers"><button class="tpers" data-tchi="' + t.id + '" title="Chi la fa">' +
+      (t.assegnato_id ? avatar(t.assegnato_id, 22) + "<span>" + esc(nomePersona(t)) + "</span>"
+        : '<span class="av vuoto" style="width:22px;height:22px;font-size:11px">?</span><span class="faint">Nessuno</span>') +
+      "</button></td>" +
+    '<td class="cdata"><button class="tdata' + (late ? " late" : "") + '" data-tdata="' + t.id + '" title="Cambia la scadenza">' +
+      (t.scadenza ? esc(etichettaBreve(t.scadenza)) + (late ? " · <b>!</b>" : "") : '<span class="faint">—</span>') +
+      "</button></td></tr>";
+}
 function vTask() {
-  var vista = tab || "dafare";
-  if (["oggi", "prossimi", "tutte", "lista", "mie"].indexOf(vista) > -1) vista = "dafare";
-  var alt = ["bacheca", "calendario", "timeline"].indexOf(vista) > -1;
-  var tutte = ftask();
-  var mie = taskDaFare();
-  var ritardo = mie.filter(function (t) { return t.scadenza && t.scadenza < today(); }).length;
-  var oggi = mie.filter(function (t) { return t.scadenza === today(); }).length;
-  var sette = mie.filter(function (t) { return t.scadenza && t.scadenza > today() && t.scadenza <= giornoPiu(7); }).length;
-  var stim = sum(mie, function (t) { return t.stimate; });
-  var sub = mie.length + (mie.length === 1 ? " cosa da fare" : " cose da fare") + (ritardo ? " · " + ritardo + " in ritardo" : "") + (TV.chi === "io" ? "" : " · di tutto lo studio");
-  var h = head("Attività", sub,
-    '<span class="vtabs mini"><button data-tv="io" class="' + (TV.chi === "io" ? "on" : "") + '">Le mie</button><button data-tv="tutti" class="' + (TV.chi === "tutti" ? "on" : "") + '">Tutti</button></span>' +
-    '<select class="altre" data-tvista="1"><option value="">Altre viste…</option><option value="bacheca">Bacheca</option><option value="calendario">Calendario</option><option value="timeline">Timeline</option><option value="modelli">Modelli di lavoro</option></select>' +
-    '<button class="btn sm ghost" data-new="task">Nuova in dettaglio</button>');
-  if (alt) {
-    var list = taskFiltrate();
-    h += barraTask(vista);
-    if (vista === "bacheca") h += vistaBacheca(list);
-    else if (vista === "calendario") h += vistaCalendarioTask(list);
-    else h += vistaTimeline(list);
-    return h;
+  var base = ftask();
+  var aperte = taskDaFare();
+  var ritardo = aperte.filter(function (t) { return t.scadenza && t.scadenza < today(); }).length;
+  var oggi = aperte.filter(function (t) { return t.scadenza === today(); });
+
+  var list = TV.chi === "io" ? base.filter(function (t) { return !t.assegnato_id || t.assegnato_id === me.pro_id; }) : base;
+  if (TF.stato === "aperte") list = list.filter(function (t) { return t.stato !== "Fatto"; });
+  else if (TF.stato === "fatte") list = list.filter(function (t) { return t.stato === "Fatto"; });
+  if (TF.cerca) {
+    var q = TF.cerca.toLowerCase();
+    list = list.filter(function (t) { return (t.titolo + " " + (t.descrizione || "") + " " + nomeProgetto(t)).toLowerCase().indexOf(q) > -1; });
   }
-  h += '<div class="vbar"><div class="vtabs">' + [["dafare", "Da fare", mie.length], ["fatte", "Fatte", null]].map(function (v) {
-    return '<button data-route="task|-|' + v[0] + '" class="' + (vista === v[0] ? "on" : "") + '">' + v[1] + (v[2] ? ' <span class="cnt">' + v[2] + "</span>" : "") + "</button>";
-  }).join("") + "</div></div>";
-  if (vista !== "fatte") {
-    /* i quattro numeri che prima stavano in «Carico»: qui hanno accanto le cose
-       a cui si riferiscono, e si aggiornano da soli invece di restare a zero */
-    h += '<div class="grid g4">' +
-      kpi(String(ritardo), "In ritardo", ritardo ? "da rimettere in fila" : "niente arretrato") +
-      kpi(String(oggi), "Oggi", "con scadenza oggi") +
-      kpi(String(sette), "Nei prossimi 7 giorni", "che ti aspettano") +
-      kpi(stim ? num(stim, 0) + " h" : "—", "Ore stimate", stim ? "su quello che resta da fare" : "nessuna stima messa") + "</div>";
-    h += scriviTask("dafare", "Cosa devi fare? Scrivi e premi Invio · «bozza sito Lucchi ven @Goffredo»");
-  }
-  h += '<div class="tmain' + (PANEL ? " con-pannello" : "") + '">';
-  h += vista === "fatte" ? vistaFatte(tutte) : vistaDaFare(mie, tutte);
-  h += "</div>";
+  list = list.slice().sort(ordinaCol);
+
+  var h = head("Attività", "Il lavoro tuo e delle persone con cui collabori.",
+    '<button class="lnk mini" data-tmodelli="1">Modelli di lavoro</button>' +
+    '<button class="btn sm" data-new="task">Nuova +</button>');
+
+  h += '<div class="tbar">' +
+    '<select class="tvista" data-tvchi="1">' +
+      '<option value="tutti"' + (TV.chi !== "io" ? " selected" : "") + ">Tutte le attività</option>" +
+      '<option value="io"' + (TV.chi === "io" ? " selected" : "") + ">Le mie attività</option>" +
+    "</select>" +
+    '<span class="tbar-dx">' +
+      '<select data-tf="stato">' +
+        '<option value="aperte"' + (TF.stato === "aperte" ? " selected" : "") + ">Aperte</option>" +
+        '<option value="tutte"' + (TF.stato === "tutte" ? " selected" : "") + ">Tutte</option>" +
+        '<option value="fatte"' + (TF.stato === "fatte" ? " selected" : "") + ">Fatte</option>" +
+      "</select>" +
+      '<input id="tcerca" class="tcerca" placeholder="Cerca…" value="' + esc(TF.cerca) + '">' +
+    "</span></div>";
+
+  /* «Oggi»: una striscia, non mezzo schermo. Ci si trascina dentro. */
+  h += '<div class="oggibox mcol" data-giorno="' + today() + '"><div class="oggitit">Oggi' +
+    (oggi.length ? '<span class="faint"> · ' + oggi.length + "</span>" : "") + "</div>" +
+    (oggi.length
+      ? '<div class="oggilist">' + oggi.map(function (t) {
+          return '<button class="oggichip' + (t.stato === "Fatto" ? " fatta" : "") + '" data-open-task="' + t.id + '" draggable="true">' + esc(t.titolo) + "</button>";
+        }).join("") + "</div>"
+      : '<div class="tdrop">Trascina qui quello che vuoi fare oggi.</div>') + "</div>";
+
+  h += '<div class="tmain' + (PANEL ? " con-pannello" : "") + '"><div class="ttab-box"><table class="ttab"><thead><tr>' +
+    '<th class="cck"></th>' +
+    colonna("titolo", "Nome", "testo", "cnome") +
+    colonna("progetto", "Progetto", "link", "cprog") +
+    colonna("stato", "Stato", "stato") +
+    colonna("persona", "Persona", "persona", "cpers") +
+    colonna("scadenza", "Scadenza", "data", "cdata") +
+    "</tr></thead><tbody>" +
+    (list.length ? list.map(rigaTab).join("")
+      : '<tr><td colspan="6" class="tvuoto">' +
+        (TF.cerca ? "Niente con questo testo."
+          : TF.stato === "fatte" ? "Niente di fatto, per ora."
+            : "Non c'è niente da fare. Scrivila qui sotto, o aprine una da un progetto.") + "</td></tr>") +
+    "</tbody></table>" +
+    '<div class="taggiungi">' + scriviTask("dafare", "Nuova attività · «bozza sito Lucchi ven @Goffredo»") +
+      '<span class="faint">Aggiungi ↵</span></div>' +
+    '<div class="tpiede"><span>' +
+      (TF.stato === "fatte" ? list.length + (list.length === 1 ? " fatta" : " fatte")
+        : list.length + (list.length === 1 ? " aperta" : " aperte") + (ritardo ? " · " + ritardo + " in ritardo" : "")) +
+      "</span></div></div></div>";
   if (PANEL) h += pannelloTask(PANEL);
   return h;
 }
@@ -7199,9 +7305,19 @@ async function clicApp(e, t, d) {
   if (d.tv) { TV.chi = d.tv; try { localStorage.setItem("gs_task_chi", d.tv); } catch (x) {} render(); return; }
   if (d.tdata) { var td = by(D.task, d.tdata); if (td) apriPop(t, popData(td)); return; }
   if (d.tchi) { var tc = by(D.task, d.tchi); if (tc) apriPop(t, popChi(tc)); return; }
+  if (d.tstato) { var tz = by(D.task, d.tstato); if (tz) apriPop(t, popStato(tz)); return; }
+  if (d.tmodelli) { apriModelli(); return; }
+  if (d.tsort) {
+    if (TSORT === d.tsort) TSU = !TSU; else { TSORT = d.tsort; TSU = true; }
+    render(); return;
+  }
   if (d.tset) {
     var ts = d.tset.split("|"), pt = {}; pt[ts[1]] = ts[2] || null; chiudiPop();
-    if (await salvaSubito("task", ts[0], pt)) toast(ts[1] === "scadenza" ? (ts[2] ? "Spostata a " + etichettaGiorno(ts[2]).toLowerCase() : "Scadenza tolta") : (ts[2] ? "Assegnata a " + nameOf(D.pros, ts[2]) : "Nessuno la fa"));
+    if (await salvaSubito("task", ts[0], pt)) {
+      toast(ts[1] === "scadenza" ? (ts[2] ? "Spostata a " + etichettaGiorno(ts[2]).toLowerCase() : "Scadenza tolta")
+        : ts[1] === "stato" ? "Segnata «" + ts[2] + "»"
+          : (ts[2] ? "Assegnata a " + nameOf(D.pros, ts[2]) : "Nessuno la fa"));
+    }
     return;
   }
   if (d.apprSi) { await apprRispondi(d.apprSi, "Approvata"); return; }
@@ -8314,6 +8430,10 @@ document.addEventListener("change", async function (e) {
   }
   if (e.target.dataset && e.target.dataset.comvista) { COMVISTA = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.tf) { TF[e.target.dataset.tf] = e.target.value; render(); return; }
+  if (e.target.dataset && e.target.dataset.tvchi) {
+    TV.chi = e.target.value; try { localStorage.setItem("gs_task_chi", TV.chi); } catch (x) {}
+    render(); return;
+  }
   if (e.target.dataset && e.target.dataset.incVedi) { INCVEDI = e.target.value; render(); return; }
   if (e.target.dataset && e.target.dataset.imapPreset) {
     var cs = CASELLE.filter(function (c) { return c[0] === e.target.value; })[0], fp = e.target.form;
