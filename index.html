@@ -1,19 +1,4 @@
 <!DOCTYPE html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 <html lang="it">
 <head>
 <meta charset="UTF-8" />
@@ -29,7 +14,7 @@
 :root{
   /* ---- colore ---- */
   --paper:#f7f5f1;--cream:#f2efe9;--sand:#e6e1da;--card:#ffffff;
-  --ink:#171613;--txt:#2e2c27;--soft:#6f6a63;--faint:#969087;
+  --ink:#171613;--txt:#2e2c27;--soft:#6f6a63;--faint:#767067;
   --terra:#ff5a1f;--terra-deep:#e94c13;--terra-ink:#b83a08;--terra-soft:#fff0e9;
   --terra-piena:#cf400d;--terra-piena-hover:#b83a08;
   --green:#347a4d;--green-soft:#e7f1ea;
@@ -57,7 +42,7 @@
 @media (prefers-color-scheme: dark){
   :root{
     --paper:#0e0d0b;--cream:#191713;--sand:#2a2622;
-    --card:#171512;--ink:#f6f2e9;--txt:#e2dbcd;--soft:#a49b8d;--faint:#7a7264;
+    --card:#171512;--ink:#f6f2e9;--txt:#e2dbcd;--soft:#a49b8d;--faint:#877e6e;
     --terra:#ff7a3a;--terra-deep:#ff9866;--terra-soft:rgba(255,122,58,.15);
     --green:#63b183;--green-soft:rgba(99,177,131,.15);
     --amber:#d9a244;--amber-soft:rgba(217,162,68,.15);
@@ -175,7 +160,6 @@ a:hover{text-decoration:underline;text-underline-offset:3px}
 }
 .nav button[data-go].on .cnt{background:#ffe2d3;border-color:#ffd0ba;color:var(--terra-ink)}
 .nav button[data-go]:hover .cnt{background:var(--cream)}
-
 .nav button[data-go="dash"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='3' y='3' width='7' height='8' rx='2'/%3E%3Crect x='14' y='3' width='7' height='5' rx='2'/%3E%3Crect x='3' y='15' width='7' height='6' rx='2'/%3E%3Crect x='14' y='12' width='7' height='9' rx='2'/%3E%3C/svg%3E")}
 .nav button[data-go="commesse"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='2.5' y='6.5' width='19' height='14' rx='3'/%3E%3Cpath d='M8.5 6.5V5a2 2 0 0 1 2-2h3a2 2 0 0 1 2 2v1.5'/%3E%3C/svg%3E")}
 .nav button[data-go="task"]{--i:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 7l2 2 4-4'/%3E%3Cpath d='M4 17l2 2 4-4'/%3E%3Cpath d='M13 7h7M13 17h7'/%3E%3C/svg%3E")}
@@ -906,6 +890,7 @@ tr.expr td{background:var(--paper);padding-top:4px;padding-bottom:20px}
 .step .sn{width:23px;height:23px;border-radius:99px;background:var(--terra-soft);color:var(--terra-deep);font-size:.76rem;font-weight:600;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
 .step div{display:flex;flex-direction:column;gap:2px;min-width:0}
 .step b{font-weight:550;color:var(--ink);font-size:.9rem;letter-spacing:-.012em}
+
 /* ---------- kanban drag ---------- */
 .tsktop{display:flex;align-items:flex-start;justify-content:space-between;gap:9px;font-weight:450;color:var(--ink)}
 .tsk{user-select:none}
@@ -1491,54 +1476,17 @@ table.dtot .big{font-size:1.12rem;color:var(--terra-deep)}
 
 <div id="modal"></div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
-<script>
-window.GS_CONFIG = {
-  SUPABASE_URL: "https://uxeuqyzlikkbkpraeoen.supabase.co",
-  SUPABASE_ANON_KEY: "sb_publishable_ckqEpmyfFpsWXnK5J2-o4g_p4c_NJll"
-};
-</script>
-<script>
-/* recupero password: il link di Supabase arriva con #type=recovery */
-(function(){
-  var h = location.hash || "";
-  if (h.indexOf("type=recovery") < 0 && h.indexOf("type=invite") < 0) return;
-  window.GS_RECOVERY = true;
-  var q = {}; h.replace(/^#/,"").split("&").forEach(function(kv){ var i=kv.indexOf("="); if(i>0) q[kv.slice(0,i)] = decodeURIComponent(kv.slice(i+1)); });
-  document.addEventListener("DOMContentLoaded", function(){
-    var sb = window.supabase.createClient(window.GS_CONFIG.SUPABASE_URL, window.GS_CONFIG.SUPABASE_ANON_KEY);
-    var el = function(x){ return document.querySelector(x); };
-    var show = function(){
-      el("#splash").classList.add("hide"); el("#login").classList.add("hide");
-      el("#app").classList.add("hide"); el("#reset").classList.remove("hide");
-    };
-    setInterval(function(){
-      if (el("#reset") && !el("#reset").classList.contains("hide")) {
-        el("#splash").classList.add("hide"); el("#login").classList.add("hide"); el("#app").classList.add("hide");
-      }
-    }, 250);
-    sb.auth.setSession({ access_token: q.access_token, refresh_token: q.refresh_token }).then(function(r){
-      show();
-      var mail = r && r.data && r.data.user && r.data.user.email;
-      if (mail) el("#resetmail").textContent = mail;
-      if (r && r.error) { el("#reseterr").textContent = "Link scaduto o gi\u00e0 usato. Richiedine uno nuovo."; el("#reseterr").classList.remove("hide"); }
-    });
-    el("#resetform").addEventListener("submit", function(e){
-      e.preventDefault();
-      var f = e.target, p1 = f.p1.value, p2 = f.p2.value, err = el("#reseterr");
-      err.classList.add("hide");
-      if (p1 !== p2) { err.textContent = "Le due password non coincidono."; err.classList.remove("hide"); return; }
-      if (p1.length < 8) { err.textContent = "Servono almeno 8 caratteri."; err.classList.remove("hide"); return; }
-      var btn = f.querySelector("button"); btn.disabled = true; btn.textContent = "Salvo\u2026";
-      sb.auth.updateUser({ password: p1 }).then(function(r){
-        if (r.error) { err.textContent = r.error.message; err.classList.remove("hide"); btn.disabled = false; btn.textContent = "Salva e accedi"; return; }
-        history.replaceState(null, "", location.pathname);
-        location.reload();
-      });
-    });
-  });
-})();
-</script>
-<script src="app.js?v=92"></script>
+<!-- Versione fissa e impronta: «@2» vuol dire «l'ultima della serie 2», cioe'
+     codice che puo' cambiare da un giorno all'altro senza che nessuno lo
+     decida. Con integrity il browser rifiuta il file se non e' bit per bit
+     quello atteso. Il file .min.js non esiste nel pacchetto: lo fabbricava
+     il CDN al volo, e di una cosa fabbricata al volo non si puo' firmare
+     l'impronta. Qui si chiede il file vero. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.js"
+        integrity="sha256-hO6b9FaVwd07oVlba8+w8JZyQ0YxNR/8jr6RQFRdX/Y="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="config.js?v=93"></script>
+<script src="recupero.js?v=93"></script>
+<script src="app.js?v=93"></script>
 </body>
 </html>

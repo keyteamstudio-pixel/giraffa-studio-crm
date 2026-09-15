@@ -1,17 +1,4 @@
 /* Giraffa Studio — CRM v3 (ruoli: admin · professionista · pr · cliente) */
-
-
-
-
-
-
-
-
-
-
-
-
-
 (function () {
 "use strict";
 
@@ -26,14 +13,14 @@ var sb = null, user = null;
 var me = { pro_id: null, cliente_id: null, ruolo: "", nome: "", email: "", perm: { spazi: false, studio: false, accessi: false } };
 var D = { pros: [], serv: [], cli: [], com: [], righe: [], spazi: [], task: [], ore: [], inter: [], pren: [], membri: [], fasi: [], mat: [], pag: [], appr: [], vari: [], ev: [], comm: [], tmr: [], prog: [], trasf: [], priv: [], dip: [], viste: [], modelli: [], caltok: [], ana: [],
   prof: [], post: [], risp: [], reaz: [], ag: [], iscr: [], can: [], msg: [], lett: [], costi: [], mprev: [], inc: [], pcfg: [], gconn: [], impg: [], mconn: [],
-  rmie: [], rocc: [], rfonti: [], rprof: [], copie: [], provarip: [] };
+  rmie: [], rocc: [], rfonti: [], rprof: [], rclok: [], copie: [], provarip: [] };
 var CAL = 0;
 var COMVISTA = "lista";
 var PLINK = null;
 var SET = { fee_default: 12 };
 var TB = { pros: "professionisti", serv: "servizi", cli: "clienti", com: "commesse", righe: "righe", spazi: "spazi", task: "task", ore: "ore", inter: "interazioni", pren: "prenotazioni", membri: "membri", fasi: "fasi", mat: "materiali", pag: "pagamenti", appr: "approvazioni", vari: "varianti", ev: "eventi", comm: "commenti", tmr: "timer", prog: "progetti", trasf: "trasferte", port: "portali", forn: "fornitori", priv: "pro_privato", dip: "task_dip", viste: "viste", modelli: "modelli", caltok: "cal_token", ana: "analisi", set: "settings",
   prof: "professioni", post: "post", risp: "post_risp", reaz: "post_reaz", ag: "agenda", iscr: "iscrizioni", can: "canali", msg: "messaggi", lett: "letture", costi: "costi", riu: "riunioni", rich: "richieste_sito", mprev: "modelli_prev", inc: "incarichi", pcfg: "prenota_cfg", gconn: "google_conn", impg: "impegni_google", mconn: "mail_conn",
-  rmie: "radar_mie", rocc: "radar_occasioni_mie", rfonti: "radar_fonti", rprof: "pro_profilo",
+  rmie: "radar_mie", rocc: "radar_occasioni_mie", rfonti: "radar_fonti", rprof: "pro_profilo", rclok: "radar_clienti_ok",
   copie: "copie_db", provarip: "prova_ripristino" };
 
 /* Alcune colonne non devono mai arrivare nel browser: dei portali si legge tutto tranne la password. */
@@ -61,12 +48,39 @@ function iso(d) { var m = d.getMonth() + 1, g = d.getDate(); return d.getFullYea
 function isoUTC(d) { return d.toISOString().slice(0, 10); }
 function today() { return iso(new Date()); }
 function days(a, b) { return Math.round((new Date(a) - new Date(b)) / 86400000); }
-function by(arr, id) { for (var i = 0; i < arr.length; i++) if (arr[i].id === id) return arr[i]; return null; }
+/* by() e' la funzione piu' chiamata di tutto il gestionale: ogni riga di ogni
+   elenco la usa per risalire al cliente, al progetto, alla persona. Faceva una
+   scansione da capo ogni volta, e dentro un ordinamento questo diventa un
+   costo che cresce col quadrato delle righe. Adesso il primo passaggio su un
+   elenco ne costruisce l'indice, e i successivi lo trovano gia' pronto.
+   L'indice e' appeso all'elenco stesso: quando reload() rimpiazza l'elenco con
+   uno nuovo, l'indice vecchio sparisce da solo, senza che nessuno debba
+   ricordarsi di svuotarlo. I campi delle righe cambiano, gli id no. */
+var INDICI = new WeakMap();
+function by(arr, id) {
+  if (!arr || !id) return null;
+  var v = INDICI.get(arr);
+  if (!v || v.n !== arr.length) {
+    v = { n: arr.length, m: new Map() };
+    for (var i = 0; i < arr.length; i++) if (arr[i] && arr[i].id !== undefined) v.m.set(arr[i].id, arr[i]);
+    INDICI.set(arr, v);
+  }
+  return v.m.get(id) || null;
+}
 function nameOf(arr, id, f) { var o = by(arr, id); return o ? o[f || "nome"] : "—"; }
 function sum(arr, f) { var t = 0; arr.forEach(function (x) { t += (+f(x) || 0); }); return t; }
 function toast(msg, isErr) { var t = document.createElement("div"); t.className = "toast" + (isErr ? " err" : ""); t.textContent = msg; document.body.appendChild(t); setTimeout(function () { t.remove(); }, 3800); }
 function show(id) { ["setup", "login", "app", "splash", "pub"].forEach(function (x) { var n = el("#" + x); if (n) n.classList.toggle("hide", x !== id); }); }
-function closeModal() { el("#modal").innerHTML = ""; CHATOP = false; }
+/* Una finestra che si apre e lascia il cursore da tastiera dietro di se' e'
+   una finestra che, per chi non usa il mouse, non si e' aperta: si continua a
+   girare fra i pulsanti della pagina sotto. Qui il cursore entra nella
+   finestra quando si apre e torna dove stava quando si chiude. */
+var MODAL_PRIMA = null;
+function closeModal() {
+  el("#modal").innerHTML = ""; CHATOP = false;
+  if (MODAL_PRIMA && document.contains(MODAL_PRIMA)) { try { MODAL_PRIMA.focus(); } catch (e) { } }
+  MODAL_PRIMA = null;
+}
 
 /* ---------------- percorsi (ogni pagina ha il suo indirizzo) ---------------- */
 var ROUTING = false, FCTX = null, FDIRTY = false, FBACK = null;
@@ -166,8 +180,6 @@ var TIPI_COSTO = ["Strumento", "Abbonamento", "Materiale", "Fornitore", "Adverti
    passa e basta, come un costo ribaltato. Il tempo del viaggio non è qui: è
    nelle ore, a tariffa ridotta, se no si conterebbe due volte. */
 function trasfOf(k) { return D.trasf.filter(function (t) { return t.commessa_id === k; }); }
-function trasfProg(pid) { return D.trasf.filter(function (t) { return t.progetto_id === pid; }); }
-function trasfCli(cid) { return D.trasf.filter(function (t) { return t.cliente_id === cid; }); }
 function trasfVal(t) { return Math.round(((+t.km || 0) * (+t.tariffa_km || 0) + (+t.spese || 0)) * 100) / 100; }
 function trasfTot(list) { return sum(list, trasfVal); }
 /* quante uscite erano previste a preventivo: le voci di tipo Trasferta, con la
@@ -242,7 +254,8 @@ function gantt(k) {
 }
 async function logEv(kid, testo) {
   if (!kid) return;
-  await sb.from("eventi").insert({ commessa_id: kid, pro_id: me.pro_id, testo: testo });
+  await fatto(sb.from("eventi").insert({ commessa_id: kid, pro_id: me.pro_id, testo: testo }),
+    "scrivere nello storico del lavoro");
 }
 
 /* ---------------- atomi visivi ---------------- */
@@ -473,6 +486,19 @@ function avanzamento(kid) {
 function riuOf(kid) { return D.riu.filter(function (r) { return r.commessa_id === kid; }).sort(function (a, b) { return (a.data + (a.ora || "")) < (b.data + (b.ora || "")) ? 1 : -1; }); }
 function matOfRiu(rid) { return D.mat.filter(function (m) { return m.riunione_id === rid; }); }
 /* Gli errori del database in italiano, per chi non deve sapere cos'è un JWT. */
+/* Una scrittura che non guarda l'esito e' una bugia silenziosa: lo schermo
+   dice fatto, il database non ha niente, e te ne accorgi la settimana dopo.
+   Qui dentro passa ogni scrittura di cui non serve il risultato: se va male
+   lo dice con parole tue, e torna false, cosi' chi chiama puo' fermarsi
+   invece di andare avanti come se fosse tutto a posto. */
+async function fatto(promessa, cosa) {
+  var r = await promessa;
+  if (r && r.error) {
+    toast("Non sono riuscito a " + cosa + ": " + erroreUmano(r.error), true);
+    return false;
+  }
+  return true;
+}
 function erroreUmano(e) {
   var m = String((e && e.message) || e || "");
   var c = e && e.code;
@@ -497,7 +523,20 @@ function dettoFatto(t, mod) {
 }
 /* Il valore di un preventivo è uno solo, ovunque: quanto vale il lavoro con le varianti approvate. */
 function valore(k) { return budget(k).ricavo; }
-function valoreCliente(c) { return sum(comOfCliente(c).filter(function (k) { return k.stato !== "Perso"; }), valore); }
+/* Il valore di un cliente e' la somma dei suoi preventivi non persi. Costa
+   poco a calcolarlo una volta, molto a calcolarlo dentro un ordinamento: il
+   confronto fra due clienti lo chiedeva due volte, per ogni coppia. Qui si
+   calcola una volta per cliente e si tiene finche' non cambiano i preventivi.
+   La chiave della memoria e' l'elenco dei preventivi: se reload() lo
+   rimpiazza, la memoria vecchia non viene piu' trovata. */
+var VALCLI = { su: null, m: new Map() };
+function valoreCliente(c) {
+  if (VALCLI.su !== D.com) { VALCLI.su = D.com; VALCLI.m = new Map(); }
+  if (VALCLI.m.has(c)) return VALCLI.m.get(c);
+  var v = sum(comOfCliente(c).filter(function (k) { return k.stato !== "Perso"; }), valore);
+  VALCLI.m.set(c, v);
+  return v;
+}
 
 function isMineCom(k) { return me.pro_id && (k.owner_id === me.pro_id || k.pm_id === me.pro_id || k.pr_id === me.pro_id || righeOf(k.id).some(function (r) { var s = by(D.serv, r.serv_id); return r.assegnato_id === me.pro_id || (s && s.pro_id === me.pro_id); })); }
 function mio(row, kind) {
@@ -559,6 +598,9 @@ function applicaLocale(tbk, id, patch) {
   var r = by(D[tbk] || [], id);
   if (!r) return false;
   Object.keys(patch).forEach(function (c) { r[c] = patch[c]; });
+  /* la riga cambia sul posto, quindi l'elenco resta lo stesso oggetto e i
+     conti tenuti a mente non si accorgerebbero di niente: glielo dico io */
+  VALCLI.su = null;
   return true;
 }
 /* Il modo di far sembrare veloce una cosa che veloce non è: scrivo subito sullo
@@ -580,10 +622,16 @@ async function salvaSubito(tbk, id, patch) {
   if (!riga) await reload([tbk]);
   return true;
 }
+/* Ricaricare in silenzio e' peggio che non ricaricare: se una tabella non
+   risponde, lo schermo continua a mostrare i dati di prima come se fossero
+   freschi. Qui si tiene quello che c'era (meglio di svuotare) ma si dice. */
 async function reload(keys) {
+  var rotte = [];
   await Promise.all(keys.map(async function (k) {
-    var r = await sb.from(TB[k]).select(COLONNE[k] || "*"); if (!r.error) D[k] = r.data || [];
+    var r = await sb.from(TB[k]).select(COLONNE[k] || "*");
+    if (r.error) rotte.push(TB[k]); else D[k] = r.data || [];
   }));
+  if (rotte.length) toast("Non riesco a rileggere: " + rotte.join(", ") + ". Quello che vedi potrebbe essere vecchio.", true);
   if (keys.indexOf("pros") > -1 || keys.indexOf("priv") > -1) mieiDatiPersonali();
 }
 /* La tariffa oraria e le note personali vivono in una tabella che vede solo il proprietario.
@@ -978,7 +1026,7 @@ function cardRichieste() {
     /* dal sito arrivano tre strade: chi ha un lavoro, chi vuole entrare, chi propone di collaborare */
     var tipo = r.tipo === "candidatura" ? "Vuole entrare nello studio" : r.tipo === "preventivo" ? "Chiede un preventivo" : r.tipo === "partner" ? "Propone una collaborazione" : "Scrive";
     var chi = esc(r.nome) + (r.azienda ? " · " + esc(r.azienda) : "") + (r.mestiere ? " · " + esc(r.mestiere) : "") + (r.citta ? " · " + esc(r.citta) : "");
-    var contatti = '<a href="mailto:' + esc(r.email) + '">' + esc(r.email) + "</a>" + (r.telefono ? ' · <a href="tel:' + esc(String(r.telefono).replace(/\s+/g, "")) + '">' + esc(r.telefono) + "</a>" : "") + (r.portfolio ? ' · <a href="' + esc(r.portfolio) + '" target="_blank" rel="noopener">il suo lavoro</a>' : "");
+    var contatti = '<a href="mailto:' + esc(r.email) + '">' + esc(r.email) + "</a>" + (r.telefono ? ' · <a href="tel:' + esc(String(r.telefono).replace(/\s+/g, "")) + '">' + esc(r.telefono) + "</a>" : "") + (r.portfolio ? ' · <a href="' + hrefSicuro(r.portfolio) + '" target="_blank" rel="noopener">il suo lavoro</a>' : "");
     return '<div class="rich"><div class="richtop"><b>' + tipo + "</b><span class=\"faint\">" + dt(String(r.created_at).slice(0, 10)) + "</span></div>" +
       "<div>" + chi + "</div><div class=\"faint\">" + contatti + "</div>" +
       (r.messaggio ? '<p class="richmsg">' + esc(r.messaggio) + "</p>" : "") +
@@ -1147,6 +1195,7 @@ function tblCom(list) {
   });
   return h + "</tbody></table>";
 }
+
 /* ---------------- commesse ---------------- */
 function vCommesse() {
   var quali = tab || "personali";
@@ -1248,7 +1297,7 @@ function tabellaCosti(list, ctxAttr) {
     list.slice().sort(function (a, b) { return (a.data || "") < (b.data || "") ? 1 : -1; }).map(function (c) {
       return "<tr><td><b>" + esc(c.nome) + "</b>" + (c.progetto_id && !ctxAttr.progetto ? '<div class="faint">' + esc(nameOf(D.prog, c.progetto_id)) + "</div>" : "") +
         (c.fornitore_id ? '<div class="faint">' + esc(nameOf(D.forn, c.fornitore_id)) + "</div>" : "") + (c.note ? '<div class="faint">' + esc(c.note) + "</div>" : "") +
-        (c.url ? '<div><a href="' + esc(c.url) + '" target="_blank" rel="noopener">apri</a></div>' : "") + "</td>" +
+        (c.url ? '<div><a href="' + hrefSicuro(c.url) + '" target="_blank" rel="noopener">apri</a></div>' : "") + "</td>" +
         "<td>" + esc(c.tipo || "—") + "</td><td>" + dt(c.data) + "</td>" +
         '<td class="num"><b>' + eur(costoVal(c)) + "</b>" + (c.ricorrente ? '<div class="faint">' + Math.max(1, +c.cicli || 1) + " × " + eur(c.importo) + (c.periodo === "Annuale" ? " l'anno" : " al mese") + "</div>" : "") + "</td>" +
         "<td>" + (c.ribaltato ? '<span class="badge b-blue">addebitato</span>' : '<span class="faint">a carico tuo</span>') + "</td>" +
@@ -1456,6 +1505,7 @@ function vCommessa() {
   }
   return h + "</div>";
 }
+
 /* ---------------- riunioni ----------------
    Uno strumento pratico: prima della riunione il link e l'ordine del giorno,
    durante gli appunti, dopo le decisioni e i prossimi passi, che con un clic
@@ -1467,7 +1517,7 @@ function rigaRiunione(r) {
   var sub = dt(r.data) + (oraRiu(r) ? " · " + oraRiu(r) : "") + " · " + esc(r.tipo || "Videocall") + (r.cliente_id ? " · " + lnkCli(r.cliente_id) : "");
   var meta = (r.stato === "Tenuta" ? '<span class="badge b-green">tenuta</span>' : r.stato === "Annullata" ? '<span class="badge b-red">annullata</span>' : r.data < oggi ? '<span class="badge b-amber">da chiudere</span>' : r.data === oggi ? '<span class="badge b-blue">oggi</span>' : "") +
     (r.partecipanti || []).map(function (p) { return avatar(p, 22); }).join("") +
-    (r.link && r.stato !== "Annullata" && r.data >= oggi ? ' <a class="btn sm" href="' + esc(r.link) + '" target="_blank" rel="noopener">Entra</a>' : "");
+    (r.link && r.stato !== "Annullata" && r.data >= oggi ? ' <a class="btn sm" href="' + hrefSicuro(r.link) + '" target="_blank" rel="noopener">Entra</a>' : "");
   return rigaEl("riunione|" + r.id + "|", r.titolo, sub, meta);
 }
 function vRiunioni() {
@@ -1492,7 +1542,7 @@ function vRiunione() {
   var h = crumbs([["Lavoro"], ["Agenda", "riunioni"], [r.titolo]]);
   h += '<div class="top"><h1>' + esc(r.titolo) + '<span class="sub">' + dt(r.data) + (oraRiu(r) ? " · " + oraRiu(r) : "") + " · " + esc(r.tipo || "Videocall") +
     (r.cliente_id ? " · " + lnkCli(r.cliente_id) : "") + (r.commessa_id ? " · " + lnkCom(r.commessa_id) : "") + (r.progetto_id ? " · " + lnkProg(r.progetto_id) : "") + '</span></h1><div class="tools">' +
-    (r.link ? '<a class="btn sm" href="' + esc(r.link) + '" target="_blank" rel="noopener">Entra nella videocall</a>' : "") +
+    (r.link ? '<a class="btn sm" href="' + hrefSicuro(r.link) + '" target="_blank" rel="noopener">Entra nella videocall</a>' : "") +
     (r.stato !== "Tenuta" ? '<button class="btn sm ghost" data-riu-stato="' + r.id + '|Tenuta">Segna come tenuta</button>' : '<button class="btn sm ghost" data-riu-stato="' + r.id + '|Programmata">Riapri</button>') +
     (r.stato !== "Annullata" && r.stato !== "Tenuta" ? '<button class="btn sm ghost" data-riu-stato="' + r.id + '|Annullata">Annulla</button>' : "") +
     (gconnMia() && r.stato !== "Annullata" ? (r.gcal_event_id ? '<button class="btn sm ghost" data-gcal-metti="' + r.id + '" title="Rimanda a Google le modifiche">Aggiorna su Google</button><button class="btn sm ghost" data-gcal-via="' + r.id + '">Togli da Google</button>' : '<button class="btn sm ghost" data-gcal-metti="' + r.id + '">Metti in Google Calendar</button>') : "") +
@@ -1530,6 +1580,7 @@ function vRiunione() {
   h += '<div class="card"><div class="cardhead"><h2>Allegati</h2><div style="display:flex;gap:8px"><button class="btn sm ghost" data-link="' + esc(ctx) + '">+ Link</button></div></div>' + zonaAllegati(ctx) + tabellaAllegati(mt, {}) + "</div>";
   return h;
 }
+
 /* ---------------- attività ---------------- */
 function riga(x, tutte, liv) {
   var figli = tutte.filter(function (y) { return y.padre_id === x.id; });
@@ -1567,159 +1618,19 @@ var TGROUP = "progetto", TSORT = "scadenza";
 var PANEL = null, TV = { chi: "io" };
 try { TV.chi = localStorage.getItem("gs_task_chi") || "io"; } catch (e) {}
 
-function taskFiltrate() {
-  var l = ftask();
-  if (TF.stato === "aperte") l = l.filter(function (t) { return t.stato !== "Fatto"; });
-  else if (TF.stato === "fatte") l = l.filter(function (t) { return t.stato === "Fatto"; });
-  if (TF.pro) l = l.filter(function (t) { return t.assegnato_id === (TF.pro === "io" ? me.pro_id : TF.pro); });
-  if (TF.prog) l = l.filter(function (t) { return t.progetto_id === TF.prog; });
-  if (TF.prio) l = l.filter(function (t) { return (t.priorita || "Media") === TF.prio; });
-  if (TF.scadute) l = l.filter(function (t) { return t.scadenza && t.scadenza < today() && t.stato !== "Fatto"; });
-  if (TF.cerca) {
-    var q = TF.cerca.toLowerCase();
-    l = l.filter(function (t) { return (t.titolo + " " + (t.descrizione || "") + " " + (t.etichette || "")).toLowerCase().indexOf(q) > -1; });
-  }
-  return l.slice().sort(ordinaTask);
-}
 function ordinaTask(a, b) {
   if (TSORT === "scadenza") return (a.scadenza || "9999-99") < (b.scadenza || "9999-99") ? -1 : 1;
   if (TSORT === "priorita") { var P = { Alta: 0, Media: 1, Bassa: 2 }; return (P[a.priorita] == null ? 1 : P[a.priorita]) - (P[b.priorita] == null ? 1 : P[b.priorita]); }
   if (TSORT === "titolo") return (a.titolo || "").localeCompare(b.titolo || "");
   return (a.ordine || 0) - (b.ordine || 0) || ((a.created_at || "") < (b.created_at || "") ? -1 : 1);
 }
-function chiaveGruppo(t) {
-  if (TGROUP === "progetto") return t.progetto_id ? nameOf(D.prog, t.progetto_id) : t.commessa_id ? nameOf(D.com, t.commessa_id, "titolo") : "Senza progetto";
-  if (TGROUP === "stato") return t.stato || "Da fare";
-  if (TGROUP === "persona") return t.assegnato_id ? nameOf(D.pros, t.assegnato_id) : "Non assegnata";
-  if (TGROUP === "priorita") return t.priorita || "Media";
-  if (TGROUP === "scadenza") {
-    if (!t.scadenza) return "Senza data";
-    if (t.scadenza < today()) return "In ritardo";
-    if (t.scadenza === today()) return "Oggi";
-    if (t.scadenza <= iso(new Date(Date.now() + 7 * 86400000))) return "Questa settimana";
-    return "Più avanti";
-  }
-  if (TGROUP === "sezione") return t.sezione || "Senza sezione";
-  return "Tutte";
-}
 /* ------------------------------------------------------------ in naftalina
    Bacheca, calendario e timeline delle attività non sono più raggiungibili
    dall'interfaccia: Attività adesso è una tabella sola. Il codice resta qui
    per una settimana. Se non mancano a nessuno, si toglie; se mancano, torna
-   con una riga. Da qui in giù fino a «vistaTimeline» non chiama più nessuno. */
-function barraTask(vista) {
-  var opts = function (list, val) { return list.map(function (o) { return '<option value="' + esc(o[0]) + '"' + (val === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join(""); };
-  var progetti = [["", "Tutti i progetti"]].concat(progVisibili().map(function (p) { return [p.id, p.nome]; }));
-  var persone = [["", "Chiunque"], ["io", "Assegnate a me"]].concat(D.pros.map(function (p) { return [p.id, p.nome]; }));
-  return '<div class="vbar">' +
-    '<div class="vtabs">' + [["oggi", "‹ Elenco"], ["bacheca", "Bacheca"], ["calendario", "Calendario"], ["timeline", "Timeline"]].map(function (v) {
-      return '<button data-route="task|-|' + v[0] + '" class="' + (vista === v[0] ? "on" : "") + '">' + v[1] + "</button>";
-    }).join("") + "</div>" +
-    '<div class="vfilt">' +
-    '<input id="tcerca" placeholder="Cerca fra le attività…" value="' + esc(TF.cerca) + '">' +
-    '<select data-tf="stato">' + opts([["aperte", "Aperte"], ["tutte", "Tutte"], ["fatte", "Fatte"]], TF.stato) + "</select>" +
-    '<select data-tf="pro">' + opts(persone, TF.pro) + "</select>" +
-    '<select data-tf="prog">' + opts(progetti, TF.prog) + "</select>" +
-    '<select data-tf="prio">' + opts([["", "Ogni priorità"], ["Alta", "Alta"], ["Media", "Media"], ["Bassa", "Bassa"]], TF.prio) + "</select>" +
-    '<button class="chipbtn' + (TF.scadute ? " on" : "") + '" data-tf-scadute="1">Solo in ritardo</button>' +
-    (vista === "lista" || vista === "bacheca" ? '<span class="vsep"></span><span class="faint">Raggruppa</span><select data-tg="1">' +
-      opts([["progetto", "Progetto"], ["stato", "Stato"], ["persona", "Persona"], ["priorita", "Priorità"], ["scadenza", "Scadenza"], ["sezione", "Sezione"], ["nessuno", "Niente"]], TGROUP) + "</select>" : "") +
-    (vista === "lista" ? '<span class="faint">Ordina</span><select data-tsordina="1">' +
-      opts([["scadenza", "Scadenza"], ["priorita", "Priorità"], ["titolo", "Titolo"], ["ordine", "Manuale"]], TSORT) + "</select>" : "") +
-    (D.viste.length ? '<span class="vsep"></span><select data-vista-apri="1"><option value="">Viste salvate…</option>' +
-      D.viste.filter(function (v) { return v.ambito === "task"; }).map(function (v) { return '<option value="' + v.id + '">' + esc(v.nome) + "</option>"; }).join("") + "</select>" : "") +
-    '<button class="lnk mini" data-vista-salva="1">Salva questa vista</button>' +
-    "</div></div>";
-}
 /* Un'attività da sola non dice niente: "Posizionamento" per chi? dentro cosa?
    Sotto il titolo sta la sua strada — cliente, preventivo, progetto — tolto
    quello per cui la lista è già raggruppata. A destra le cose che cambiano:
-   stato, scadenza, chi la fa. */
-function stradaTask(t) {
-  var k = t.commessa_id ? by(D.com, t.commessa_id) : null;
-  var cli = t.cliente_id || (k && k.cliente_id);
-  var pezzi = [];
-  if (cli) pezzi.push(lnkCli(cli, "lnk mini2"));
-  if (k && TGROUP !== "progetto") pezzi.push(lnkCom(k.id, "lnk mini2"));
-  if (t.progetto_id && TGROUP !== "progetto") pezzi.push(lnkProg(t.progetto_id, "lnk mini2"));
-  if (t.sezione && TGROUP === "progetto" && t.sezione !== nameOf(D.prog, t.progetto_id)) pezzi.push(esc(t.sezione));
-  return pezzi.filter(Boolean).join(" · ");
-}
-function vistaBacheca(list) {
-  var col = [], titolo = {};
-  if (TGROUP === "stato" || TGROUP === "nessuno") { col = TASK_STATI; }
-  else {
-    var s = {};
-    list.forEach(function (t) { s[chiaveGruppo(t)] = 1; });
-    col = Object.keys(s).sort();
-  }
-  var perStato = (TGROUP === "stato" || TGROUP === "nessuno");
-  var h = '<div class="kanban">';
-  col.forEach(function (c) {
-    var items = list.filter(function (t) { return (perStato ? (t.stato || "Da fare") : chiaveGruppo(t)) === c; });
-    h += '<div class="kcol"' + (perStato ? ' data-stato="' + esc(c) + '"' : "") + '><h3>' + esc(c) + "<span>" + items.length + "</span></h3>";
-    items.forEach(function (t) {
-      var late = t.scadenza && t.scadenza < today() && t.stato !== "Fatto";
-      h += '<div class="tsk"' + (perStato ? ' draggable="true"' : "") + ' data-open-task="' + t.id + '">' +
-        '<div class="tsktop">' + esc(t.titolo) + (t.assegnato_id ? avatar(t.assegnato_id, 22) : "") + "</div>" +
-        '<div class="meta"><span class="badge ' + (PRIO_COL[t.priorita] || "") + '">' + esc(t.priorita || "Media") + "</span><span>" +
-        (t.scadenza ? (late ? '<span class="badge b-red">' + dshort(t.scadenza) + "</span>" : dshort(t.scadenza)) : "") + "</span></div>" +
-        (t.progetto_id || t.commessa_id ? '<div class="meta"><span class="faint">' + esc(t.progetto_id ? nameOf(D.prog, t.progetto_id) : nameOf(D.com, t.commessa_id, "titolo")) + "</span></div>" : "") + "</div>";
-    });
-    h += perStato ? '<div class="kdrop">rilascia qui</div>' : "";
-    h += "</div>";
-  });
-  h += "</div>";
-  return '<div class="card">' + h + (perStato ? '<p class="faint" style="margin-top:12px">Trascina una scheda da una colonna all\'altra per cambiare stato.</p>' : "") + "</div>";
-}
-function vistaCalendarioTask(list) {
-  var base = new Date(); base.setDate(1); base.setMonth(base.getMonth() + CAL);
-  var anno = base.getFullYear(), mese = base.getMonth();
-  var primo = new Date(anno, mese, 1), ultimo = new Date(anno, mese + 1, 0);
-  var start = new Date(primo); start.setDate(1 - ((primo.getDay() + 6) % 7));
-  var celle = [];
-  for (var i = 0; i < 42; i++) {
-    var d = new Date(start.getTime() + i * 86400000), k = iso(d);
-    var items = list.filter(function (t) { return t.scadenza === k; });
-    celle.push('<div class="calday' + (d.getMonth() !== mese ? " out" : "") + (k === today() ? " today" : "") + '" data-day="' + k + '">' +
-      '<div class="caltop"><span>' + d.getDate() + "</span>" + (items.length ? '<span class="calore">' + items.length + "</span>" : "") + "</div>" +
-      items.slice(0, 3).map(function (t) {
-        var late = t.scadenza < today() && t.stato !== "Fatto";
-        return '<div class="calev ' + (t.stato === "Fatto" ? "b-green" : late ? "b-red" : PRIO_COL[t.priorita] || "b-blue") + '" data-open-task="' + t.id + '" title="' + esc(t.titolo) + '">' + esc(t.titolo) + "</div>";
-      }).join("") + (items.length > 3 ? '<div class="faint" style="font-size:.72rem">+' + (items.length - 3) + " altro</div>" : "") + "</div>");
-  }
-  var etichettaMese = primo.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
-  return '<div class="card"><div class="cardhead"><h2>' + etichettaMese.charAt(0).toUpperCase() + etichettaMese.slice(1) +
-    '</h2><span class="wknav"><button class="btn sm ghost" data-cal="-1">‹</button><button class="btn sm ghost" data-cal="0">Oggi</button><button class="btn sm ghost" data-cal="1">›</button></span></div>' +
-    '<div class="cal"><div class="caldow">lun</div><div class="caldow">mar</div><div class="caldow">mer</div><div class="caldow">gio</div><div class="caldow">ven</div><div class="caldow">sab</div><div class="caldow">dom</div>' +
-    celle.join("") + '</div><p class="faint" style="margin-top:10px">Clicca un giorno per creare un\'attività con quella scadenza.</p></div>';
-}
-function vistaTimeline(list) {
-  var con = list.filter(function (t) { return t.scadenza || t.inizio; });
-  if (!con.length) return '<div class="card">' + vuoto("Nessuna attività con date: metti un inizio o una scadenza per vederla sulla timeline.") + "</div>";
-  var date = con.map(function (t) { return t.inizio || t.scadenza; }).concat(con.map(function (t) { return t.scadenza || t.inizio; })).sort();
-  var da = new Date(date[0]), a = new Date(date[date.length - 1]);
-  da.setDate(da.getDate() - 3); a.setDate(a.getDate() + 3);
-  var giorni = Math.max(7, Math.round((a - da) / 86400000));
-  var mesi = [], cur = "";
-  for (var i = 0; i <= giorni; i += 7) {
-    var d = new Date(da.getTime() + i * 86400000);
-    var m = d.toLocaleDateString("it-IT", { month: "short" });
-    mesi.push('<span style="left:' + (i / giorni * 100) + '%">' + (m !== cur ? m + " " : "") + d.getDate() + "</span>");
-    cur = m;
-  }
-  var righe = con.slice().sort(function (x, y) { return (x.inizio || x.scadenza) < (y.inizio || y.scadenza) ? -1 : 1; }).map(function (t) {
-    var i1 = new Date(t.inizio || t.scadenza), i2 = new Date(t.scadenza || t.inizio);
-    var x = Math.max(0, (i1 - da) / 86400000 / giorni * 100);
-    var w = Math.max(2.2, ((i2 - i1) / 86400000 + 1) / giorni * 100);
-    var late = t.scadenza && t.scadenza < today() && t.stato !== "Fatto";
-    return '<div class="tlrow"><div class="tlname" data-open-task="' + t.id + '">' + esc(t.titolo) + "</div>" +
-      '<div class="tltrack"><button class="tlbar ' + (t.stato === "Fatto" ? "ok" : late ? "bad" : "") + '" style="left:' + x + "%;width:" + w + '%" data-open-task="' + t.id + '">' +
-      esc(t.assegnato_id ? nameOf(D.pros, t.assegnato_id).split(" ")[0] : "") + "</button></div></div>";
-  }).join("");
-  return '<div class="card"><div class="cardhead"><h2>Timeline</h2><span class="faint">da ' + dshort(iso(da)) + " a " + dshort(iso(a)) + "</span></div>" +
-    '<div class="tlhead">' + mesi.join("") + "</div>" + righe + "</div>";
-}
 /* ---------------- Attività: una lista sola ----------------
    Oggi (in ritardo, oggi, senza data), Prossimi giorni, Tutte per progetto, Fatte.
    Si aggiunge scrivendo una riga: la data, la persona (@) e il progetto (#) li
@@ -1847,69 +1758,6 @@ function scriviTask(ctx, segnaposto) {
 function taskDiChi(list) {
   if (TV.chi !== "io") return list;
   return list.filter(function (t) { return !t.assegnato_id || t.assegnato_id === me.pro_id; });
-}
-function rigaT(t, o) {
-  o = o || {};
-  var fatto = t.stato === "Fatto";
-  var late = t.scadenza && t.scadenza < today() && !fatto;
-  var k = t.commessa_id ? by(D.com, t.commessa_id) : null;
-  var cli = t.cliente_id || (k && k.cliente_id);
-  var pezzi = [];
-  if (cli) pezzi.push(lnkCli(cli, "lnk mini2"));
-  if (!o.noProg) { if (t.progetto_id) pezzi.push(lnkProg(t.progetto_id, "lnk mini2")); else if (k) pezzi.push(lnkCom(k.id, "lnk mini2")); }
-  if (t.padre_id) { var pd = by(D.task, t.padre_id); if (pd) pezzi.push("↳ " + esc(pd.titolo)); }
-  var sub = D.task.filter(function (x) { return x.padre_id === t.id; });
-  var subFatte = sub.filter(function (x) { return x.stato === "Fatto"; }).length;
-  return '<div class="trow' + (fatto ? " fatta" : "") + (PANEL === t.id ? " sel" : "") + '" draggable="true" data-open-task="' + t.id + '">' +
-    '<button class="ck' + (fatto ? " on" : "") + '" data-tck="' + t.id + '" title="' + (fatto ? "Riapri" : "Segna fatta") + '"></button>' +
-    '<button class="ttit" data-open-task="' + t.id + '"><span class="tt1">' + (t.priorita === "Alta" && !fatto ? '<i class="tprio" title="Priorità alta"></i>' : "") + esc(t.titolo) +
-      (sub.length ? '<span class="faint"> · ' + subFatte + "/" + sub.length + "</span>" : "") +
-      (t.stato === "In corso" ? ' <span class="badge b-terra">in corso</span>' : t.stato === "In review" ? ' <span class="badge b-blue">in review</span>' : "") + "</span>" +
-      (pezzi.length ? '<span class="tt2">' + pezzi.join(" · ") + "</span>" : "") + "</button>" +
-    '<span class="tmeta">' +
-      (o.noData ? "" : '<button class="tchip' + (late ? " late" : "") + (t.scadenza ? "" : " vuoto") + '" data-tdata="' + t.id + '" title="Cambia la scadenza">' + (late ? "in ritardo · " : "") + etichettaBreve(t.scadenza) + "</button>") +
-      '<button class="tav" data-tchi="' + t.id + '" title="Chi la fa">' + (t.assegnato_id ? avatar(t.assegnato_id, 22) : '<span class="av vuoto" style="width:22px;height:22px;font-size:11px">?</span>') + "</button>" +
-    "</span></div>";
-}
-function gruppoT(titolo, list, attr, o, cls) {
-  if (!list.length) return "";
-  return '<div class="card tgroup' + (cls ? " " + cls : "") + '"' + (attr || "") + '><div class="cardhead"><h2>' + titolo + '</h2><span class="faint">' + list.length + "</span></div>" +
-    '<div class="tlist">' + list.map(function (t) { return rigaT(t, o); }).join("") + "</div></div>";
-}
-/* Un elenco solo, con il tempo come titolo dei gruppi. Il campo di ricerca
-   compare quando le cose sono tante: prima serve a niente e ruba il cursore. */
-function vistaDaFare(mie, tutte) {
-  var h = "";
-  if (mie.length > 8 || TF.cerca) h += '<div class="tcerca"><input id="tcerca" placeholder="Cerca fra le attività da fare…" value="' + esc(TF.cerca) + '"></div>';
-  if (TF.cerca) {
-    var q = TF.cerca.toLowerCase();
-    mie = mie.filter(function (t) { return (t.titolo + " " + (t.descrizione || "")).toLowerCase().indexOf(q) > -1; });
-    if (!mie.length) return h + '<div class="card"><div class="empty">Niente con questo testo.</div></div>';
-  }
-  var ritardo = mie.filter(function (t) { return t.scadenza && t.scadenza < today(); }).sort(ordT);
-  var oggi = mie.filter(function (t) { return t.scadenza === today(); }).sort(ordT);
-  var sette = mie.filter(function (t) { return t.scadenza && t.scadenza > today() && t.scadenza <= giornoPiu(7); }).sort(ordT);
-  var dopo = mie.filter(function (t) { return t.scadenza && t.scadenza > giornoPiu(7); }).sort(ordT);
-  var senza = mie.filter(function (t) { return !t.scadenza; }).sort(ordT);
-  var fatteOggi = tutte.filter(function (t) { return t.stato === "Fatto" && (t.completata_il || "").slice(0, 10) === today() && (TV.chi !== "io" || t.assegnato_id === me.pro_id); });
-  if (!mie.length) h += '<div class="card"><div class="empty">Non hai niente da fare. Scrivi qui sopra la prima cosa, oppure aprine una da un progetto.</div></div>';
-  h += gruppoT("In ritardo", ritardo);
-  h += '<div class="card tgroup mcol" data-giorno="' + today() + '"><div class="cardhead"><h2>Oggi</h2><span class="faint">' + oggi.length + "</span></div>" +
-    '<div class="tlist">' + (oggi.length ? oggi.map(function (t) { return rigaT(t, { noData: true }); }).join("") : '<div class="tdrop">Trascina qui quello che vuoi fare oggi.</div>') + "</div></div>";
-  h += gruppoT("Nei prossimi 7 giorni", sette);
-  h += gruppoT("Più avanti", dopo);
-  h += gruppoT("Senza data", senza, ' data-quando="senza"', null, "mcol");
-  if (fatteOggi.length) h += '<div class="card tgroup fatte"><div class="cardhead"><h2>Fatte oggi</h2><span class="faint">' + fatteOggi.length + '</span></div><div class="tlist">' + fatteOggi.map(function (t) { return rigaT(t, { noData: true }); }).join("") + "</div></div>";
-  return h;
-}
-function vistaFatte(tutte) {
-  var da = giornoPiu(-30);
-  var list = tutte.filter(function (t) { return t.stato === "Fatto" && (t.completata_il || t.created_at || "").slice(0, 10) >= da && (TV.chi !== "io" || t.assegnato_id === me.pro_id); })
-    .sort(function (a, b) { return (a.completata_il || "") < (b.completata_il || "") ? 1 : -1; });
-  if (!list.length) return '<div class="card"><div class="empty">Niente di fatto negli ultimi 30 giorni.</div></div>';
-  var g = {}, ord = [];
-  list.forEach(function (t) { var k = (t.completata_il || "").slice(0, 10) || "—"; if (!g[k]) { g[k] = []; ord.push(k); } g[k].push(t); });
-  return ord.map(function (k) { return gruppoT(k === "—" ? "Senza data" : etichettaGiorno(k), g[k], "", { noData: true }); }).join("");
 }
 /* Il pannello di lato: le cose che cambiano spesso, senza lasciare la lista */
 function pannelloTask(id) {
@@ -2186,11 +2034,11 @@ async function applicaModello(mid) {
     var quando = v.giorni == null ? null : iso(new Date(base.getTime() + v.giorni * 86400000));
     /* i modelli vecchi hanno dentro anche delle voci «lavorazione»: le faccio
        nascere come sezioni, che è il posto dove quel livello è finito */
-    await sb.from("task").insert({
+    if (!await fatto(sb.from("task").insert({
       titolo: v.nome, commessa_id: p.commessa_id, progetto_id: p.id,
       assegnato_id: me.pro_id, stato: "Da fare", priorita: "Media", scadenza: quando,
       stimate: v.ore || null, sezione: v.sezione || (v.tipo === "lavorazione" ? v.nome : null)
-    });
+    }), "creare l" + "'" + "attivit\u00e0 \u00ab" + v.nome + "\u00bb")) { await reload(["task"]); render(); return; }
   }
   await reload(["task"]);
   closeModal(); toast("Modello applicato a " + p.nome); go("progetto", p.id, "attivita");
@@ -2843,12 +2691,29 @@ function vStudio() {
    resta tua, e la responsabilita' pure. */
 function radarMie() { return (D.rmie || []).filter(function (r) { return r.pro_id === me.pro_id; }); }
 function radarNuove() { return radarMie().filter(function (r) { return r.stato === "nuova"; }); }
-function radarOcc(sid) { return (D.rocc || []).filter(function (o) { return o.segnalazione_id === sid; }); }
+function radarOcc(sid) {
+  /* Le occasioni prodotte prima che la scheda venisse chiusa restano nel
+     database: cancellarle non e' compito di una funzione di lettura. Ma
+     finche' il permesso manca non si mostrano, altrimenti la chiusura
+     sarebbe solo una scritta. */
+  if (!radarClientiOk()) return [];
+  return (D.rocc || []).filter(function (o) { return o.segnalazione_id === sid; });
+}
 function radarProfilo() { var l = (D.rprof || []).filter(function (p) { return p.pro_id === me.pro_id; }); return l[0] || null; }
 function radarViva(r) { return r.stato !== "scartata" && r.stato !== "archiviata"; }
 function radarPerMe() { return radarMie().filter(function (r) { return radarViva(r) && r.per_chi !== "clienti"; }); }
 function radarPerClienti() { return radarMie().filter(function (r) { return radarViva(r) && r.per_chi !== "me"; }); }
 function radarSalvate() { return radarMie().filter(function (r) { return r.stato === "salvata"; }); }
+/* Guardare i bandi per conto dei clienti vuol dire mandare la loro anagrafica
+   a un fornitore esterno. Si puo' fare solo se ai clienti e' stato detto, e
+   quel «detto» sta scritto in una riga del database con la data
+   dell'informativa. Nessuna riga = la scheda non si apre. Il freno vero e'
+   nella funzione che fa il lavoro: questo serve a non mostrare una porta che
+   di la' e' chiusa. */
+function radarClientiOk() {
+  var r = (D.rclok || []).filter(function (x) { return x.pro_id === me.pro_id; })[0];
+  return !!(r && r.attivo && r.informativa_del && r.dove);
+}
 
 /* quanto manca alla scadenza, a colpo d'occhio */
 function radarQuando(r) {
@@ -2882,7 +2747,7 @@ function radarImporto(i) {
 }
 /* La riga che non deve mancare mai: da dove viene e quando l'abbiamo guardata. */
 function radarFonte(r) {
-  return '<div class="rfonte">Da <a href="' + esc(r.atto_url || "#") + '" target="_blank" rel="noopener">' + esc(r.fonte_nome || "fonte non indicata") + "</a>" +
+  return '<div class="rfonte">Da <a href="' + hrefSicuro(r.atto_url || "#") + '" target="_blank" rel="noopener">' + esc(r.fonte_nome || "fonte non indicata") + "</a>" +
     (r.pubblicato ? ", pubblicato il " + dt(r.pubblicato) : "") +
     (r.fonte_controllata ? ". Fonte controllata il " + dt(r.fonte_controllata) : "") +
     (r.atto_versione > 1 ? ' <span class="badge b-amber">il testo è cambiato dopo la prima lettura</span>' : "") + "</div>";
@@ -3014,18 +2879,39 @@ function vRadar() {
   var uno = current ? radarMie().filter(function (r) { return r.id === current; })[0] : null;
   if (uno) return radarDettaglio(uno);
 
+  var okCli = radarClientiOk();
   var t = tab || "te";
+  /* se la scheda e' chiusa non ci si arriva nemmeno con l'indirizzo scritto a mano */
+  if (t === "clienti" && !okCli) t = "chiusa";
   var perMe = radarPerMe(), perCli = radarPerClienti(), salv = radarSalvate();
   var h = head("Radar",
     "Bandi, agevolazioni e norme lette per te. Qui non si dice mai che hai diritto a qualcosa: si dice cosa combacia, cosa manca e cosa resta da verificare.",
     '<button class="btn sm ghost" data-radar-cerca="1">Cerca adesso</button>');
   h += barraViste([
     ["te", "Riguarda te", perMe.length],
-    ["clienti", "Per i tuoi clienti", perCli.length],
+    okCli ? ["clienti", "Per i tuoi clienti", perCli.length]
+          : ["chiusa", "Per i tuoi clienti", null],
     ["salvate", "Tenute d'occhio", salv.length],
     ["fonti", "Da dove guardiamo", null],
     ["profilo", "Il tuo profilo", null]
   ], t, "radar", "");
+
+  if (t === "chiusa") {
+    return h + '<div class="card"><div class="rbl warn">' +
+      "<b>Questa parte è ferma, e non per un guasto</b>" +
+      "<p>Per dirti quali bandi riguardano i tuoi clienti, il Radar dovrebbe mandare " +
+      "la loro anagrafica — ragione sociale, partita IVA, settore, le note che hai " +
+      "scritto tu — a un fornitore esterno che fa il confronto. Sono dati dei clienti, " +
+      "non tuoi: si può fare solo dopo averglielo detto, per iscritto, nell'informativa.</p>" +
+      "<p>Finché quella riga non c'è, la scheda resta chiusa e nessun dato dei clienti " +
+      "esce di qui. Il freno non è questa pagina: è nel sistema che fa il lavoro, e " +
+      "risponde di no anche a chi provasse a chiamarlo da un'altra parte.</p>" +
+      "</div><p class=\"faint\" style=\"margin-top:10px\">Cosa serve per riaprirla è " +
+      "scritto in <b>INFORMATIVA-RADAR.md</b>: quattro punti, da chiudere con chi ti " +
+      "segue sulla privacy. Poi si accende scrivendo nel database la data " +
+      "dell'informativa e dove sta scritta.</p>" +
+      '<div class="razioni"><button class="btn sm ghost" data-route="radar|-|te">Torna a quello che riguarda te</button></div></div>';
+  }
 
   if (t === "fonti") return h + radarFonti();
   if (t === "profilo") return h + radarSchedaProfilo();
@@ -3081,7 +2967,7 @@ function vFornitori() {
       cats[c].map(function (f) {
         return "<tr><td><b>" + esc(f.nome) + "</b>" + (f.note ? '<div class="faint">' + esc(f.note) + "</div>" : "") + "</td><td>" + esc(f.referente || "—") + "</td><td>" +
           (f.email ? '<a href="mailto:' + esc(f.email) + '">' + esc(f.email) + "</a>" : "") + (f.telefono ? '<div class="faint">' + esc(f.telefono) + "</div>" : "") +
-          (f.sito ? '<div><a href="' + esc(f.sito) + '" target="_blank" rel="noopener">sito</a></div>' : "") + "</td><td>" + esc(f.citta || "—") + "</td><td>" +
+          (f.sito ? '<div><a href="' + hrefSicuro(f.sito) + '" target="_blank" rel="noopener">sito</a></div>' : "") + "</td><td>" + esc(f.citta || "—") + "</td><td>" +
           (f.consigliato_da ? avatar(f.consigliato_da, 20) + " " + esc(nameOf(D.pros, f.consigliato_da)) : "—") + '</td><td class="num"><button class="lnk" data-edit="forn:' + f.id + '">Modifica</button></td></tr>';
       }).join("") + "</tbody></table></div>";
   });
@@ -3169,7 +3055,7 @@ function vCliente() {
       row2("Referente", esc(c.referente || "—")) +
       row2("Email", c.email ? '<a href="mailto:' + esc(c.email) + '">' + esc(c.email) + "</a>" : "—") +
       row2("Telefono", c.telefono ? '<a href="tel:' + esc(String(c.telefono).replace(/\s+/g, "")) + '">' + esc(c.telefono) + "</a>" : "—") +
-      row2("Sito", c.sito ? '<a href="' + esc(c.sito) + '" target="_blank" rel="noopener">' + esc(c.sito) + "</a>" : "—") +
+      row2("Sito", c.sito ? '<a href="' + hrefSicuro(c.sito) + '" target="_blank" rel="noopener">' + esc(c.sito) + "</a>" : "—") +
       row2("P. IVA", esc(c.piva || "—")) + row2("Indirizzo", esc(c.indirizzo || "—")) +
       row2("Settore", esc(c.settore || "—")) + row2("Stato", '<span class="badge">' + esc(c.stato || "Lead") + "</span>") +
       row2("Chi lo segue", esc(nameOf(D.pros, c.owner_id))) + row2("Note", esc(c.note || "—")) +
@@ -3310,6 +3196,21 @@ function nomeDaUrl(u) {
     return dominioDi(u) || p.hostname;
   } catch (e) { return ""; }
 }
+/* Un indirizzo che finisce dentro un href non basta che sia scritto bene: deve
+   anche essere di un tipo che si puo' aprire senza sorprese. esc() impedisce
+   di uscire dall'attributo, ma «javascript:...» resta un href valido, e chi
+   l'ha scritto in un campo non e' detto sia chi ci clicca. Qui passano solo
+   http, https, mailto e tel; tutto il resto diventa un link che non va da
+   nessuna parte. */
+function hrefSicuro(u) {
+  var s = String(u || "").trim();
+  if (!s) return "#";
+  try {
+    var pr = new URL(s, location.href).protocol;
+    if (pr === "http:" || pr === "https:" || pr === "mailto:" || pr === "tel:") return esc(s);
+  } catch (e) { /* non e' un indirizzo: sotto */ }
+  return "#";
+}
 function urlValido(u) {
   try { var p = new URL(u); return p.protocol === "http:" || p.protocol === "https:"; } catch (e) { return false; }
 }
@@ -3332,7 +3233,7 @@ function rigaAllegato(m, opz) {
   var o = opz || {};
   var nome = m.path
     ? '<button class="lnk" data-file="' + m.id + '">' + esc(m.nome) + "</button>"
-    : m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome);
+    : m.url ? '<a href="' + hrefSicuro(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome);
   var sotto = m.path
     ? (m.dim ? (m.dim > 1048576 ? (m.dim / 1048576).toFixed(1) + " MB" : Math.round(m.dim / 1024) + " KB") : "")
     : (m.url ? dominioDi(m.url) : "");
@@ -3714,6 +3615,7 @@ function vSettings() {
   }
   return h + "</div>";
 }
+
 /* ---------------- progetti ---------------- */
 function vProgetti() {
   var vista = tab || "percliente";
@@ -4060,7 +3962,7 @@ function vCliProgetto() {
   h += "</div>";
   h += '<div class="card"><div class="cardhead"><h2>Materiali condivisi</h2></div>';
   h += (p.materiali || []).length ? '<table><tbody>' + p.materiali.map(function (m) {
-    return "<tr><td>" + (m.url ? '<a href="' + esc(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome)) + (m.note ? '<div class="faint">' + esc(m.note) + "</div>" : "") + '</td><td><span class="badge">' + esc(m.tipo || "—") + '</span></td><td class="num faint">' + dshort(m.data) + "</td></tr>";
+    return "<tr><td>" + (m.url ? '<a href="' + hrefSicuro(m.url) + '" target="_blank" rel="noopener">' + esc(m.nome) + "</a>" : esc(m.nome)) + (m.note ? '<div class="faint">' + esc(m.note) + "</div>" : "") + '</td><td><span class="badge">' + esc(m.tipo || "—") + '</span></td><td class="num faint">' + dshort(m.data) + "</td></tr>";
   }).join("") + "</tbody></table>" : vuoto("Nessun materiale condiviso per ora.");
   h += "</div>";
   /* le ore le vede solo se sono state condivise, e sempre e solo aggregate */
@@ -4113,17 +4015,33 @@ async function apprRispondi(id, esito) {
    Quello che viene capito te lo faccio vedere prima di creare qualsiasi cosa,
    perché un preventivo indovinato male è peggio di uno scritto a mano. */
 var IMP = null;
+/* La libreria che legge i PDF sta su un server non nostro. La versione e' gia'
+   fissata; qui si aggiunge l'impronta, cosi' se quel file cambiasse anche di un
+   byte il browser si rifiuterebbe di eseguirlo. Meglio un import che non parte
+   che un import che fa altro. Le impronte sono state calcolate scaricando i
+   file veri il 15 settembre 2026: se un giorno si cambia versione, vanno
+   rifatte, e se sbagli il caricamento fallisce subito invece che in silenzio. */
 var PDFJS = null;
+var PDFJS_LIB = {
+  js: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js",
+  js_impronta: "sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e",
+  worker: "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"
+};
 async function caricaPdfJs() {
   if (PDFJS) return PDFJS;
   await new Promise(function (ok, no) {
     var s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-    s.onload = ok; s.onerror = function () { no(new Error("libreria non raggiungibile")); };
+    s.src = PDFJS_LIB.js;
+    s.integrity = PDFJS_LIB.js_impronta;
+    s.crossOrigin = "anonymous";
+    s.referrerPolicy = "no-referrer";
+    s.onload = ok;
+    s.onerror = function () { no(new Error("libreria non raggiungibile, o cambiata rispetto a quella attesa")); };
     document.head.appendChild(s);
   });
   var lib = window.pdfjsLib;
-  lib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  if (!lib) throw new Error("la libreria dei PDF non si \u00e8 caricata");
+  lib.GlobalWorkerOptions.workerSrc = PDFJS_LIB.worker;
   PDFJS = lib;
   return lib;
 }
@@ -4201,7 +4119,7 @@ async function leggeIlServer(dati) {
 /* i numeri all'italiana: 1.234,56 è milleduecentotrentaquattro e cinquantasei */
 function numIt(s) {
   if (s == null) return null;
-  var t = String(s).replace(/[€\s ]/g, "");
+  var t = String(s).replace(/[€\s ]/g, "");
   if (!/[\d]/.test(t)) return null;
   if (t.indexOf(",") > -1) t = t.replace(/\./g, "").replace(",", ".");
   else if ((t.match(/\./g) || []).length > 1) t = t.replace(/\./g, "");
@@ -4677,8 +4595,10 @@ async function creaDaImport() {
   try {
     var path = kid + "/" + Date.now() + "-" + IMP.file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     var up = await sb.storage.from("materiali").upload(path, IMP.file);
-    if (!up.error) await sb.from("materiali").insert({ commessa_id: kid, nome: IMP.file.name, path: path,
-      dim: IMP.file.size, tipo: "Contratto", visibile_cliente: false, caricato_da: me.pro_id, note: "Il preventivo originale da cui è stato importato" });
+    if (up.error) toast("Il preventivo è stato importato, ma il file di partenza non si è caricato: " + erroreUmano(up.error), true);
+    else await fatto(sb.from("materiali").insert({ commessa_id: kid, nome: IMP.file.name, path: path,
+      dim: IMP.file.size, tipo: "Contratto", visibile_cliente: false, caricato_da: me.pro_id, note: "Il preventivo originale da cui è stato importato" }),
+      "allegare il preventivo di partenza");
   } catch (e) { }
   await logEv(kid, "Importato da " + IMP.file.name);
   await reload(["com", "righe", "cli", "mat", "ev", "pag"]);
@@ -5224,7 +5144,7 @@ function schedaPrenota(p) {
   var f = function (campo, et, ctrl, aiuto) { return '<div class="qfield"><label>' + et + "</label>" + ctrl + (aiuto ? '<div class="faint" style="font-size:12px;margin-top:3px">' + aiuto + "</div>" : "") + "</div>"; };
   var h = '<div class="card" style="background:' + (c.attivo ? "var(--green-soft)" : "var(--cream)") + ';border-color:transparent"><div class="cardhead"><h2>' + (c.attivo ? "Il tuo link è attivo" : "Il link è spento") + '</h2>' +
     '<label class="chk"><input type="checkbox" data-pcfg="attivo"' + (c.attivo ? " checked" : "") + '><span>accetta prenotazioni</span></label></div>' +
-    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><code style="font-size:13px">' + esc(url) + '</code><button class="btn sm ghost" data-copia="' + esc(url) + '">Copia</button><a class="btn sm ghost" href="' + esc(url) + '" target="_blank" rel="noopener">Apri</a></div>' +
+    '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><code style="font-size:13px">' + esc(url) + '</code><button class="btn sm ghost" data-copia="' + esc(url) + '">Copia</button><a class="btn sm ghost" href="' + hrefSicuro(url) + '" target="_blank" rel="noopener">Apri</a></div>' +
     '<p class="faint" style="margin-top:8px">Mettilo nella firma delle email, sul sito, nei messaggi: chi lo apre vede solo gli orari liberi.</p></div>';
   h += '<div class="card"><div class="grid g2">' +
     f("slug", "Indirizzo del link", '<input data-pcfg="slug" value="' + esc(c.slug || "") + '">', "solo lettere, numeri e trattini: crm.giraffastudio.it/#/a/<b>" + esc(c.slug || "") + "</b>") +
@@ -5293,7 +5213,7 @@ async function paginaPrenota(slug) {
       var ics = "data:text/calendar;charset=utf-8," + encodeURIComponent(icsTesto(x));
       box.innerHTML = '<div class="pubwrap prenota"><div class="card" style="max-width:640px;margin:40px auto;text-align:center"><div class="brandmark"><i class="mark"></i></div><h2>Prenotato</h2>' +
         '<p style="margin:10px 0 4px"><b>' + etichettaGiornoPub(x.data) + " dalle " + x.ora + " alle " + x.fine + "</b></p><p class=\"faint\">con " + esc(x.con) + (x.videocall ? " · in videocall" : "") + "</p>" +
-        (x.videocall ? '<p style="margin:14px 0"><a class="btn" href="' + esc(x.videocall) + '" target="_blank" rel="noopener">Link della videocall</a></p><p class="faint">Salvalo: è lo stesso link che troverai nel calendario.</p>' : "") +
+        (x.videocall ? '<p style="margin:14px 0"><a class="btn" href="' + hrefSicuro(x.videocall) + '" target="_blank" rel="noopener">Link della videocall</a></p><p class="faint">Salvalo: è lo stesso link che troverai nel calendario.</p>' : "") +
         '<p style="margin-top:14px"><a class="btn ghost" download="call-' + esc(x.data) + '.ics" href="' + ics + '">Aggiungi al calendario (.ics)</a></p>' +
         '<p class="faint" style="margin-top:18px">Se devi spostare o annullare, rispondi a ' + esc(x.con) + '.</p></div></div>';
     });
@@ -5375,7 +5295,8 @@ async function trascriviParti(rid, parti) {
     var testo = testi.join("\n").trim();
     if (!testo) throw new Error("non ho sentito niente: audio vuoto");
     var tutto = (r.trascrizione ? r.trascrizione + "\n\n— — —\n\n" : "") + testo;
-    await sb.from("riunioni").update({ trascrizione: tutto }).eq("id", rid); r.trascrizione = tutto;
+    if (!await fatto(sb.from("riunioni").update({ trascrizione: tutto }).eq("id", rid), "salvare la trascrizione")) return;
+    r.trascrizione = tutto;
     REC.stato = "Preparo appunti, decisioni e prossimi passi…"; render();
     await riassumiRiunione(rid, testo);
   } catch (e) {
@@ -5561,7 +5482,7 @@ function foglioA4(k, o) {
     '<div class="dbright">' +
     '<button class="btn sm ghost" data-mprev-apri="' + k.id + '">Modelli</button>' +
     (nas.length ? '<select class="altre" data-blocco-mostra="' + k.id + '"><option value="">Rimetti un blocco…</option>' + BLOCCHI.filter(function (b) { return nas.indexOf(b[0]) > -1; }).map(function (b) { return '<option value="' + b[0] + '">' + b[1] + "</option>"; }).join("") + "</select>" : "") +
-    (cl.email ? (postaConn() ? '<button class="btn sm ghost" data-gmail-prev="' + k.id + '">Invia per email</button>' : '<a class="btn sm ghost" href="' + esc(mailtoPreventivo(k, cl)) + '">Invia per email</a>') : "") +
+    (cl.email ? (postaConn() ? '<button class="btn sm ghost" data-gmail-prev="' + k.id + '">Invia per email</button>' : '<a class="btn sm ghost" href="' + hrefSicuro(mailtoPreventivo(k, cl)) + '">Invia per email</a>') : "") +
     (k.stato === "Bozza" ? '<button class="btn sm ghost" data-del="com:' + k.id + '" title="Elimina questa bozza">Elimina bozza</button>' : '<button class="btn sm ghost" data-route="commessa|' + k.id + '|incarico">Incarico' + (incOf(k.id).some(function (i) { return i.stato === "Firmata"; }) ? " ✓" : "") + "</button>") +
     '<button class="btn sm" data-stampa="' + esc(nomeFile(k)) + '">Stampa / PDF</button></div></div>';
 
@@ -5865,7 +5786,7 @@ function schedaAnalisi(a) {
     (d.sede ? row2("Sede", esc(d.sede)) : "") +
     (d.attivita ? row2("Attività", esc(d.attivita)) : "") +
     (d.dimensione ? row2("Dimensione", esc(d.dimensione)) : "") +
-    (d.sito ? row2("Sito", '<a href="' + esc(d.sito) + '" target="_blank" rel="noopener noreferrer">' + esc(d.sito) + "</a>") : "") +
+    (d.sito ? row2("Sito", '<a href="' + hrefSicuro(d.sito) + '" target="_blank" rel="noopener noreferrer">' + esc(d.sito) + "</a>") : "") +
     ((d.contatti || []).length ? row2("Contatti", esc(d.contatti.join(" · "))) : "") +
     "</tbody></table>";
   if ((d.segnali || []).length) {
@@ -5873,20 +5794,20 @@ function schedaAnalisi(a) {
     h += (d.segnali || []).map(function (s) {
       return '<div class="propr"><span class="propi" style="background:' + (s.tipo === "buono" ? "var(--green-soft);color:var(--green)" : "var(--amber-soft);color:var(--amber)") + '">' +
         (s.tipo === "buono" ? "+" : "!") + '</span><span class="propt"><b>' + esc(s.cosa) + "</b>" +
-        (s.url ? '<a class="faint" href="' + esc(s.url) + '" target="_blank" rel="noopener noreferrer">' + esc(dominioDi(s.url) || s.url) + "</a>" : "") + "</span></div>";
+        (s.url ? '<a class="faint" href="' + hrefSicuro(s.url) + '" target="_blank" rel="noopener noreferrer">' + esc(dominioDi(s.url) || s.url) + "</a>" : "") + "</span></div>";
     }).join("");
   }
   if ((d.notizie || []).length) {
     h += '<div class="cardhead" style="margin-top:18px"><h2>Notizie e articoli</h2></div><table><tbody>' +
       d.notizie.map(function (n) {
-        return "<tr><td><a href=\"" + esc(n.url) + '" target="_blank" rel="noopener noreferrer"><b>' + esc(n.titolo) + "</b></a>" +
+        return "<tr><td><a href=\"" + hrefSicuro(n.url) + '" target="_blank" rel="noopener noreferrer"><b>' + esc(n.titolo) + "</b></a>" +
           '<div class="faint">' + esc(n.cosa || "") + "</div></td><td class=\"faint num\">" + esc(n.quando || "") + "</td></tr>";
       }).join("") + "</tbody></table>";
   }
   if ((d.fonti || []).length) {
     h += '<div class="cardhead" style="margin-top:18px"><h2>Da dove viene</h2></div><ul class="fontil">' +
       d.fonti.map(function (f) {
-        return '<li><a href="' + esc(f.url) + '" target="_blank" rel="noopener noreferrer">' + esc(f.titolo || f.url) + "</a> <span class=\"faint\">" + esc(dominioDi(f.url) || "") + "</span></li>";
+        return '<li><a href="' + hrefSicuro(f.url) + '" target="_blank" rel="noopener noreferrer">' + esc(f.titolo || f.url) + "</a> <span class=\"faint\">" + esc(dominioDi(f.url) || "") + "</span></li>";
       }).join("") + "</ul>";
   }
   return h + "</div>";
@@ -5912,6 +5833,9 @@ async function segnaErrore(msg, dett) {
     if (chiave === ULTERR) return;
     ULTERR = chiave;
     if (!sb || !user) return;
+    /* Questa e' l'unica scrittura che puo' fallire in silenzio, ed e' voluto:
+       e' il registro degli errori. Se fallisse rumorosamente, un errore ne
+       genererebbe un altro e si girerebbe in tondo. */
     await sb.from("errori").insert({
       pagina: location.hash || "/", messaggio: String(msg).slice(0, 500),
       dettaglio: String(dett || "").slice(0, 2000),
@@ -6206,6 +6130,7 @@ function openPortale(id) {
     '<p class="faint" style="margin-top:14px">È quello che vede il cliente dal suo accesso: nessun costo interno, nessun margine.</p>' +
     '<div class="actions noprint"><button class="btn ghost" data-close>Chiudi</button><button class="btn" onclick="window.print()">Stampa / PDF</button></div></div>');
 }
+
 /* ---------------- form engine ---------------- */
 function opt(list, val, f) { return '<option value=""></option>' + list.map(function (o) { return '<option value="' + o.id + '"' + (val === o.id ? " selected" : "") + ">" + esc(o[f || "nome"]) + "</option>"; }).join(""); }
 function sel(list, val) { return list.map(function (o) { return '<option value="' + esc(o) + '"' + (val === o ? " selected" : "") + ">" + esc(o) + "</option>"; }).join(""); }
@@ -6452,7 +6377,17 @@ var FORMS = {
       selField("perm_accessi", "Accessi delle persone", sel(["no", "si"], r.perm_accessi ? "si" : "no")) + "</div>";
   }}
 };
-function modal(html) { el("#modal").innerHTML = '<div class="modal">' + html + "</div>"; }
+function modal(html) {
+  MODAL_PRIMA = document.activeElement;
+  var n = el("#modal");
+  n.innerHTML = '<div class="modal" role="dialog" aria-modal="true">' + html + "</div>";
+  /* il primo campo da riempire, se c'e'; altrimenti la finestra stessa, cosi'
+     chi legge con la sintesi vocale sente il titolo invece del nulla */
+  var box = n.querySelector(".box") || n.querySelector(".modal");
+  var dentro = n.querySelector("input:not([type=hidden]):not([disabled]), textarea, select, button");
+  if (dentro) { try { dentro.focus(); } catch (e) { } }
+  else if (box) { box.setAttribute("tabindex", "-1"); try { box.focus(); } catch (e) { } }
+}
 
 /* Micro-azioni: restano in finestra rapida. Tutto il resto è una pagina vera. */
 var RAPIDI = { ore: 1, pren: 1, ev: 1, inter: 1, mat: 1, appr: 1, costi: 1 };
@@ -6623,11 +6558,15 @@ async function oreDelViaggio(t) {
     data: t.data, ore: ore, tariffa: tariffa, fatturabile: !!t.addebitata,
     descrizione: "Viaggio — " + (t.destinazione || "trasferta") };
   if (t.ore_id) {
-    if (ore > 0) await sb.from("ore").update(riga).eq("id", t.ore_id);
-    else { await sb.from("ore").delete().eq("id", t.ore_id); await sb.from("trasferte").update({ ore_id: null }).eq("id", t.id); }
+    if (ore > 0) await fatto(sb.from("ore").update(riga).eq("id", t.ore_id), "aggiornare le ore della trasferta");
+    else {
+      await fatto(sb.from("ore").delete().eq("id", t.ore_id), "togliere le ore della trasferta");
+      await fatto(sb.from("trasferte").update({ ore_id: null }).eq("id", t.id), "staccare le ore dalla trasferta");
+    }
   } else if (ore > 0) {
     var ro = await sb.from("ore").insert(riga).select().single();
-    if (!ro.error) await sb.from("trasferte").update({ ore_id: ro.data.id }).eq("id", t.id);
+    if (ro.error) toast("Non sono riuscito a registrare le ore del viaggio: " + erroreUmano(ro.error), true);
+    else await fatto(sb.from("trasferte").update({ ore_id: ro.data.id }).eq("id", t.id), "collegare le ore alla trasferta");
   }
   await reload(["ore", "trasf"]);
 }
@@ -6649,7 +6588,7 @@ async function duplicaDavvero(id, titolo, cliente_id) {
   var fs = fasiOf(k.id).map(function (f, i) {
     return { commessa_id: nid, nome: f.nome, ordine: f.ordine || i + 1, stato: "Da iniziare", avanzamento: 0, visibile_cliente: f.visibile_cliente, inizio: iso(new Date(base.getTime() + i * 10 * 86400000)), fine: iso(new Date(base.getTime() + (i + 1) * 10 * 86400000)) };
   });
-  if (fs.length) await sb.from("fasi").insert(fs);
+  if (fs.length && !await fatto(sb.from("fasi").insert(fs), "creare le fasi del lavoro")) return;
   var mappa = {};
   var pgs = progOf(k.id);
   for (var pi = 0; pi < pgs.length; pi++) {
@@ -6661,7 +6600,7 @@ async function duplicaDavvero(id, titolo, cliente_id) {
       qty: x.qty, unita: x.unita, prezzo_unit: x.prezzo_unit, costo_unit: x.costo_unit, sconto: x.sconto, opzionale: x.opzionale,
       ricorrente: x.ricorrente, periodo: x.periodo, cicli: x.cicli, ore_stimate: x.ore_stimate, assegnato_id: x.assegnato_id, stato: "Da iniziare" };
   });
-  if (rg.length) await sb.from("righe").insert(rg);
+  if (rg.length && !await fatto(sb.from("righe").insert(rg), "creare le voci del preventivo")) return;
   await logEv(nid, "Preventivo creato dal modello “" + k.titolo + "”");
   await reload(["com", "fasi", "righe", "prog", "ev"]);
   closeModal(); toast("Preventivo duplicato"); go("commessa", nid, "servizi");
@@ -6673,7 +6612,7 @@ async function delRow(entity, id) {
      se restasse, resterebbe un costo senza più niente che lo spieghi */
   if (entity === "trasf") {
     var tv = by(D.trasf, id);
-    if (tv && tv.ore_id) await sb.from("ore").delete().eq("id", tv.ore_id);
+    if (tv && tv.ore_id) await fatto(sb.from("ore").delete().eq("id", tv.ore_id), "togliere le ore collegate");
   }
   var r = await sb.from(TB[tbk]).delete().eq(key, id);
   if (r.error) {
@@ -7363,7 +7302,8 @@ async function clicApp(e, t, d) {
       data: today(), validita: 30, iva: 22, sezioni: [], tipo_prezzo: "Fisso"
     }).select().single();
     if (ri.error) { toast(erroreUmano(ri.error), true); return; }
-    await sb.from("radar_occasioni").update({ stato: "preventivo", commessa_id: ri.data.id }).eq("id", oc.id);
+    await fatto(sb.from("radar_occasioni").update({ stato: "preventivo", commessa_id: ri.data.id }).eq("id", oc.id),
+      "segnare l" + "'" + "occasione come gi\u00e0 usata");
     await reload(["com", "rocc"]);
     DOCNUOVO = ri.data.id;
     toast("Preventivo aperto e collegato all'occasione");
@@ -7435,7 +7375,8 @@ async function clicApp(e, t, d) {
       if (rc1.error) { toast(erroreUmano(rc1.error), true); return; }
       cid1 = rc1.data.id; await reload(["cli"]);
     }
-    await sb.from("interazioni").insert({ cliente_id: cid1, pro_id: me.pro_id, tipo: "Nota", data: today(), testo: "Richiesta dal sito: " + (rq1.messaggio || "—") });
+    await fatto(sb.from("interazioni").insert({ cliente_id: cid1, pro_id: me.pro_id, tipo: "Nota", data: today(), testo: "Richiesta dal sito: " + (rq1.messaggio || "—") }),
+      "scrivere la nota sul cliente");
     await salvaSubito("rich", rq1.id, { stato: "Gestita", gestita_da: me.pro_id, cliente_id: cid1 });
     await reload(["inter"]); toast(gia1 ? "Cliente già in anagrafica: ho aggiunto la nota" : "Cliente creato come Lead"); go("cliente", cid1, "anagrafica"); return;
   }
@@ -7470,8 +7411,8 @@ async function clicApp(e, t, d) {
   if (d.postlike) {
     if (!me.pro_id) { toast("Il tuo utente non è collegato al pool", true); return; }
     var rl = hoReagito(d.postlike)
-      ? await sb.from("post_reaz").delete().eq("post_id", d.postlike).eq("pro_id", me.pro_id)
-      : await sb.from("post_reaz").insert({ post_id: d.postlike, pro_id: me.pro_id });
+      ? await fatto(sb.from("post_reaz").delete().eq("post_id", d.postlike).eq("pro_id", me.pro_id), "togliere il tuo segno")
+      : await fatto(sb.from("post_reaz").insert({ post_id: d.postlike, pro_id: me.pro_id }), "mettere il tuo segno");
     if (rl.error) { toast(erroreUmano(rl.error), true); return; }
     await reload(["reaz"]); render(); return;
   }
@@ -7764,7 +7705,7 @@ async function apriIlLavoro(kid) {
       }).select();
       if (np.error) { toast(erroreUmano(np.error), true); return fatti; }
       pid = np.data[0].id; esistenti.push(np.data[0]); fatti.p++;
-      if (!r.progetto_id) await sb.from("righe").update({ progetto_id: pid }).eq("id", r.id);
+      if (!r.progetto_id) await fatto(sb.from("righe").update({ progetto_id: pid }).eq("id", r.id), "attaccare la voce al progetto");
     } else fatti.gia++;
     /* un lavoro già consegnato non ha bisogno di attività finte già fatte */
     if (fatto && !ricorrente) continue;
@@ -7806,7 +7747,7 @@ async function apriIlLavoro(kid) {
     }
   }
   if (fatti.p || fatti.a) await logEv(kid, "Lavoro aperto: " + fatti.p + " progetti e " + fatti.a + " attività");
-  await sb.from("commesse").update({ avviato: true }).eq("id", kid);
+  if (!await fatto(sb.from("commesse").update({ avviato: true }).eq("id", kid), "avviare il lavoro")) return;
   await reload(["prog", "task", "righe", "com", "ev"]);
   return fatti;
 }
@@ -7872,8 +7813,8 @@ async function cambiaStato(kid, val, quando) {
 async function chiudiLavoro(kid) {
   var pg = progOf(kid).filter(function (p) { return p.stato !== "Completato"; }).map(function (p) { return p.id; });
   var tk = taskOf(kid).filter(function (t) { return t.stato !== "Fatto"; }).map(function (t) { return t.id; });
-  if (pg.length) await sb.from("progetti").update({ stato: "Completato", avanzamento: 100 }).in("id", pg);
-  if (tk.length) await sb.from("task").update({ stato: "Fatto", completata_il: new Date().toISOString() }).in("id", tk);
+  if (pg.length) await fatto(sb.from("progetti").update({ stato: "Completato", avanzamento: 100 }).in("id", pg), "chiudere i progetti");
+  if (tk.length) await fatto(sb.from("task").update({ stato: "Fatto", completata_il: new Date().toISOString() }).in("id", tk), "chiudere le attivit\u00e0");
   if (pg.length || tk.length) await logEv(kid, "Chiusi " + pg.length + " progetti e " + tk.length + " attività col preventivo");
   await reload(["prog", "task"]);
   /* Un lavoro non si chiude in silenzio con dei soldi ancora fuori. Non si
@@ -7892,9 +7833,9 @@ async function sospendiLavoro(kid) {
   var tk = taskOf(kid).filter(function (t) { return t.stato !== "Fatto"; }).map(function (t) { return t.id; });
   var pg = pagOf(kid).filter(function (p) { return p.stato !== "Incassato"; }).map(function (p) { return p.id; });
   var pr = progOf(kid).filter(function (p) { return p.stato !== "Completato"; }).map(function (p) { return p.id; });
-  if (tk.length) await sb.from("task").delete().in("id", tk);
-  if (pg.length) await sb.from("pagamenti").delete().in("id", pg);
-  if (pr.length) await sb.from("progetti").update({ stato: "Sospeso" }).in("id", pr);
+  if (tk.length) await fatto(sb.from("task").delete().in("id", tk), "togliere le attivit\u00e0 aperte");
+  if (pg.length) await fatto(sb.from("pagamenti").delete().in("id", pg), "togliere le scadenze da incassare");
+  if (pr.length) await fatto(sb.from("progetti").update({ stato: "Sospeso" }).in("id", pr), "sospendere i progetti");
   await reload(["task", "pag", "prog"]);
 }
 /* Quando cambia un'attività, il progetto sopra si accorge: tutte fatte → completato,
@@ -7943,7 +7884,7 @@ async function scadenzeDaAccettazione(kid) {
 function aggGiorni(d, n) { var x = new Date(d + "T00:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); }
 async function accettaPreventivo(kid) {
   var k0 = by(D.com, kid), c0 = k0 ? by(D.cli, k0.cliente_id) : null;
-  if (c0 && (c0.stato === "Lead" || c0.stato === "Dormiente")) { await sb.from("clienti").update({ stato: "Attivo" }).eq("id", c0.id); await reload(["cli"]); }
+  if (c0 && (c0.stato === "Lead" || c0.stato === "Dormiente")) { await fatto(sb.from("clienti").update({ stato: "Attivo" }).eq("id", c0.id), "riportare il cliente fra gli attivi"); await reload(["cli"]); }
   var f = await apriIlLavoro(kid);
   var n = await scadenzeDaAccettazione(kid);
   toast("Accettato. " + esitoLavoro(f) + (n ? " Create " + n + " scadenze di pagamento." : ""));
@@ -7972,7 +7913,7 @@ async function stopTimer(zitto, oreForzate) {
   var tm = timerMio(); if (!tm) return;
   var ore = oreForzate != null ? oreForzate : Math.round((Date.now() - new Date(tm.iniziato).getTime()) / 360000) / 10;
   var giorno = iso(new Date(tm.iniziato));
-  await sb.from("timer").delete().eq("pro_id", me.pro_id);
+  await fatto(sb.from("timer").delete().eq("pro_id", me.pro_id), "fermare il cronometro");
   if (ore >= 0.1) {
     var p = by(D.pros, me.pro_id);
     var r = await sb.from("ore").insert({ pro_id: me.pro_id, commessa_id: tm.commessa_id, progetto_id: tm.progetto_id || null, task_id: tm.task_id || null, data: giorno, ore: ore, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: tm.task_id ? nameOf(D.task, tm.task_id, "titolo") : tm.progetto_id ? nameOf(D.prog, tm.progetto_id) : "Sessione di lavoro" });
@@ -7985,10 +7926,10 @@ async function salvaTs(pid, data, val) {
   var pg = by(D.prog, pid);
   var righe = D.ore.filter(function (o) { return o.pro_id === me.pro_id && o.progetto_id === pid && o.data === data; });
   var v = Math.round((parseFloat(String(val).replace(",", ".")) || 0) * 10) / 10;
-  if (v <= 0) { if (righe.length) await sb.from("ore").delete().in("id", righe.map(function (x) { return x.id; })); }
+  if (v <= 0) { if (righe.length) await fatto(sb.from("ore").delete().in("id", righe.map(function (x) { return x.id; })), "cancellare le ore"); }
   else if (righe.length) {
-    await sb.from("ore").update({ ore: v }).eq("id", righe[0].id);
-    if (righe.length > 1) await sb.from("ore").delete().in("id", righe.slice(1).map(function (x) { return x.id; }));
+    await fatto(sb.from("ore").update({ ore: v }).eq("id", righe[0].id), "salvare le ore");
+    if (righe.length > 1) await fatto(sb.from("ore").delete().in("id", righe.slice(1).map(function (x) { return x.id; })), "unire le righe doppie");
   } else {
     var p = by(D.pros, me.pro_id);
     var r = await sb.from("ore").insert({ pro_id: me.pro_id, progetto_id: pid, commessa_id: pg ? pg.commessa_id : null, data: data, ore: v, tariffa: p ? p.tariffa_oraria : 0, fatturabile: true, descrizione: pg ? pg.nome : "Ore della settimana" });
@@ -8071,7 +8012,8 @@ async function invioModulo(e, f) {
     var rm1 = await sb.from("messaggi").insert({ canale_id: f.dataset.msg, pro_id: me.pro_id, testo: tm });
     if (rm1.error) { toast(erroreUmano(rm1.error), true); return; }
     f.testo.value = "";
-    await sb.from("letture").upsert({ canale_id: f.dataset.msg, pro_id: me.pro_id, letto_il: new Date().toISOString() }, { onConflict: "canale_id,pro_id" });
+    await fatto(sb.from("letture").upsert({ canale_id: f.dataset.msg, pro_id: me.pro_id, letto_il: new Date().toISOString() }, { onConflict: "canale_id,pro_id" }),
+      "segnare il canale come letto");
     await reload(["msg", "lett"]); render(); return;
   }
   if (f.dataset.rigaSave) {
@@ -8343,7 +8285,7 @@ document.addEventListener("focusout", async function (e) {
   /* le sezioni stanno tutte in un campo solo: lo riscrivo intero */
   if (t && t.dataset && t.dataset.sez) {
     var ps = t.dataset.sez.split("|"), ks = by(D.com, ps[0]); if (!ks) return;
-    var testoS = (t.innerText || "").replace(/ /g, " ").replace(/\s+$/, "");
+    var testoS = (t.innerText || "").replace(/ /g, " ").replace(/\s+$/, "");
     if (!t.dataset.multi) testoS = testoS.replace(/\s*\n\s*/g, " ").trim();
     if (t.dataset.prima !== undefined && t.dataset.prima === testoS) return;
     var lista = sezioniDi(ks).map(function (s) { return { t: s.t, d: s.d, x: s.x, v: (s.v || []).slice() }; });
@@ -8542,7 +8484,7 @@ document.addEventListener("change", async function (e) {
   if (e.target.id === "fileinp" && e.target.files && e.target.files.length) {
     var dz = el("#drop");
     await uploadFile(e.target.files, dz ? dz.dataset.ctxAll : ctxAll(current));
-}
+  }
 });
 
 document.addEventListener("dragover", function (e) {
