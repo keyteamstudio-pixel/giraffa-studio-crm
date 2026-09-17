@@ -78,17 +78,39 @@ nessuna tabella — riceve i suoi dati solo dalle funzioni `portale()` e
 `portale_rispondi()`. La cosa è stata verificata impersonando ogni ruolo dentro
 il database, e la verifica ha trovato e chiuso una perdita vera.
 
-### Creare un accesso
+### Creare un accesso — per invito
 
-1. Supabase → Authentication → Users → **Add user**, con *Auto Confirm*
-   spuntato, e imposta una password.
+Il modo giusto è l'invito: la password **la sceglie la persona**, non passa da
+te, non gira su WhatsApp e tu non la conosci. Il gestionale è gia' pronto a
+riceverlo: il link d'invito arriva con `type=invite` e `recupero.js` lo
+riconosce, mostra la schermata «Nuova password» e poi fa entrare.
+
+1. Supabase → Authentication → Users → **Invite user**, e metti la sua email.
+   L'utente viene creato subito, in stato *invited*: lo **User UID** esiste
+   gia' da questo momento.
 2. Copia lo **User UID**.
 3. Nel CRM → Impostazioni → Membri e accessi → **+ Collega utente**: incolla
    l'UID, scegli il ruolo, collega la scheda del professionista oppure il
    cliente.
+4. Solo adesso digli di aprire l'email. Cliccando sceglie la password ed entra
+   in un gestionale gia' abilitato.
 
-Finché il passo 3 non è fatto, la persona entra ma non vede niente: il
-gestionale glielo dice, invece di mostrare una pagina vuota.
+L'ordine conta: se fa il passo 4 prima del 3 entra e legge «Accesso non ancora
+abilitato» — non e' un guasto, ma e' una brutta prima impressione.
+
+Il link dell'invito **scade** (di norma entro 24 ore). Se scade, dal pannello
+si rimanda: Users → i tre puntini sulla riga → *Send invite*.
+
+**Prima del primo invito, controlla dove punta il link.** Supabase →
+Authentication → URL Configuration: il *Site URL* deve essere
+`https://crm.giraffastudio.it`. Se e' rimasto `http://localhost:3000` — che e'
+il valore di partenza — l'email arriva ma il link non porta da nessuna parte.
+
+### Creare un accesso — a mano (sconsigliato)
+
+Si puo' anche fare **Add user** con *Auto Confirm* e una password decisa da te,
+ma vuol dire che quella password la conosci, e che deve viaggiare in qualche
+modo fino alla persona. Usalo solo se l'invito per email non e' praticabile.
 
 ---
 
