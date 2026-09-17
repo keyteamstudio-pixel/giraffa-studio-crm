@@ -2690,7 +2690,19 @@ function vStudio() {
    e quando quella fonte e' stata controllata l'ultima volta. La decisione
    resta tua, e la responsabilita' pure. */
 function radarMie() { return (D.rmie || []).filter(function (r) { return r.pro_id === me.pro_id; }); }
-function radarNuove() { return radarMie().filter(function (r) { return r.stato === "nuova"; }); }
+/* Il numero accanto alla voce di menu deve contare solo quello che, cliccando,
+   si trova davvero. Contava tutte le segnalazioni nuove, comprese quelle che
+   riguardano i clienti: da quando quella scheda e' chiusa in attesa
+   dell'informativa, il menu diceva «1» e la pagina non mostrava niente. Un
+   numero che non porta da nessuna parte e' peggio di nessun numero: la prima
+   volta ci clicchi, la seconda smetti di fidarti del menu. */
+function radarNuove() {
+  var okCli = radarClientiOk();
+  return radarMie().filter(function (r) {
+    if (r.stato !== "nuova") return false;
+    return r.per_chi === "clienti" ? okCli : true;
+  });
+}
 function radarOcc(sid) {
   /* Le occasioni prodotte prima che la scheda venisse chiusa restano nel
      database: cancellarle non e' compito di una funzione di lettura. Ma
