@@ -17,7 +17,11 @@
    per dirlo. Il giudizio lo fa la persona, con davanti la fonte e la data.
 
    Il filtro secco l'ha gia' fatto il database (radar_candidati): qui
-   arrivano solo i pochi che potevano avere senso. */
+   arrivano solo i pochi che potevano avere senso.
+
+   E il giudizio si ricorda, anche quando e' un no: vedi piu' sotto. Senza
+   quello, ogni mattina si ripagava all'AI la stessa risposta sugli stessi
+   documenti. */
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -281,7 +285,32 @@ Deno.serve(async (req: Request) => {
             .filter((x) => idClienti.has(String(x.cliente_id)));
         }
 
-        if (!tocca && !occasioni.length) { scartate++; continue; }
+        /* Il «no» si scrive, esattamente come quando la persona preme
+           «Non mi riguarda». Prima non si scriveva niente, e il filtro secco
+           (radar_candidati) salta solo gli atti che hanno gia' una riga: il
+           risultato era che ogni mattina si ripagava all'AI lo stesso giudizio
+           sugli stessi documenti, per sempre. Con 14 schede e due profili
+           erano quasi trenta chiamate al giorno per riottenere lo stesso no.
+           Lo stato «scartata» non compare da nessuna parte nell'interfaccia,
+           e se l'atto cambia versione torna comunque a farsi guardare. */
+        if (!tocca && !occasioni.length) {
+          scartate++;
+          await db("radar_segnalazioni?on_conflict=pro_id,atto_id", {
+            method: "POST",
+            headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+            body: JSON.stringify({
+              pro_id: proId, atto_id: c.atto_id,
+              punteggio: 0,
+              perche: "Guardato il " + new Date().toISOString().slice(0, 10) + ": non sembra riguardarti.",
+              combaciano: [], mancano: [], da_verificare: r.da_verificare || [],
+              stato: "scartata",
+              motivo_scarto: String(r.perche || "").slice(0, 300),
+              per_chi: "me",
+              versione_atto: Number(atto.versione || 1),
+            }),
+          });
+          continue;
+        }
 
         const perChi = tocca && occasioni.length ? "entrambi" : (tocca ? "me" : "clienti");
         const messe = await db("radar_segnalazioni?on_conflict=pro_id,atto_id", {
