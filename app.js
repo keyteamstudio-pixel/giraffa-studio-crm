@@ -5606,6 +5606,22 @@ function foglioA4(k, o) {
    un riassunto, senza tariffe né costi interni. Se propone di fare qualcosa,
    la fa solo dopo che hai premuto tu. */
 var CHAT = [], CHATOP = false, CHATBUSY = false;
+/* Tutto quello che l'assistente sa quando gli fai una domanda.
+   Ogni domanda rimanda l'intero quadro: e' quello che gli permette di
+   rispondere bene, ma cresce con i tuoi dati, e cresce a ogni domanda.
+   Oggi sono poche migliaia di parole; con dieci volte i clienti di adesso
+   sarebbero decine di migliaia, ogni volta.
+   Quindi si taglia dove non serve: i lavori chiusi da piu' di un anno e le
+   rate gia' incassate da piu' di un anno non aiutano a rispondere a «cosa
+   devo fare» o «chi mi deve dei soldi», e sono la parte che cresce senza
+   fermarsi. I conti riassunti (ore per mese, incassi per mese) restano
+   interi: sono compatti e non crescono allo stesso modo. */
+function dentroUnAnno(data) {
+  if (!data) return true;               /* senza data, nel dubbio la tengo */
+  var limite = new Date();
+  limite.setFullYear(limite.getFullYear() - 1);
+  return String(data) >= iso(limite);
+}
 function datiPerAssistente() {
   var d = {
     oggi: today(),
@@ -5613,7 +5629,10 @@ function datiPerAssistente() {
     clienti: fcli().map(function (c) {
       return { id: c.id, nome: c.nome, settore: c.settore, stato: c.stato, referente: c.referente, email: c.email, piva: c.piva };
     }),
-    preventivi: fcom().map(function (k) {
+    preventivi: fcom().filter(function (k) {
+      /* i chiusi da oltre un anno restano nei conti riassunti, non nell'elenco */
+      return STATI_CHIUSI.indexOf(k.stato) < 0 || dentroUnAnno(k.scadenza || dataDoc(k));
+    }).map(function (k) {
       var c = calc(k);
       return { id: k.id, titolo: k.titolo, cliente: nameOf(D.cli, k.cliente_id), stato: k.stato,
         data: dataDoc(k), numero: k.numero, valore: c.tot, avanzamento: avanzamento(k.id),
@@ -5636,7 +5655,9 @@ function datiPerAssistente() {
       fore().forEach(function (o) { var k = String(o.data || "").slice(0, 7); if (k) m[k] = Math.round(((m[k] || 0) + (+o.ore || 0)) * 10) / 10; });
       return m;
     })(),
-    pagamenti: D.pag.filter(function (p) { return can(p.commessa_id); }).map(function (p) {
+    pagamenti: D.pag.filter(function (p) {
+      return can(p.commessa_id) && (p.stato !== "Incassato" || dentroUnAnno(p.pagato_il || p.scadenza));
+    }).map(function (p) {
       return { nome: p.nome, preventivo: nameOf(D.com, p.commessa_id, "titolo"), cliente: nameOf(D.cli, (by(D.com, p.commessa_id) || {}).cliente_id), importo: p.importo, scadenza: p.scadenza, stato: p.stato, incassato_il: p.pagato_il };
     }),
     incassi_per_mese: (function () {
