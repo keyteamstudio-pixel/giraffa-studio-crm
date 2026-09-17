@@ -111,10 +111,20 @@ aggiornata, non duplicata.
 non lascia le cose a metà: l'utente è creato e abilitato lo stesso, e ti
 mostra il link da mandare a mano. Te lo dice chiaramente.
 
-**Prima del primo invito, controlla dove punta il link.** Supabase →
-Authentication → URL Configuration: il *Site URL* deve essere
-`https://crm.giraffastudio.it`. Se e' rimasto `http://localhost:3000` — che e'
-il valore di partenza — l'email arriva ma il link non porta da nessuna parte.
+**Dove punta il link: verificato il 17 settembre 2026.** Il *Site URL* di
+Supabase (Authentication → URL Configuration) è `https://crm.giraffastudio.it`
+e non il `http://localhost:3000` di partenza. Provato dal vivo chiamando
+`/auth/v1/verify` con un token finto e senza `redirect_to`: il browser è finito
+su `crm.giraffastudio.it/#error=access_denied&error_code=otp_expired`, cioè
+proprio sul Site URL. Da rifare con la stessa prova se un giorno qualcuno
+tocca quella impostazione.
+
+**Quello che invece manca ancora: la protezione password compromesse.**
+Authentication → Attack Protection → *Leaked password protection* è **spenta**.
+Accesa, Supabase confronta la password scelta con l'archivio di
+HaveIBeenPwned e rifiuta quelle già finite in una fuga di dati. Adesso che la
+password se la sceglie la persona invitata, conta. Si accende solo dal
+pannello.
 
 ### Creare un accesso — dal pannello Supabase (ripiego)
 
