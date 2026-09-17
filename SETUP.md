@@ -78,33 +78,50 @@ nessuna tabella — riceve i suoi dati solo dalle funzioni `portale()` e
 `portale_rispondi()`. La cosa è stata verificata impersonando ogni ruolo dentro
 il database, e la verifica ha trovato e chiuso una perdita vera.
 
-### Creare un accesso — per invito
+### Creare un accesso — dal gestionale (il modo normale)
 
-Il modo giusto è l'invito: la password **la sceglie la persona**, non passa da
-te, non gira su WhatsApp e tu non la conosci. Il gestionale è gia' pronto a
-riceverlo: il link d'invito arriva con `type=invite` e `recupero.js` lo
-riconosce, mostra la schermata «Nuova password» e poi fa entrare.
+**Impostazioni → Invita una persona.** Scrivi l'email, dici chi è (un
+professionista dello studio oppure un cliente), premi *Manda l'invito*. Tutto
+il resto lo fa il sistema in un colpo solo:
 
-1. Supabase → Authentication → Users → **Invite user**, e metti la sua email.
-   L'utente viene creato subito, in stato *invited*: lo **User UID** esiste
-   gia' da questo momento.
-2. Copia lo **User UID**.
-3. Nel CRM → Impostazioni → Membri e accessi → **+ Collega utente**: incolla
-   l'UID, scegli il ruolo, collega la scheda del professionista oppure il
-   cliente.
-4. Solo adesso digli di aprire l'email. Cliccando sceglie la password ed entra
-   in un gestionale gia' abilitato.
+1. crea l'utente su Supabase e si fa dare il link d'invito — **senza** far
+   mandare l'email a Supabase;
+2. scrive subito la riga in `membri` col ruolo giusto e il collegamento alla
+   scheda, così la persona entra in un gestionale **già abilitato** e non
+   legge «Accesso non ancora abilitato»;
+3. manda l'email **dalla casella dello studio** (quella collegata in
+   Impostazioni → Posta), con l'aspetto del gestionale, non quello anonimo di
+   Supabase.
 
-L'ordine conta: se fa il passo 4 prima del 3 entra e legge «Accesso non ancora
-abilitato» — non e' un guasto, ma e' una brutta prima impressione.
+La password **la sceglie la persona**: non passa da te, non gira su WhatsApp,
+tu non la conosci. Il link arriva con `type=invite` e `recupero.js` lo
+riconosce, mostra «Nuova password» e poi fa entrare.
 
-Il link dell'invito **scade** (di norma entro 24 ore). Se scade, dal pannello
-si rimanda: Users → i tre puntini sulla riga → *Send invite*.
+Il pulsante **Vedi com'è fatta l'email** mostra l'anteprima senza creare
+niente e senza mandare niente: si può guardare quante volte si vuole.
+
+Serve il permesso **accessi** (o il ruolo regia). Chi non ce l'ha, la sezione
+non la vede nemmeno.
+
+Il link dell'invito **scade** (di norma entro 24 ore). Se scade, si rifà
+l'invito dalla stessa schermata: la riga in `membri` c'è già e viene
+aggiornata, non duplicata.
+
+**Se la casella di posta non è collegata**, o l'invio fallisce, il gestionale
+non lascia le cose a metà: l'utente è creato e abilitato lo stesso, e ti
+mostra il link da mandare a mano. Te lo dice chiaramente.
 
 **Prima del primo invito, controlla dove punta il link.** Supabase →
 Authentication → URL Configuration: il *Site URL* deve essere
 `https://crm.giraffastudio.it`. Se e' rimasto `http://localhost:3000` — che e'
 il valore di partenza — l'email arriva ma il link non porta da nessuna parte.
+
+### Creare un accesso — dal pannello Supabase (ripiego)
+
+Se il gestionale non è raggiungibile: Authentication → Users → **Invite user**,
+poi copia lo **User UID** e vai nel CRM → Impostazioni → Persone e accessi →
+**+ Collega utente**. L'ordine conta: prima colleghi, poi gli dici di aprire
+l'email.
 
 ### Creare un accesso — a mano (sconsigliato)
 

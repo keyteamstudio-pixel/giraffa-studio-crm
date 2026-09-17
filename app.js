@@ -3611,6 +3611,38 @@ function vSettings() {
   }
   h += '<div class="card"><h2>Cambia password</h2><form data-form="password" style="margin-top:14px"><div class="field"><label>Nuova password</label><input name="pw" type="password" placeholder="almeno 8 caratteri" autocomplete="new-password" /></div><button class="btn" type="submit">Aggiorna password</button></form><p class="faint" style="margin-top:8px">Utente connesso: ' + esc(me.email) + "</p></div>";
   if (puo("accessi")) {
+    /* L'invito. Prima si creava l'utente su Supabase, si copiava un codice
+       lungo e lo si incollava qui: quattro passaggi in due posti diversi, con
+       una password decisa da te che poi doveva arrivare alla persona in
+       qualche modo. Adesso: indirizzo, chi è, invia. La password se la sceglie
+       lui dal link, e tu non la sai. */
+    var senzaAccesso = D.pros.filter(function (x) {
+      return !D.membri.some(function (m) { return m.pro_id === x.id; });
+    });
+    h += '<div class="card"><h2>Invita una persona</h2>' +
+      '<p class="faint" style="margin:8px 0 14px">Gli arriva un\'email dalla tua casella. Da lì sceglie la sua password: non passa da te e non la conosce nessun altro. Entra in un gestionale già acceso, con i suoi dati suoi e basta.</p>' +
+      '<form data-form="invito" class="grid g2" style="gap:12px">' +
+      '<div class="field"><label>Indirizzo email</label><input name="email" type="email" required placeholder="nome@esempio.it" autocomplete="off"></div>' +
+      '<div class="field"><label>Chi è</label><select name="chi" required>' +
+        '<option value="">Scegli…</option>' +
+        (senzaAccesso.length
+          ? '<optgroup label="Professionisti senza accesso">' + senzaAccesso.map(function (x) {
+              return '<option value="pro:' + esc(x.id) + '">' + esc(x.nome) + "</option>";
+            }).join("") + "</optgroup>"
+          : "") +
+        (fcli().length
+          ? '<optgroup label="Clienti (accesso al solo portale)">' + fcli().map(function (c) {
+              return '<option value="cli:' + esc(c.id) + '">' + esc(c.nome) + "</option>";
+            }).join("") + "</optgroup>"
+          : "") +
+      "</select></div>" +
+      '<div style="grid-column:1/-1;display:flex;gap:9px;align-items:center;flex-wrap:wrap">' +
+        '<button class="btn" type="submit">Manda l\'invito</button>' +
+        '<button class="btn ghost sm" type="button" data-invito-vedi="1">Guarda com\'è l\'email</button>' +
+        '<span class="faint" id="invitostat"></span>' +
+      "</div></form>" +
+      (senzaAccesso.length ? "" : '<p class="faint" style="margin-top:10px">Tutti i professionisti hanno già un accesso. Per invitarne uno nuovo, prima creagli la scheda in <b>Professionisti</b>.</p>') +
+      "</div>";
     h += '<div class="card"><div class="cardhead"><h2>Persone e accessi</h2><button class="btn sm ghost" data-new="membri">+ Collega utente</button></div>' +
       '<table><thead><tr><th>Email</th><th>Tipo</th><th>Collegato a</th><th>Cura</th><th></th></tr></thead><tbody>' +
       D.membri.map(function (m) {
@@ -5315,6 +5347,22 @@ async function trascriviParti(rid, parti) {
     toast("Registrazione: " + (e && e.message ? e.message : e), true);
   }
   REC = null; render();
+}
+/* Tutte le funzioni di servizio si chiamano allo stesso modo: sessione viva,
+   chiave pubblica, e l'errore che arriva scritto in italiano invece che come
+   numero. Scritto una volta sola. */
+async function chiamaFunzione(nome, dati) {
+  var s = await sb.auth.getSession();
+  var ses = s && s.data ? s.data.session : null;
+  if (!ses) throw new Error("la sessione è scaduta, rientra e riprova");
+  var r = await fetch(String(cfg.SUPABASE_URL || "").replace(/\/+$/, "") + "/functions/v1/" + nome, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", apikey: cfg.SUPABASE_ANON_KEY, Authorization: "Bearer " + ses.access_token },
+    body: JSON.stringify(dati || {})
+  });
+  var j = null; try { j = await r.json(); } catch (e) { }
+  if (!r.ok) throw new Error((j && j.errore) || "il server ha risposto " + r.status);
+  return j || {};
 }
 async function chiamaTrascrizione(dati) {
   var s = await sb.auth.getSession(); var ses = s && s.data ? s.data.session : null;
@@ -7105,6 +7153,22 @@ async function clicApp(e, t, d) {
     await reload(["pcfg"]); toast("Link pronto: controlla gli orari e accendilo"); render(); return;
   }
   if (d.copia) { try { await navigator.clipboard.writeText(d.copia); toast("Copiato"); } catch (x) { prompt("Copia", d.copia); } return; }
+  if (d.invitoVedi) {
+    /* L'anteprima chiede alla stessa funzione che manda, cosi' quello che
+       guardi e' esattamente quello che arriva: se un giorno cambio l'email,
+       cambia anche qui, senza che nessuno debba ricordarsene. Non crea
+       nessun utente e non manda niente. */
+    try {
+      var ap = await chiamaFunzione("invita", { email: "anteprima@esempio.it", ruolo: "professionista",
+        pro_id: me.pro_id, anteprima: true });
+      modal('<div class="box wide"><h2>L\'email che riceve</h2>' +
+        '<p class="faint" style="margin-bottom:12px">Così com\'è, col collegamento finto. Parte dalla tua casella.</p>' +
+        '<iframe title="Anteprima dell\'invito" style="width:100%;height:60vh;border:1px solid var(--line);border-radius:10px;background:#fff" ' +
+        'sandbox srcdoc="' + esc(ap.anteprima || "") + '"></iframe>' +
+        '<div class="actions"><button class="btn" data-close>Chiudo</button></div></div>');
+    } catch (x) { toast(x.message, true); }
+    return;
+  }
   if (d.recStart) { await recStart(d.recStart); return; }
   if (d.recStop) { await recStop(); return; }
   if (d.recVedi) { RECVEDI = RECVEDI === d.recVedi ? null : d.recVedi; render(); return; }
@@ -8232,6 +8296,43 @@ async function invioModulo(e, f) {
     var rp = await sb.auth.updateUser({ password: pw });
     if (rp.error) { toast(erroreUmano(rp.error), true); return; }
     f.pw.value = ""; toast("Password aggiornata"); return;
+  }
+  if (f.dataset.form === "invito") {
+    e.preventDefault();
+    var em = String(f.email.value || "").trim().toLowerCase();
+    var chi = String(f.chi.value || "");
+    if (!em || !chi) { toast("Servono l'indirizzo e chi è la persona", true); return; }
+    var stat = el("#invitostat");
+    var bt = f.querySelector('button[type=submit]');
+    bt.disabled = true; var eti = bt.textContent; bt.textContent = "Mando…";
+    if (stat) stat.textContent = "";
+    try {
+      var corpo = chi.indexOf("cli:") === 0
+        ? { email: em, ruolo: "cliente", cliente_id: chi.slice(4) }
+        : { email: em, ruolo: "professionista", pro_id: chi.slice(4) };
+      var ri = await chiamaFunzione("invita", corpo);
+      await reload(["membri"]);
+      if (ri.parziale) {
+        /* l'accesso c'è ma l'email no: meglio dirlo e dare il link, che
+           lasciarlo credere partito */
+        toast(ri.messaggio, true);
+        modal('<div class="box"><h2>L\'accesso è pronto, l\'email no</h2>' +
+          '<p class="muted" style="margin-top:8px">' + esc(ri.messaggio) + '</p>' +
+          '<div class="qfield" style="margin-top:14px"><label>Il collegamento da mandargli</label>' +
+          '<input readonly value="' + esc(ri.link || "") + '" onclick="this.select()"></div>' +
+          '<div class="actions"><button class="btn ghost" data-close>Chiudo</button>' +
+          '<button class="btn" data-copia="' + esc(ri.link || "") + '">Copia il collegamento</button></div></div>');
+      } else {
+        toast("Invito mandato a " + em + " da " + (ri.da || "la tua casella"));
+        f.reset();
+      }
+      render();
+    } catch (x) {
+      if (stat) stat.textContent = "";
+      toast(x.message, true);
+    }
+    bt.disabled = false; bt.textContent = eti;
+    return;
   }
 }
 
